@@ -18,7 +18,7 @@
 
 🌐 **多平台支持**：支持 Android (uiautomator2)、iOS (WDA)、Web (Playwright) 三大平台自动化测试。
 
-🔧 **多环境配置**：支持 dev、prod、us_dev、us_prod 四个环境的 App 配置切换。
+🔧 **多环境配置**：支持 dev、prod、us\_dev、us\_prod 四个环境的 App 配置切换。
 
 # 🛠️ 环境依赖与安装
 
@@ -99,25 +99,10 @@ DEFAULT_TIMEOUT = 5.0
 ```python
 APP_ENV_CONFIG = {
     "dev": {
-        "android": "com.pionex.client",
-        "ios": "org.pionex.debug",
-        "web": "https://www.pionexdev.com/cn/",
-    },
-    "prod": {
-        "android": "com.pionex.client",
-        "ios": "org.pionex",
-        "web": "https://www.pionex.com/",
-    },
-    "us_dev": {
-        "android": "com.pionex.client.us",
-        "ios": "org.pionex.debug.us",
-        "web": "https://www.pionexusdev.com/",
-    },
-    "us_prod": {
-        "android": "com.pionex.client.us",
-        "ios": "org.pionex.us",
-        "web": "https://www.pionexus.com/",
-    },
+        "android": "",
+        "ios": "",
+        "web": "",
+    }
 }
 ```
 
@@ -205,15 +190,15 @@ ui_agent/
 
 ## 模块说明
 
-| 模块 | 说明 |
-|------|------|
-| main.py | 录制引擎入口，负责设备连接、UI 抓取、AI 决策、动作执行 |
-| conftest.py | Pytest 夹具层，提供设备 fixture、失败截图 Hook、跨平台适配器 |
-| config/config.py | 全局配置管理，支持 API Keys、超时时间、多环境 App 配置 |
-| common/ai.py | AI 交互层，构造 Prompt 发送给大模型，解析 JSON 动作指令 |
-| common/executor.py | 动作执行器，实现 click/input/assert 等操作的执行与代码生成 |
-| common/logs.py | 日志模块，基于 loguru 提供统一的日志输出 |
-| utils/utils_xml.py | XML 清洗降维算法，提取关键交互节点，降低 Token 消耗 |
+| 模块                  | 说明                                       |
+| ------------------- | ---------------------------------------- |
+| main.py             | 录制引擎入口，负责设备连接、UI 抓取、AI 决策、动作执行           |
+| conftest.py         | Pytest 夹具层，提供设备 fixture、失败截图 Hook、跨平台适配器 |
+| config/config.py    | 全局配置管理，支持 API Keys、超时时间、多环境 App 配置       |
+| common/ai.py        | AI 交互层，构造 Prompt 发送给大模型，解析 JSON 动作指令     |
+| common/executor.py  | 动作执行器，实现 click/input/assert 等操作的执行与代码生成  |
+| common/logs.py      | 日志模块，基于 loguru 提供统一的日志输出                 |
+| utils/utils\_xml.py | XML 清洗降维算法，提取关键交互节点，降低 Token 消耗          |
 
 # ❓ 常见问题 (FAQ)
 
@@ -223,11 +208,11 @@ ui_agent/
 
 ## Q2: 大模型频繁返回乱码或无法解析动作？
 
-检查 config.py 中的 MODEL_NAME。UI 结构理解需要较强的逻辑推理能力，推荐使用千亿参数级别的旗舰模型。如果是国内大模型，建议使用具有强大代码/JSON 输出能力的模型。
+检查 config.py 中的 MODEL\_NAME。UI 结构理解需要较强的逻辑推理能力，推荐使用千亿参数级别的旗舰模型。如果是国内大模型，建议使用具有强大代码/JSON 输出能力的模型。
 
 ## Q3: 录制时点击了，但脚本回放时找不到元素报错？
 
-可能是由于页面动画或网络加载延迟导致。可以在 config.py 中适当增大 DEFAULT_TIMEOUT（默认 5.0 秒）以增加容错率。
+可能是由于页面动画或网络加载延迟导致。可以在 config.py 中适当增大 DEFAULT\_TIMEOUT（默认 5.0 秒）以增加容错率。
 
 ## Q4: 视频录制功能无法使用？
 
@@ -283,9 +268,8 @@ ui_agent/
 
 ## 提交方式
 
-- Slack: fangweijing
-- 邮件: fangweijing@bitunverse.org
+- 邮件: niux520@qq.com
 
----
+***
 
 感谢你的反馈，我会尽快处理！
