@@ -1,0 +1,16 @@
+# 日志&报告
+.logs/
+.report/
+*.log
+
+# 虚拟环境
+.venv/
+
+# 项目缓存
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# IDE 缓存
+.qoder/
+.trae/
