@@ -1,5 +1,5 @@
-import time
 import os
+import time
 
 import uiautomator2 as u2
 
@@ -28,13 +28,17 @@ def get_initial_header() -> list:
 
 
 def save_to_disk(file_path: str, content: list) -> None:
-    """保存文件内容到磁盘"""
+    """安全的原子化文件写入，防止因断电等原因导致测试脚本被清空"""
     log.debug(f"[SaveToDisk] 脚本保存至 {file_path}, 内容长度: {len(content)}")
-    log.debug(f"[SaveToDisk] 内容预览: {content[:5]}")
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
+
+    # 先写入临时文件
+    temp_path = file_path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
         f.writelines(content)
-    log.debug("[SaveToDisk] 文件保存成功")
+    # 原子替换，确保安全落地
+    os.replace(temp_path, file_path)
+    log.debug("[SaveToDisk] 文件原子保存成功")
 
 
 def launch_app(device: u2.Device, env_name="dev", system="android"):
@@ -52,7 +56,7 @@ def _get_app_config(env_name="dev", system="android"):
 
 def main():
     log.info("=" * 50)
-    log.info("🚀 Android AI 测试录制引擎")
+    log.info("🚀 AI 测试录制引擎")
     log.info("=" * 50)
 
     try:
@@ -85,8 +89,10 @@ def main():
         cache_status = "✅" if brain.cache_manager.enabled else "❌"
         prompt = f"\n👉 请输入自然语言指令 (输入 'q' 退出, 'u' 撤销) [已录制 {history_count} 步] [缓存: {cache_status}]: "
         cmd = input(prompt).strip()
+
         if not cmd:
             continue
+
         if cmd.lower() in ["exit", "q", "quit"]:
             log.info("🎉 录制结束！")
             log.info(f"已生成测试脚本，文件路径: {config.OUTPUT_SCRIPT_FILE}")
@@ -130,6 +136,7 @@ def main():
                 log.error("❌ 清空缓存失败")
             continue
 
+        # 回滚操作
         if cmd.lower() in ["u", "undo"]:
             last_step = history_manager.get_last_step()
             history_count_before = history_manager.get_history_count()
@@ -168,15 +175,16 @@ def main():
                 log.error("❌ 回滚失败")
             continue
 
-        time.sleep(1)  # 等待页面动画稳定
+        try:
+            # 等待 App 空闲（无动态加载转圈）
+            device.wait_activity(device.app_current()['activity'], timeout=3)
+        except Exception:
+            time.sleep(1)
 
         log.info("[System] 抓取并压缩 XML 树")
-        # 显式获取并保留 raw_xml，供 L2 问答缓存使用
-        raw_xml = device.dump_hierarchy()
-        ui_json = compress_android_xml(raw_xml)
 
-        log.info("[System] AI 决策中")
-        action_data = brain.get_action(cmd, ui_json, raw_xml)
+        ui_json = compress_android_xml(device.dump_hierarchy())
+        action_data = brain.get_action(cmd, ui_json)
 
         if action_data:
             log.debug(f"[Debug] 动作数据: {action_data}")
