@@ -78,8 +78,6 @@ class AIBrain:
             elif "```" in result_text:
                 result_text = result_text.replace("```", "").strip()
 
-            decision = json.loads(result_text).get("result", {})
-
             try:
                 parsed_json = json.loads(result_text)
                 decision = parsed_json.get("result", {})
