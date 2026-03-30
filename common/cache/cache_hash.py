@@ -22,7 +22,7 @@ def _extract_semantic_fingerprint(ui_json: Dict[str, Any]) -> list:
             if cn_text in [
                 "加密货币",
                 "比特币",
-                "模因币",
+                "meme币",
                 "美股代币",
                 "贵金属代币",
                 "热门资产",

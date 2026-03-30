@@ -8,9 +8,8 @@ from filelock import FileLock
 
 
 def get_cache_filename() -> str:
-    # 统一使用 UTC 时间，避免时区/夏令时带来的 Bug
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
-    return f"ai_decisions_{today}.json"
+    # 缓存的长久保留与过期剔除，交由底部的 cleanup_expired_entries 通过 TTL 控制
+    return "ai_decisions_v2.json"
 
 
 def _get_lock_path(cache_path: Path) -> str:

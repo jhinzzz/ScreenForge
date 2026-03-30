@@ -24,7 +24,7 @@ class CacheManager:
         self,
         cache_dir: str = ".cache",
         enabled: bool = False,
-        ttl_days: int = 365,
+        ttl_days: int = 7,
         max_size_mb: int = 100,
     ):
         self._cache_dir = cache_dir
@@ -83,9 +83,7 @@ class CacheManager:
             # ----------------------------------------------------
             if exact_key in entries:
                 matched_entry = entries[exact_key]
-                log.info(
-                    f"🎯 [Exact Cache Hit] {cache_type} 命中"
-                )
+                log.info(f"🎯 [Exact Cache Hit] {cache_type} 命中")
 
                 matched_entry["metadata"]["last_accessed"] = datetime.now(
                     timezone.utc
@@ -127,8 +125,8 @@ class CacheManager:
                 log.info(
                     f"🎯 [Semantic Cache Hit] {cache_type} 语义命中! 相似度: {best_score:.2%}"
                 )
-                log.info(f"💬 你的新指令: '{instruction}'")
-                log.info(f"🧠 匹配旧历史: '{past_inst}'")
+                log.info(f"💡 [System] 新指令: '{instruction}'")
+                log.info(f"💡 [System] 旧指令: '{past_inst}'")
 
                 matched_entry["metadata"]["last_accessed"] = datetime.now(
                     timezone.utc
@@ -158,29 +156,74 @@ class CacheManager:
         ui_hash: Optional[str],
         cache_type: str,
         exact_key: str,
+        llm_latency: float = 0.0,
     ) -> bool:
         if not self._enabled:
             return False
         try:
             cache_data = load_cache(self._cache_dir)
+            entries = cache_data.setdefault("entries", {})
+
+            # ====================================================
+            # 写入前查重防膨胀机制 (Deduplication)
+            # ====================================================
+            current_vector = self._get_embedding(instruction)
+            keys_to_delete = []
+
+            for k, v in entries.items():
+                if v.get("type") != cache_type:
+                    continue
+
+                is_same_decision = v.get("decision") == decision
+                is_same_instruction = v.get("instruction") == instruction
+
+                if cache_type == "L1-Action":
+                    # 删掉旧的，保留最新的，避免同一个页面长出无数个相同逻辑的缓存节点
+                    if (
+                        is_same_instruction
+                        and is_same_decision
+                        and v.get("ui_hash") != ui_hash
+                    ):
+                        keys_to_delete.append(k)
+
+                elif cache_type == "L2-SimpleQA":
+                    # 当决策完全一致，且语义向量极其相似 (>0.98)
+                    past_vector = v.get("instruction_vector")
+                    if past_vector and is_same_decision:
+                        sim = self._cosine_similarity(current_vector, past_vector)
+                        if sim > 0.98:
+                            # 仅更新旧条目的热度信息，安全返回
+                            v["metadata"]["last_accessed"] = datetime.now(
+                                timezone.utc
+                            ).isoformat()
+                            v["metadata"]["access_count"] = (
+                                v["metadata"].get("access_count", 0) + 1
+                            )
+                            save_cache(self._cache_dir, cache_data)
+                            return True
+
+            # 清理检测到的过期废弃键
+            for k in keys_to_delete:
+                del entries[k]
+            # ====================================================
 
             entry = {
                 "type": cache_type,
                 "instruction": instruction,
-                # 写入时依然生成向量，为以后可能的“语义泛化”查询做铺垫
-                "instruction_vector": self._get_embedding(instruction),
+                "instruction_vector": current_vector,
                 "decision": decision,
                 "metadata": {
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "last_accessed": datetime.now(timezone.utc).isoformat(),
                     "access_count": 1,
                     "ttl_seconds": self._ttl_seconds,
+                    "llm_latency": round(llm_latency, 2),
                 },
             }
             if ui_hash is not None:
                 entry["ui_hash"] = ui_hash
 
-            cache_data.setdefault("entries", {})[exact_key] = entry
+            entries[exact_key] = entry
             save_cache(self._cache_dir, cache_data)
             return True
         except Exception as e:
@@ -197,12 +240,18 @@ class CacheManager:
         return self._hybrid_search(instruction, ui_hash, "L1-Action", 0.90, exact_key)
 
     def set(
-        self, instruction: str, ui_json: Dict[str, Any], decision: Dict[str, Any]
+        self,
+        instruction: str,
+        ui_json: Dict[str, Any],
+        decision: Dict[str, Any],
+        llm_latency: float = 0.0,
     ) -> bool:
         ui_hash = compute_ui_hash(ui_json)
         inst_hash = compute_instruction_hash(instruction)
         exact_key = f"L1_{inst_hash}_{ui_hash}"
-        return self._set_hybrid(instruction, decision, ui_hash, "L1-Action", exact_key)
+        return self._set_hybrid(
+            instruction, decision, ui_hash, "L1-Action", exact_key, llm_latency
+        )
 
     # ================= L2 混合纯问答缓存 (无视页面 + 相同/相似指令) =================
     def get_chat_simple(self, instruction: str) -> Optional[Dict[str, Any]]:
@@ -210,10 +259,14 @@ class CacheManager:
         exact_key = f"L2_{inst_hash}"
         return self._hybrid_search(instruction, None, "L2-SimpleQA", 0.88, exact_key)
 
-    def set_chat_simple(self, instruction: str, decision: Dict[str, Any]) -> bool:
+    def set_chat_simple(
+        self, instruction: str, decision: Dict[str, Any], llm_latency: float = 0.0
+    ) -> bool:
         inst_hash = compute_instruction_hash(instruction)
         exact_key = f"L2_{inst_hash}"
-        return self._set_hybrid(instruction, decision, None, "L2-SimpleQA", exact_key)
+        return self._set_hybrid(
+            instruction, decision, None, "L2-SimpleQA", exact_key, llm_latency
+        )
 
     # ================= 其他基础方法 =================
     def clear(self) -> bool:

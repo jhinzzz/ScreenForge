@@ -130,8 +130,8 @@ def main():
                 continue
 
             if cmd.lower() in ["exit", "q", "quit"]:
-                log.info("🎉 录制结束")
-                log.info(f"💡 请输入最终测试用例名称 (直接回车保留默认名: {os.path.basename(current_script_path)}): ")
+                log.info("🎉 [System] 录制结束")
+                log.info(f"💡 [System] 请输入最终测试用例名称 (直接回车保留默认名: {os.path.basename(current_script_path)}): ")
                 new_name = input("请输入最终测试用例名称: ").strip()
                 if new_name:
                     if not new_name.startswith("test_"):
@@ -144,20 +144,20 @@ def main():
                         os.rename(current_script_path, new_path)
                         current_script_path = new_path
                     else:
-                        log.warning(f"⚠️ 无法重命名，源文件异常丢失: {current_script_path}")
+                        log.warning(f"⚠️ [Warning] 无法重命名，源文件异常丢失: {current_script_path}")
 
-                log.info(f"🏁 用例已成功落地: {current_script_path}")
-                log.info(f"▶️ 运行命令验证: pytest {current_script_path}")
+                log.info(f"🏁 [System] 用例已成功落地: {current_script_path}")
+                log.info(f"▶️ [System] 运行命令验证: pytest {current_script_path}")
                 break
 
             if cmd.lower() == "v-on":
                 vision_mode = True
-                log.info("👁️ ✅ 视觉多模态辅助已开启。下一次指令将附带屏幕截图发给 AI。")
+                log.info("✅ [System] 视觉多模态辅助已开启。下一次指令将附带屏幕截图发给 AI。")
                 continue
 
             if cmd.lower() == "v-off":
                 vision_mode = False
-                log.info("👁️ ❌ 视觉多模态辅助已关闭。下一次指令将使用纯文本模式。")
+                log.info("❌ [System] 视觉多模态辅助已关闭。下一次指令将使用纯文本模式。")
                 continue
 
             if cmd.lower() == "cache":
@@ -260,8 +260,16 @@ def main():
                 except Exception as e:
                     log.warning(f"⚠️ 截图失败，将降级为纯文本模型: {e}")
 
+            current_history = history_manager.get_history()
+            # 取最近 5 条历史记录作为上下文
+            # 防止出现历史记录过长导致的 AI 幻觉和 token 地狱
+            recent_context = current_history[-5:] if len(current_history) > 5 else current_history
+
             action_data = brain.get_action(
-                cmd, ui_json, screenshot_base64=screenshot_base64
+                instruction=cmd,
+                ui_json=ui_json,
+                screenshot_base64=screenshot_base64,
+                chat_history=recent_context
             )
 
             if action_data:
@@ -298,7 +306,7 @@ def main():
         try:
             adapter.teardown()
         except Exception as e:
-            log.warning(f"[Warning] 清理资源时发生异常: {e}")
+            log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
 
 
 if __name__ == "__main__":
