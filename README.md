@@ -338,7 +338,6 @@ cm.clear()  # 清除所有缓存条目
 
 **提交方式**
 
-- Slack: fangweijing
-- 邮件: fangweijing@bituniverse.org
+- 邮件: 592909057@qq.com
 
 感谢你的反馈，我会尽快处理！
