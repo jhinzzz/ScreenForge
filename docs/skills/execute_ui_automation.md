@@ -1,8 +1,8 @@
-# Tool / Skill: execute_ui_automation (多端 UI 自动化探索引擎)
+# Tool / Skill: execute_ui_automation (ScreenForge 多端 UI 自动化探索引擎)
 
 ## 描述 (Description)
 
-这是一个强大的底层视觉驱动与跨端 UI 自动化探索引擎。作为主控 Agent，你无法直接看到设备的屏幕画面，也无法精确猜测 UI 元素的定位（如 resource-id 或 xpath）。因此，当你需要执行任何 UI 自动化、真机操作或测试用例生成任务时，**必须**通过在终端执行该命令来下发任务，由底层引擎代为探索。
+这是 `ScreenForge` 提供的底层视觉驱动与跨端 UI 自动化探索引擎。作为主控 Agent，你无法直接看到设备的屏幕画面，也无法精确猜测 UI 元素的定位（如 resource-id 或 xpath）。因此，当你需要执行任何 UI 自动化、真机操作或测试用例生成任务时，**必须**通过在终端执行该命令来下发任务，由底层引擎代为探索。
 
 ## 执行命令 (CLI Command)
 
