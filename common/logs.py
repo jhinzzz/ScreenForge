@@ -1,12 +1,89 @@
 import os
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime
 import sys
 from loguru import logger
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
+_STDERR_SINK_ID = None
+_STDERR_PROXY = None
+
+
+class _SafeStderrProxy:
+    def __init__(self):
+        self._mute_depth = 0
+
+    def _resolve_stream(self):
+        stream = getattr(sys, "stderr", None)
+        if stream is not None and not getattr(stream, "closed", False):
+            return stream
+
+        fallback = getattr(sys, "__stderr__", None)
+        if fallback is not None and not getattr(fallback, "closed", False):
+            return fallback
+        return None
+
+    def write(self, message):
+        if self._mute_depth > 0:
+            return
+
+        stream = self._resolve_stream()
+        if stream is None:
+            return
+
+        try:
+            stream.write(message)
+        except ValueError:
+            fallback = getattr(sys, "__stderr__", None)
+            if fallback is not None and fallback is not stream and not getattr(fallback, "closed", False):
+                fallback.write(message)
+
+    def flush(self):
+        if self._mute_depth > 0:
+            return
+
+        stream = self._resolve_stream()
+        if stream is None:
+            return
+
+        try:
+            stream.flush()
+        except ValueError:
+            fallback = getattr(sys, "__stderr__", None)
+            if fallback is not None and fallback is not stream and not getattr(fallback, "closed", False):
+                fallback.flush()
+
+    @contextmanager
+    def muted(self):
+        self._mute_depth += 1
+        try:
+            yield
+        finally:
+            self._mute_depth = max(0, self._mute_depth - 1)
+
+
+def _add_stderr_sink():
+    global _STDERR_SINK_ID, _STDERR_PROXY
+    if _STDERR_SINK_ID is not None:
+        return
+
+    if _STDERR_PROXY is None:
+        _STDERR_PROXY = _SafeStderrProxy()
+
+    _STDERR_SINK_ID = logger.add(
+        _STDERR_PROXY,
+        format=(
+            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+            "<level>{message}</level>"
+        ),
+        level="INFO",
+        colorize=True,
+    )
 
 
 def _generate_logs_dir():
@@ -27,18 +104,10 @@ def _init_logger():
     log_file = f"{log_dir}/test_{log_time}_{log_id}.log"
 
     logger.remove()
-
-    logger.add(
-        sys.stderr,
-        format=(
-            "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
-            "<level>{message}</level>"
-        ),
-        level="INFO",
-        colorize=True,
-    )
+    global _STDERR_SINK_ID, _STDERR_PROXY
+    _STDERR_SINK_ID = None
+    _STDERR_PROXY = None
+    _add_stderr_sink()
 
     logger.add(
         log_file,
@@ -53,6 +122,17 @@ def _init_logger():
 
 
 _init_logger()
+
+
+@contextmanager
+def mute_stderr_logs():
+    global _STDERR_PROXY
+    if _STDERR_PROXY is None:
+        yield
+        return
+
+    with _STDERR_PROXY.muted():
+        yield
 
 
 class Logger:

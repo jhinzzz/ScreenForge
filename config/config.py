@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+
+from config.env_loader import resolve_dotenv_path, safe_load_dotenv
 
 # ==========================================
 # 1. 基础路径与 .env 自动加载 (工程化核心)
@@ -8,10 +9,10 @@ from dotenv import load_dotenv
 # 动态获取项目根目录 (config.py 的上一级目录)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 尝试寻找并加载根目录下的 .env 文件到系统环境变量中
+# 尝试寻找并加载根目录或上层主仓库中的 .env/.ENV 文件到系统环境变量中
 # override=False 表示如果宿主系统已经配置了该变量(如在 CI/CD 流水线中)，则以系统优先
-env_path = BASE_DIR / '.env'
-load_dotenv(dotenv_path=env_path, override=False)
+env_path = resolve_dotenv_path(BASE_DIR)
+safe_load_dotenv(dotenv_path=env_path, override=False)
 
 # ==========================================
 # 2. 文本大模型配置 (用于处理纯 XML 树，高频、廉价、快速)
@@ -80,6 +81,17 @@ WEB_CDP_URL = os.getenv("WEB_CDP_URL", "http://localhost:9222")
 # 9. Agent 运行产物目录
 # ==========================================
 RUN_REPORT_BASE_DIR = BASE_DIR / "report" / "runs"
+
+# ==========================================
+# 10. Pytest 真机回放测试控制
+# ==========================================
+TEST_PLATFORM = os.getenv("TEST_PLATFORM", "android").lower()
+RUN_LIVE_PLATFORM_TESTS = str(os.getenv("RUN_LIVE_PLATFORM_TESTS", "False")).lower() in (
+    "true",
+    "1",
+    "t",
+    "yes",
+)
 
 
 def validate_config() -> bool:

@@ -1,4 +1,22 @@
 import json
+from urllib.parse import urlsplit, urlunsplit
+
+
+def normalize_loopback_url(url: str) -> str:
+    parsed = urlsplit(str(url))
+    if parsed.hostname != "localhost":
+        return str(url)
+
+    normalized_netloc = parsed.netloc.replace("localhost", "127.0.0.1", 1)
+    return urlunsplit(
+        (
+            parsed.scheme,
+            normalized_netloc,
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
 
 def compress_web_dom(page) -> str:
     """

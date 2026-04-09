@@ -38,7 +38,9 @@ openai==2.26.0
 opencv-python==4.13.0.92
 packaging==26.0
 pillow==12.1.1
+playwright==1.58.0
 pluggy==1.6.0
+pyee==13.0.1
 pydantic==2.12.5
 pydantic_core==2.41.5
 Pygments==2.19.2

@@ -2,7 +2,21 @@ import os
 import shutil
 from common.logs import log
 import config.config as config
+from utils.utils_web import normalize_loopback_url
 from .base_adapter import BasePlatformAdapter
+
+
+def _is_environment_restricted_error(message: str) -> bool:
+    text = str(message).lower()
+    return any(
+        pattern in text
+        for pattern in (
+            "operation not permitted",
+            "permission denied",
+            " eperm ",
+            "connect eperm",
+        )
+    )
 
 
 class WebPlaywrightAdapter(BasePlatformAdapter):
@@ -34,9 +48,18 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
 
         self.playwright = sync_playwright().start()
         # 通过 CDP 连接已运行的系统 Chrome
+        cdp_url = normalize_loopback_url(config.WEB_CDP_URL)
         try:
-            self.browser = self.playwright.chromium.connect_over_cdp(config.WEB_CDP_URL)
+            self.browser = self.playwright.chromium.connect_over_cdp(cdp_url)
         except Exception as e:
+            if _is_environment_restricted_error(e):
+                self.playwright.stop()
+                self.playwright = None
+                raise RuntimeError(
+                    "当前运行环境限制了 Playwright 连接本地 Chrome CDP，"
+                    "请在宿主终端中直接运行，或放宽本地网络权限后重试。"
+                    f" 原始错误: {e}"
+                ) from e
             log.error(
                 f"❌ [Error] 无法连接到 Chrome CDP ({config.WEB_CDP_URL})，"
                 f"请先在终端启动系统 Chrome：\n"

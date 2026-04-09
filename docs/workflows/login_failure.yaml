@@ -1,0 +1,27 @@
+version: 1
+name: login_failure
+platform: android
+vars:
+  username: demo_user
+  password: wrong_password
+  submit_label: 登录
+  error_text: 密码错误
+steps:
+  - name: 输入用户名 {{ username }}
+    action: input
+    locator_type: text
+    locator_value: 用户名
+    extra_value: "{{ username }}"
+  - name: 输入密码 {{ password }}
+    action: input
+    locator_type: text
+    locator_value: 密码
+    extra_value: "{{ password }}"
+  - name: 点击{{ submit_label }}
+    action: click
+    locator_type: text
+    locator_value: "{{ submit_label }}"
+  - name: 断言 {{ error_text }} 出现
+    action: assert_exist
+    locator_type: text
+    locator_value: "{{ error_text }}"

@@ -1,6 +1,7 @@
 import os
 import io
 import base64
+from pathlib import Path
 import pytest
 import allure
 from common.logs import log
@@ -10,6 +11,76 @@ from common.ai_heal import HealerBrain
 import config.config as config
 
 _failure_tracker = {}
+_LIVE_PLATFORM_DIRS = {"android", "ios", "web"}
+
+
+def _is_live_platform_test_path(path: str) -> bool:
+    parts = Path(str(path)).parts
+    for index, part in enumerate(parts):
+        if part == "test_cases" and index + 1 < len(parts):
+            return parts[index + 1] in _LIVE_PLATFORM_DIRS
+    return False
+
+
+def _get_live_platform_from_path(path: str) -> str:
+    parts = Path(str(path)).parts
+    for index, part in enumerate(parts):
+        if part == "test_cases" and index + 1 < len(parts):
+            platform = parts[index + 1]
+            if platform in _LIVE_PLATFORM_DIRS:
+                return platform
+    return ""
+
+
+def _is_live_platform_execution_enabled() -> bool:
+    raw_value = os.getenv(
+        "RUN_LIVE_PLATFORM_TESTS",
+        str(getattr(config, "RUN_LIVE_PLATFORM_TESTS", False)),
+    )
+    return str(raw_value).lower() in ("true", "1", "t", "yes")
+
+
+def _get_selected_live_platform() -> str:
+    return str(
+        os.getenv(
+            "TEST_PLATFORM",
+            getattr(config, "TEST_PLATFORM", "android"),
+        )
+    ).lower()
+
+
+def pytest_collection_modifyitems(config, items):
+    live_execution_enabled = _is_live_platform_execution_enabled()
+    selected_platform = _get_selected_live_platform()
+
+    for item in items:
+        if not _is_live_platform_test_path(str(getattr(item, "fspath", item.path))):
+            continue
+
+        item.add_marker(pytest.mark.live_platform)
+        item_platform = _get_live_platform_from_path(str(getattr(item, "fspath", item.path)))
+
+        if not live_execution_enabled:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=(
+                        "默认跳过真机/真浏览器回放测试；如需执行，请设置 "
+                        "RUN_LIVE_PLATFORM_TESTS=true，并按需设置 "
+                        "TEST_PLATFORM=android|ios|web。"
+                    )
+                )
+            )
+            continue
+
+        if item_platform and item_platform != selected_platform:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=(
+                        f"当前仅启用 TEST_PLATFORM={selected_platform} 的真机回放测试，"
+                        f"已跳过 {item_platform} 平台脚本。"
+                    )
+                )
+            )
 
 
 def _normalize_screenshot_bytes(raw) -> bytes:

@@ -5,6 +5,112 @@ import config.config as config
 
 
 class AutonomousBrain(AIBrain):
+    def get_execution_plan(
+        self,
+        goal: str,
+        context: str,
+        ui_json: str,
+        history: list,
+        platform: str = "android",
+        screenshot_base64: str = None,
+    ) -> dict:
+        try:
+            json.loads(ui_json)
+        except json.JSONDecodeError:
+            ui_json = '{"ui_elements": []}'
+
+        history_str = "无"
+        if history:
+            history_str = "\n".join(
+                [
+                    f"第{i + 1}步: {step['action_description']}"
+                    for i, step in enumerate(history)
+                ]
+            )
+
+        system_prompt = f"""
+        你是一个{platform} 自动化测试规划专家。
+        你需要根据用户目标、上下文、历史步骤和当前页面 UI 树，输出一个执行前计划。
+
+        你必须输出纯 JSON 对象，不要包含 markdown，结构如下：
+        {{
+            "current_state_summary": "当前页面状态摘要",
+            "planned_steps": ["步骤1", "步骤2", "步骤3"],
+            "suggested_assertion": "最终建议断言",
+            "risks": ["风险1", "风险2"]
+        }}
+        """
+
+        user_prompt = f"""
+        【宏观测试目标】: {goal}
+        【参考上下文(PRD/用例)】: {context if context else '无'}
+        【已执行的历史步骤】:
+        {history_str}
+        【当前屏幕 UI 树】:
+        {ui_json}
+        """
+
+        user_message_content = [{"type": "text", "text": user_prompt}]
+        if screenshot_base64:
+            user_message_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{screenshot_base64}"},
+                }
+            )
+
+        if screenshot_base64:
+            active_client = getattr(self, "vision_client", None) or getattr(
+                self, "text_client", None
+            )
+            active_model = config.VISION_MODEL_NAME
+        else:
+            active_client = getattr(self, "text_client", None) or getattr(
+                self, "client", None
+            )
+            active_model = config.MODEL_NAME
+
+        if not active_client:
+            log.error("❌ [Error] 未找到可用的模型客户端，无法生成执行计划")
+            return {
+                "current_state_summary": "模型客户端未初始化",
+                "planned_steps": [],
+                "suggested_assertion": "",
+                "risks": ["模型客户端未初始化"],
+            }
+
+        result_text = ""
+        try:
+            response = active_client.chat.completions.create(
+                model=active_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message_content},
+                ],
+                temperature=0.1,
+            )
+            result_text = response.choices[0].message.content.strip()
+
+            if "```json" in result_text:
+                result_text = result_text.split("```json")[1].split("```")[0].strip()
+            elif "```" in result_text:
+                result_text = result_text.replace("```", "").strip()
+
+            parsed_json = json.loads(result_text)
+            parsed_json.setdefault("current_state_summary", "")
+            parsed_json.setdefault("planned_steps", [])
+            parsed_json.setdefault("suggested_assertion", "")
+            parsed_json.setdefault("risks", [])
+            return parsed_json
+        except Exception as e:
+            log.error(f"[Error] 计划模型请求或解析失败: {e}\n模型返回: {result_text}")
+            return {
+                "current_state_summary": "计划生成失败",
+                "planned_steps": [],
+                "suggested_assertion": "",
+                "risks": ["计划生成失败"],
+            }
+
     def get_next_autonomous_action(
         self,
         goal: str,

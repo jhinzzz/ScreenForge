@@ -1,0 +1,11 @@
+{
+  "operation": "execute",
+  "mode": "plan_only",
+  "platform": "android",
+  "workflow": {
+    "path": "./docs/workflows/login_failure.yaml",
+    "vars": {
+      "username": "qa_user"
+    }
+  }
+}
