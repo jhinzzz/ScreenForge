@@ -737,9 +737,16 @@ def _connect_adapter(args, reporter: RunReporter):
     adapter.setup()
     device = adapter.driver
     log.info(f"✅ {args.platform} 平台已连接并初始化完成")
-    launch_app(device, args.env, args.platform)
-    reporter.emit_event("adapter_ready", platform=args.platform)
-    return adapter
+    try:
+        launch_app(device, args.env, args.platform)
+        reporter.emit_event("adapter_ready", platform=args.platform)
+        return adapter
+    except Exception:
+        try:
+            adapter.teardown()
+        except Exception as e:
+            log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+        raise
 
 
 def _preview_action_resolution(device, platform: str, action_data: dict) -> dict:
