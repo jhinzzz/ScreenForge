@@ -1,5 +1,54 @@
 # CLAUDE.md
 
+## ⚠️ Agent 协作协议（必读）
+
+**你是大脑，ScreenForge 是手脚。**
+
+当用户要求你操作 UI（打开网页、点击按钮、填写表单、执行测试等），你必须：
+1. **自己理解**用户的 PRD / 自然语言意图
+2. **调用 `inspect_ui`** 获取当前真实 UI 树（DOM/XML）
+3. **自己分析** UI 树，定位目标元素
+4. **逐步下发 `action` 指令**让 ScreenForge 执行
+
+### 标准工作流
+
+```bash
+# 1. 获取当前页面 UI 树（你来分析，不是让别的 LLM 分析）
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+
+# 2. 你分析完 UI 树后，下发精确的单步动作
+python agent_cli.py --action goto --platform web --extra-value "https://example.com"
+python agent_cli.py --action click --platform web --locator-type text --locator-value "登录"
+python agent_cli.py --action input --platform web --locator-type css --locator-value "#username" --extra-value "admin"
+python agent_cli.py --action press --platform web --extra-value "Enter"
+
+# 3. 每步执行后再次 inspect_ui，确认页面状态，决定下一步
+```
+
+### 支持的 action 类型
+
+| action | 说明 | 需要 locator | 需要 extra_value |
+|--------|------|:---:|:---:|
+| `goto` | 导航到 URL（仅 Web） | 否 | URL |
+| `click` | 点击元素 | 是 | 否 |
+| `long_click` | 长按元素 | 是 | 否 |
+| `hover` | 悬停元素（Web 端） | 是 | 否 |
+| `input` | 输入文本 | 是 | 输入内容 |
+| `swipe` | 滑动屏幕 | 否 | up/down/left/right |
+| `press` | 模拟按键 | 否 | 按键名(Enter/Back) |
+| `assert_exist` | 断言元素存在 | 是 | 否 |
+| `assert_text_equals` | 断言文本一致 | 是 | 期望文本 |
+
+locator_type 优先级：`css` > `resourceId` > `text` > `description`
+
+### 🚫 禁止事项
+
+- **禁止使用 `--goal`**：该入口会调第三方 LLM 替你思考，浪费 token 且效果差。它仅用于人类手动实验。
+- **禁止凭空编写 UI 代码**：你看不到真实画面，必须先 `inspect_ui` 拿到 DOM 树再定位。
+- **禁止把自然语言原样透传**：你负责理解需求，ScreenForge 只负责执行动作。
+
+详细集成文档见 `docs/agent_guide.md`。
+
 ## Build & run
 
 ```bash
@@ -12,13 +61,8 @@ pip install -r requirement.txt
 # Initialize Android device (first time only)
 python -m uiautomator2 init
 
-# Interactive recording mode
+# Human debugging / interactive recording
 python main.py
-
-# Autonomous agent mode
-python agent_cli.py --goal "..." --output "test_cases/android/test_xxx.py" --platform android
-python agent_cli.py --goal "..." --output "test_cases/ios/test_xxx.py" --platform ios
-python agent_cli.py --goal "..." --output "test_cases/web/test_xxx.py" --platform web [--vision] [--max_retries 3] [--context file.txt]
 ```
 
 Copy `.env_template` to `.env` and fill in required variables before running.
@@ -39,7 +83,7 @@ pytest
 allure serve ./report/allure-results
 ```
 
-`pytest.ini` configures: `testpaths=test_cases`, `python_files=test_*.py`, flags `-vs -q --alluredir=./report/allure-results --clean-alluredir`
+`pytest.ini` configures: `testpaths=tests test_cases`, `python_files=test_*.py`, flags `-vs -q --alluredir=./report/allure-results --clean-alluredir`
 
 Exit codes: `0` = success, `1` = failure or circuit breaker triggered (agent_cli.py).
 
@@ -54,17 +98,30 @@ Exit codes: `0` = success, `1` = failure or circuit breaker triggered (agent_cli
 ## Project structure
 
 ```
+agent_cli.py              # Compatibility entry (6-line shim, delegates to cli/dispatch.py)
+main.py                   # Interactive recording engine for humans
+cli/                      # CLI dispatch layer (real implementation)
+  dispatch.py             # CLI entry main(), routes by execution mode
+  parser.py               # build_parser, validate_cli_args
+  shared.py               # Lazy proxies, adapter connection, UI state capture
+  reporter.py             # Reporter helpers
+  doctor.py               # Environment diagnostics
+  tool_protocol_handlers.py  # --tool-stdin / --tool-request / --mcp-server
+  modes/                  # Execution modes (default/action/workflow/plan/dry_run)
 config/config.py          # Global config, all values from env vars
 common/ai.py              # Single-step AI call + cache
 common/ai_autonomous.py   # Autonomous reasoning brain (self-heal, multimodal, memory)
-common/ai_heal.py         # AI self-healing module
+common/ai_heal.py         # Structured self-heal engine (HealResult, AST validation)
 common/executor.py        # Action executor + Python code generation
+common/visual_fallback.py # Visual fallback (VLM coordinate parsing)
 common/cache/             # L1/L2 hybrid semantic cache
 common/adapters/          # Platform adapters (android / ios / web)
 utils/utils_xml.py        # Android XML cleaning and dimensionality reduction
-utils/utils_web.py        # Web utility functions
+utils/utils_web.py        # Web DOM compression and URL handling
+utils/screenshot_annotator.py  # Screenshot annotation (ref numbers on screenshots)
+tests/                    # Framework unit tests (32 test cases)
 test_cases/               # Auto-generated test scripts (android / ios / web)
-docs/                     # Agent guides and skill descriptions
+docs/                     # Agent integration guide and capability matrix
 ```
 
 ## Other conventions

@@ -20,6 +20,8 @@ MCP_SERVER_VERSION = "0.1.0"
 MCP_TOOL_CAPABILITIES = "ui_agent_capabilities"
 MCP_TOOL_EXECUTE = "ui_agent_execute"
 MCP_TOOL_LOAD_RUN = "ui_agent_load_run"
+MCP_TOOL_INSPECT_UI = "ui_agent_inspect_ui"
+MCP_TOOL_LOAD_CASE_MEMORY = "ui_agent_load_case_memory"
 SUPPORTED_MCP_PROTOCOL_VERSIONS = (
     "2025-11-25",
     "2025-06-18",
@@ -99,10 +101,6 @@ def _build_execute_tool_schema() -> dict:
                 "type": "string",
                 "description": "恢复上下文的 run_id",
             },
-            "goal": {
-                "type": "string",
-                "description": "自主探索目标",
-            },
             "workflow": {
                 "type": "object",
                 "properties": {
@@ -152,6 +150,60 @@ def _build_execute_tool_schema() -> dict:
     }
 
 
+def _build_inspect_ui_tool_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "platform": {
+                "type": "string",
+                "enum": list(SUPPORTED_PLATFORMS),
+                "description": "目标平台",
+            },
+            "env": {
+                "type": "string",
+                "description": "环境名称，默认 dev",
+            },
+            "vision": {
+                "type": "boolean",
+                "description": "是否同时返回截图 base64",
+            },
+        },
+        "additionalProperties": False,
+    }
+
+
+def _build_load_case_memory_tool_schema() -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "platform": {
+                "type": "string",
+                "enum": list(SUPPORTED_PLATFORMS),
+                "description": "可选的平台过滤条件",
+            },
+            "control_kind": {
+                "type": "string",
+                "enum": ["goal", "workflow", "action", "doctor"],
+                "description": "可选的控制面过滤条件",
+            },
+            "source_ref": {
+                "type": "string",
+                "description": "可选的来源引用过滤条件",
+            },
+            "query": {
+                "type": "string",
+                "description": "按 control_label / source_ref / successful_actions 模糊查询",
+            },
+            "limit": {
+                "type": "integer",
+                "description": "最多返回条数，默认 20",
+                "minimum": 1,
+            },
+        },
+        "additionalProperties": False,
+    }
+
+
 def _build_load_run_tool_schema() -> dict:
     return {
         "type": "object",
@@ -178,13 +230,25 @@ def build_mcp_tools() -> list[dict]:
             "name": MCP_TOOL_EXECUTE,
             "title": "ScreenForge Execute",
             "description": (
-                "执行或预演 ScreenForge 请求。支持 goal、workflow、action、doctor 四类控制面；"
+                "执行或预演 ScreenForge 请求。Agent 入口仅支持 workflow、action、doctor 三类控制面；"
                 f"支持的执行模式为 {', '.join(EXECUTION_MODES)}；"
                 f"支持的平台为 {', '.join(SUPPORTED_PLATFORMS)}；"
                 f"支持的控制面为 {', '.join(CONTROL_PLANES)}；"
                 f"需要 extra_value 的动作为 {', '.join(sorted(ACTIONS_REQUIRING_EXTRA_VALUE))}。"
             ),
             "inputSchema": _build_execute_tool_schema(),
+        },
+        {
+            "name": MCP_TOOL_INSPECT_UI,
+            "title": "ScreenForge Inspect UI",
+            "description": "连接目标平台，返回清洗后的 XML/DOM 树，供上层 Agent 自主分析与定位。",
+            "inputSchema": _build_inspect_ui_tool_schema(),
+        },
+        {
+            "name": MCP_TOOL_LOAD_CASE_MEMORY,
+            "title": "ScreenForge Load Case Memory",
+            "description": "读取 ScreenForge 的跨运行测试记忆，供上层 Agent 复用成功动作、定位经验与 pytest 资产。",
+            "inputSchema": _build_load_case_memory_tool_schema(),
         },
         {
             "name": MCP_TOOL_LOAD_RUN,
@@ -208,8 +272,9 @@ def _build_initialize_result(protocol_version: str) -> dict:
             "version": MCP_SERVER_VERSION,
         },
         "instructions": (
-            "Use ui_agent_capabilities to inspect ScreenForge support, and ui_agent_execute "
-            "to run goal/workflow/action/doctor requests against the existing CLI execution engine."
+            "Use ui_agent_capabilities to inspect ScreenForge support, ui_agent_inspect_ui "
+            "to capture the current UI tree, ui_agent_load_case_memory to reuse existing test knowledge, "
+            "and ui_agent_execute to run workflow/action/doctor requests against the execution engine."
         ),
     }
 
@@ -232,6 +297,8 @@ class McpServerSession:
         self,
         execute_tool_request: Callable[[ToolRequest], dict],
         load_run_payload: Callable[[str], dict] | None = None,
+        inspect_ui_payload: Callable[[ToolRequest], dict] | None = None,
+        load_case_memory_payload: Callable[[ToolRequest], dict] | None = None,
     ):
         self._execute_tool_request = execute_tool_request
         self._load_run_payload = load_run_payload or (
@@ -240,6 +307,22 @@ class McpServerSession:
                 "operation": "load_run",
                 "exit_code": 2,
                 "error": f"未配置 load_run 处理器: {run_id}",
+            }
+        )
+        self._inspect_ui_payload = inspect_ui_payload or (
+            lambda request: {
+                "ok": False,
+                "operation": "inspect_ui",
+                "exit_code": 2,
+                "error": f"未配置 inspect_ui 处理器: {request.platform}",
+            }
+        )
+        self._load_case_memory_payload = load_case_memory_payload or (
+            lambda request: {
+                "ok": False,
+                "operation": "load_case_memory",
+                "exit_code": 2,
+                "error": "未配置 load_case_memory 处理器",
             }
         )
         self._initialized = False
@@ -283,6 +366,36 @@ class McpServerSession:
 
         if tool_name == MCP_TOOL_CAPABILITIES:
             request = ToolRequest(operation="capabilities")
+        elif tool_name == MCP_TOOL_INSPECT_UI:
+            try:
+                payload = self._inspect_ui_payload(
+                    ToolRequest.model_validate(
+                        {
+                            "operation": "inspect_ui",
+                            **arguments,
+                        }
+                    )
+                )
+            except ValidationError as exc:
+                return _jsonrpc_error(request_id, -32602, "tool 参数校验失败", str(exc))
+            except Exception as exc:
+                return _jsonrpc_error(request_id, -32603, "工具执行失败", str(exc))
+            return _jsonrpc_response(request_id, _build_tool_result(payload))
+        elif tool_name == MCP_TOOL_LOAD_CASE_MEMORY:
+            try:
+                payload = self._load_case_memory_payload(
+                    ToolRequest.model_validate(
+                        {
+                            "operation": "load_case_memory",
+                            **arguments,
+                        }
+                    )
+                )
+            except ValidationError as exc:
+                return _jsonrpc_error(request_id, -32602, "tool 参数校验失败", str(exc))
+            except Exception as exc:
+                return _jsonrpc_error(request_id, -32603, "工具执行失败", str(exc))
+            return _jsonrpc_response(request_id, _build_tool_result(payload))
         elif tool_name == MCP_TOOL_LOAD_RUN:
             run_id = str(arguments.get("run_id", "")).strip()
             if not run_id:
@@ -316,6 +429,8 @@ class McpServerSession:
 def run_stdio_mcp_server(
     execute_tool_request: Callable[[ToolRequest], dict],
     load_run_payload: Callable[[str], dict],
+    inspect_ui_payload: Callable[[ToolRequest], dict],
+    load_case_memory_payload: Callable[[ToolRequest], dict],
     stdin=None,
     stdout=None,
 ) -> int:
@@ -324,6 +439,8 @@ def run_stdio_mcp_server(
     session = McpServerSession(
         execute_tool_request=execute_tool_request,
         load_run_payload=load_run_payload,
+        inspect_ui_payload=inspect_ui_payload,
+        load_case_memory_payload=load_case_memory_payload,
     )
 
     for raw_line in input_stream:

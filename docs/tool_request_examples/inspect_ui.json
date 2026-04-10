@@ -1,0 +1,6 @@
+{
+  "operation": "inspect_ui",
+  "platform": "android",
+  "env": "dev",
+  "vision": false
+}

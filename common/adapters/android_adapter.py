@@ -6,7 +6,6 @@ import signal
 import subprocess
 from common.logs import log
 import config.config as config
-import uiautomator2 as u2
 from .base_adapter import BasePlatformAdapter
 
 class AndroidU2Adapter(BasePlatformAdapter):
@@ -16,6 +15,7 @@ class AndroidU2Adapter(BasePlatformAdapter):
         self._scrcpy_process = None
 
     def setup(self):
+        import uiautomator2 as u2
         log.info("⏳ [Pytest Setup] 正在初始化 Android(u2) 设备...")
         self.driver = u2.connect()
         self.driver.implicitly_wait(config.DEFAULT_TIMEOUT)

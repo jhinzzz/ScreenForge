@@ -6,20 +6,30 @@
 >
 > Cross-platform agentic UI automation engine for UI exploration, self-healing, and test generation.
 
-ScreenForge 是一个基于大语言模型 (LLM) 和多模态视觉 (VLM) 的跨平台 UI 自动化引擎，聚焦 UI 探索、交互录制、自愈执行与测试脚本生成。
+ScreenForge 是一个跨平台 UI 自动化引擎，聚焦 UI 探索、交互录制、结构化执行与测试脚本生成。
 
-项目已经从单纯的 "Human-in-the-loop" (人在环路交互录制) 进化为 **"Agent-in-the-loop" (智能体底层探索引擎)**。无论是人类通过自然语言聊天录制，还是外部超级 Agent (如 Claude Code, Cursor, AutoGen) 下发宏观指令，ScreenForge 都能自主观察、推理、操作，并最终生成符合企业级最佳实践的 Pytest + Allure 测试脚本。
+### 你是谁？从这里开始
+
+| 你是... | 入口 | 第一条命令 |
+|---------|------|-----------|
+| **人类开发者**，想边看边调试 | `main.py` | `python main.py --platform android` |
+| **AI Agent**（Claude Code / Cursor / Codex），想驱动 UI | `agent_cli.py --action` / `--tool-stdin` | 见下方 Agent 快速开始 |
+
+**人类路径**保留自然语言 + 第三方 LLM/VLM 的交互式录制体验。
+**Agent 路径**由上层 Agent 负责理解 PRD/命令，ScreenForge 只做结构化执行：`inspect_ui -> action/workflow -> verify`。
 
 ## ✨ 核心特性
 
-🗣️ **双模式驱动**：
+🗣️ **双入口驱动**：
 
-- **交互录制模式**：像聊天一样控制手机，每一步生成标准代码，内置 L1/L2 语义动作缓存省钱提速。
-- **Agentic 探索模式**：输入宏观目标（如"登录并验证失败提示"），引擎自主进行多步探索、闭环验证并生成完整脚本。
+- **人类交互模式 (`main.py`)**：像聊天一样控制手机，每一步生成标准代码，保留自然语言 + 第三方 LLM/VLM 体验。
+- **Agent 执行模式 (`agent_cli.py --action/--workflow`)**：由外部 Agent 先理解 PRD/命令，再调用 ScreenForge 的结构化能力完成抓树、定位、执行、生成脚本与资产沉淀。`agent_cli.py` 是 6 行 shim，真实逻辑在 `cli/` 包内。
 
-👁️ **多模态视觉感知 (`--vision`)**：除了原有的 XML 降维清洗算法，还支持实时屏幕截图注入。在面对游戏界面、图表、Canvas 或复杂自绘 UI 时，开启视觉能力让 AI "看"得更准。
+🎯 **ref 定位系统**：`inspect_ui` 为每个可交互元素分配 ref 编号（@1, @2...），附带 bbox 坐标（x, y, w, h）。上层 Agent 可直接引用 ref 定位，无需猜测 resource-id 或 xpath。
 
-🛡️ **自愈与防死循环 (Anti-Stagnation)**：内置 UI 僵死检测和智能熔断机制。遇到"无效点击"或"被遮挡"时，底层引擎会自动向大模型注入反馈，促使其改变策略；连续多次失败或页面卡死才会触发熔断退出，坚决杜绝 Token 浪费。
+👁️ **多模态视觉感知 (`--vision`)**：除了 XML 降维清洗算法，还支持实时截图标注（ref 编号叠加到截图上）和视觉 fallback（VLM）。当 DOM/XML 无法定位目标时（Canvas、游戏、自绘 UI），引擎自动调用 VLM 从截图解析坐标。
+
+🛡️ **结构化自愈引擎**：`HealResult` 返回 `confidence / fix_description / fixed_code`，经 `ast.parse` 语法校验、置信度阈值过滤（默认 0.7），覆盖前自动 `.bak` 备份。内置 UI 僵死检测和熔断机制，杜绝 Token 浪费。
 
 📦 **跨平台大一统**：底层采用优雅的 Adapter 模式，一键切换操作目标：
 
@@ -33,15 +43,17 @@ ScreenForge 是一个基于大语言模型 (LLM) 和多模态视觉 (VLM) 的跨
 
 🧾 **结构化运行产物 (`--json`)**：`agent_cli.py` 支持向 stdout 输出 JSON Lines 事件流，并在 `report/runs/<run_id>/` 下生成 `summary.json`、`steps.jsonl`、`artifacts.json` 和视觉截图索引，便于上层 Agent 或编排系统消费。
 
-🧩 **半结构化 Workflow DSL (`--workflow`)**：除基于 `--goal` 的全自主探索外，CLI 还支持从 YAML workflow 读取确定性步骤，并通过 `--workflow-var KEY=VALUE` 覆盖变量模板，以 `plan-only / dry-run / run` 三种模式接入现有执行与报告链路，适合沉淀高频、稳定业务流。
+🧩 **半结构化 Workflow DSL (`--workflow`)**：CLI 支持从 YAML workflow 读取确定性步骤，并通过 `--workflow-var KEY=VALUE` 覆盖变量模板，以 `plan-only / dry-run / run` 三种模式接入现有执行与报告链路，适合沉淀高频、稳定业务流。对 Agent 集成，推荐优先使用这一路径，而不是把自然语言直接交给 `--goal`。
 
 🎛️ **即时动作层 (`--action`)**：CLI 支持直接执行或预演单个 `click / input / assert_exist / ...` 动作，适合排障、快速验证和上层 Agent 的可控单步调用。
 
 🧭 **能力快照 (`--capabilities`)**：CLI 可直接输出当前代码已落地的模式、控制面、动作与平台快照，供上层 Agent 或集成层在执行前做能力探测，减少文档漂移。
 
-🧰 **工具协议入口 (`--tool-request` / `--tool-stdin`)**：CLI 支持从单个 JSON 请求文件或 stdin 读取机器可读请求，并返回统一 JSON 响应。当前已与 MCP 对齐，统一支持 `capabilities`、`execute`、`load_run` 三类操作，便于外部 Agent 直接消费。
+🧰 **工具协议入口 (`--tool-request` / `--tool-stdin`)**：CLI 支持从单个 JSON 请求文件或 stdin 读取机器可读请求，并返回统一 JSON 响应。当前已与 MCP 对齐，统一支持 `capabilities`、`inspect_ui`、`load_case_memory`、`execute`、`load_run` 五类操作，便于外部 Agent 直接消费。
 
-🔌 **最小 ScreenForge MCP Server (`--mcp-server`)**：CLI 现在可直接以 stdio 方式暴露最小 MCP server，支持 `initialize / tools/list / tools/call / ping`，并通过 `ui_agent_capabilities`、`ui_agent_execute` 与 `ui_agent_load_run` 三个 tools 复用现有执行链与运行资产。
+🧠 **跨运行测试记忆 (`memory/case_memory.json`)**：真正执行 `run` 后，ScreenForge 会把成功动作、定位经验、pytest 资产与失败恢复建议增量沉淀到 `case_memory.json`，供后续 Agent 运行持续复用。
+
+🔌 **最小 ScreenForge MCP Server (`--mcp-server`)**：CLI 现在可直接以 stdio 方式暴露最小 MCP server，支持 `initialize / tools/list / tools/call / ping`，并通过 `ui_agent_capabilities`、`ui_agent_inspect_ui`、`ui_agent_load_case_memory`、`ui_agent_execute` 与 `ui_agent_load_run` 五个 tools 复用现有执行链与运行资产。
 
 ## 🛠️ 环境依赖与安装
 
@@ -114,25 +126,46 @@ export MODEL_NAME="doubao-seed-2.0-lite-260215"
 
 **多环境配置**：当前仓库默认仅配置 `dev` 环境；如需 `prod` / `us_dev` / `us_prod`，请先在 `config/config.py` 中补充 `APP_ENV_CONFIG`。
 
-## 🚀 核心工作流一：接入超级 Agent (Agentic Mode)
+## 🚀 核心工作流一：人类交互调试 (`main.py`)
 
-这是 ScreenForge 的**终极形态**。你可以将 ScreenForge 作为底层 Tool/Skill 赋能给 Claude Code, Cursor 等外部超级 Agent。你可以让大模型直接阅读 `docs/agent_guide.md` 学习如何调用此引擎。
-
-**典型用法**：
-在 Cursor 的 Terminal，或给 Claude Code 下发指令：
-
-> *"请阅读 `docs/agent_guide.md`。产品新增了退出登录功能，请帮我自动写一个测试用例，保存为 `test_logout.py`，最后跑一遍 pytest。"*
-
-
-外部 Agent 会自动调用底层的 CLI 探索引擎：
+如果你是人类操作者，并希望直接通过自然语言边看边调试，请使用：
 
 ```bash
-./.venv/bin/python agent_cli.py --goal "进入设置并退出登录，最后断言出现登录按钮" \
-                    --output "test_cases/test_logout.py" \
-                    --platform android \
-                    --vision \
-                    --json \
-                    --max_retries 3
+./.venv/bin/python main.py --platform android
+./.venv/bin/python main.py --platform web
+```
+
+这条路径会保留当前项目原有的自然语言 + 第三方 LLM/VLM 交互体验。
+
+## 🚀 核心工作流二：接入超级 Agent (Agentic Mode)
+
+将 ScreenForge 作为底层 Tool/Skill 赋能给 Claude Code、Cursor 等外部 Agent。让 Agent 阅读 `docs/agent_guide.md` 学习集成规范。
+
+**Agent 快速开始**（3 步）：
+
+```bash
+# 1. 获取当前页面 UI 树（Agent 自己分析，不是让 ScreenForge 做自然语言理解）
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+
+# 2. Agent 分析 UI 树后，下发单步动作
+python agent_cli.py --action click --platform web --locator-type text --locator-value "Login"
+
+# 3. 再次 inspect_ui 确认页面变化，循环直到完成
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+```
+
+**批量执行**用 workflow：
+
+```bash
+python agent_cli.py --workflow ./docs/workflows/login_failure.yaml \
+                    --output "test_cases/test_login.py" \
+                    --platform android --json
+```
+
+**MCP 集成**：
+
+```bash
+python agent_cli.py --mcp-server
 ```
 
 ### 新增入口模式
@@ -142,13 +175,13 @@ export MODEL_NAME="doubao-seed-2.0-lite-260215"
 ./.venv/bin/python agent_cli.py --doctor --platform android
 
 # 只生成执行计划，不做物理动作
-./.venv/bin/python agent_cli.py --goal "验证错误密码登录提示" --plan-only --platform android
+./.venv/bin/python agent_cli.py --workflow ./docs/workflows/login_failure.yaml --plan-only --platform android
 
 # 只模拟执行链，不做物理动作
-./.venv/bin/python agent_cli.py --goal "验证错误密码登录提示" --dry-run --platform android
+./.venv/bin/python agent_cli.py --workflow ./docs/workflows/login_failure.yaml --dry-run --platform android
 
 # 基于上一次 run 恢复最小上下文
-./.venv/bin/python agent_cli.py --goal "继续验证错误密码登录提示" --resume-run-id <run_id> --platform android
+./.venv/bin/python agent_cli.py --workflow ./docs/workflows/login_failure.yaml --resume-run-id <run_id> --platform android
 
 # 使用 workflow DSL 做半结构化预览 / 执行
 ./.venv/bin/python agent_cli.py --workflow ./docs/workflows/login_failure.yaml --plan-only --platform android
@@ -163,6 +196,8 @@ export MODEL_NAME="doubao-seed-2.0-lite-260215"
 ./.venv/bin/python agent_cli.py --capabilities
 
 # 通过机器可读请求调用 CLI
+./.venv/bin/python agent_cli.py --tool-request ./docs/tool_request_examples/inspect_ui.json
+./.venv/bin/python agent_cli.py --tool-request ./docs/tool_request_examples/load_case_memory.json
 ./.venv/bin/python agent_cli.py --tool-request ./docs/tool_request_examples/workflow_plan.json
 ./.venv/bin/python agent_cli.py --tool-request ./docs/tool_request_examples/load_run.json
 cat ./docs/tool_request_examples/workflow_plan.json | ./.venv/bin/python agent_cli.py --tool-stdin
@@ -201,7 +236,7 @@ RUN_LIVE_PLATFORM_TESTS=true TEST_PLATFORM=web ./.venv/bin/python -m pytest test
 
 ### CLI 核心参数说明
 
-- `-goal`: (必填) 宏观测试目标，必须包含操作流程和最终断言标准。
+- `-goal`: (兼容入口) 宏观测试目标，会调用内部 LLM 自主探索。仅用于人工命令行实验，**Agent 集成禁止使用**。
 - `-output`: (可选) 脚本输出的绝对或相对路径。引擎会自动创建平台目录（如 `test_cases/android/`）。
 - `-platform`: (可选) 目标平台 (`android` | `ios` | `web`)。
 - `-vision`: (可选 Flag) 开启多模态视觉辅助（建议在遇到复杂图形时开启）。
@@ -224,7 +259,7 @@ RUN_LIVE_PLATFORM_TESTS=true TEST_PLATFORM=web ./.venv/bin/python -m pytest test
 - `-tool-stdin`: (可选 Flag) 从 stdin 读取机器可读请求，并返回统一 JSON 响应；支持 `capabilities`、`execute`、`load_run`。
 - `-mcp-server`: (可选 Flag) 以 stdio 模式启动最小 ScreenForge MCP server，不进入普通 CLI 执行链。
 
-默认 `run` 模式在探测完成后，若成功会以 `Exit Code 0` 退出，失败或熔断则以 `Exit Code 1` 退出；`doctor`、`plan-only`、`dry-run` 也会将结果写入 `report/runs/<run_id>/`，便于上层 Agent 接续消费。若提供 `--workflow`，则 `plan-only / dry-run / run` 会直接复用工作流步骤，不再调用自主规划模型；若同时提供 `--workflow-var`，则会先完成变量替换再进入执行链。若提供 `--action`，则会复用同一套 report / dry-run / codegen 链路完成单步执行。
+默认 `run` 模式在探测完成后，若成功会以 `Exit Code 0` 退出，失败或熔断则以 `Exit Code 1` 退出；`doctor`、`plan-only`、`dry-run` 也会将结果写入 `report/runs/<run_id>/`，便于上层 Agent 接续消费。若提供 `--workflow`，则 `plan-only / dry-run / run` 会直接复用工作流步骤；若同时提供 `--workflow-var`，则会先完成变量替换再进入执行链。若提供 `--action`，则会复用同一套 report / dry-run / codegen 链路完成单步执行。`tool / MCP` 路径下，推荐先用 `inspect_ui` 与 `load_case_memory` 完成分析，再执行 `workflow/action`。
 
 ### 运行产物
 
@@ -233,6 +268,7 @@ RUN_LIVE_PLATFORM_TESTS=true TEST_PLATFORM=web ./.venv/bin/python -m pytest test
 - `report/runs/<run_id>/artifacts.json`: 已生成脚本、截图等产物索引
 - `report/runs/<run_id>/pytest_replay.json`: 面向回放和恢复的 pytest 资产清单
 - `report/runs/<run_id>/screenshots/`: `--vision` 模式下的运行截图
+- `memory/case_memory.json`: 跨运行测试记忆，保存成功动作、定位经验、pytest 资产与恢复建议
 
 其中 `summary.json` 在一阶段控制面下额外包含：
 
@@ -247,12 +283,20 @@ RUN_LIVE_PLATFORM_TESTS=true TEST_PLATFORM=web ./.venv/bin/python -m pytest test
 - `action_summary`: 即时动作名称、定位参数，以及预览或执行结果摘要
 - `control_summary`: 统一控制面摘要。无论当前是 `goal`、`workflow`、`action` 还是 `doctor`，都可优先读取这里的 `control_kind`、`control_label`、`source_ref` 和关键执行信息
 
-`--tool-request` 与 `--tool-stdin` 现在都支持 `capabilities`、`execute`、`load_run`。其中 `execute` 响应会直接内联 `summary.json` 内容，并返回 `run_dir`、`summary_path`、`run_assets` 与统一 `exit_code`；`load_run` 则按 `run_id` 直接回读历史运行。`--mcp-server` 会把同样的结构化 payload 封装到 MCP `tools/call` 的 `structuredContent` 中，便于外部 Agent 原生读取；若外部 Agent 需要按 `run_id` 回读历史运行，可直接调用 `ui_agent_load_run`。
+`--tool-request` 与 `--tool-stdin` 现在都支持 `capabilities`、`inspect_ui`、`load_case_memory`、`execute`、`load_run`。其中：
+
+- `inspect_ui`：连接目标平台并返回清洗后的 XML/DOM 树，供外部 Agent 自主分析。
+- `load_case_memory`：读取跨运行测试记忆，复用已有成功动作、定位经验和 pytest 资产。
+- `execute`：直接内联 `summary.json` 内容，并返回 `run_dir`、`summary_path`、`run_assets`、`case_memory_hit` 与统一 `exit_code`。
+- `load_run`：按 `run_id` 直接回读历史运行。
+
+`--mcp-server` 会把同样的结构化 payload 封装到 MCP `tools/call` 的 `structuredContent` 中，便于外部 Agent 原生读取；若外部 Agent 需要按 `run_id` 回读历史运行，可直接调用 `ui_agent_load_run`。
 
 ### 迁移者建议先看
 
-- `docs/agent_guide.md`: 给上层 Agent 的集成规范
-- `docs/skills/execute_ui_automation.md`: 底层执行 Skill 的调用约束与参数说明
+- `docs/agent_guide.md`: 给上层 Agent 的集成规范（首日关键路径）
+- `docs/capability-matrix.md`: 平台/动作/定位器支持矩阵
+- `.claude/skills/`: Claude Code 原生 Skill 定义（operate-web / operate-android / run-workflow / diagnose）
 
 ## 💻 核心工作流二：人机交互录制 (Interactive Mode)
 
@@ -290,77 +334,76 @@ RUN_LIVE_PLATFORM_TESTS=true TEST_PLATFORM=web ./.venv/bin/python -m pytest test
 
 ```
 screenforge/
-├── agent_cli.py             # 🤖 (Agentic) 供超级 Agent 调用的 ScreenForge 自主探索引擎入口
+├── agent_cli.py             # 兼容入口 (6 行 shim，委托给 cli/dispatch.py)
 ├── main.py                  # 🙋‍♂️ (Interactive) 人机交互式录制引擎入口
 ├── conftest.py              # Pytest 核心夹具，跨平台调度与视频/截图报告挂载
 ├── pytest.ini               # Pytest 运行规则配置
+├── cli/                     # 🤖 CLI 真实分发层（P1-2 拆分自 agent_cli.py）
+│   ├── dispatch.py          # CLI 入口 main()，参数解析后按模式分发
+│   ├── parser.py            # build_parser, validate_cli_args
+│   ├── shared.py            # 懒加载代理、适配器连接、UI 状态抓取
+│   ├── reporter.py          # 报告辅助函数
+│   ├── doctor.py            # 环境体检
+│   ├── tool_protocol_handlers.py  # --tool-stdin / --tool-request / --mcp-server
+│   └── modes/               # 各执行模式
+│       ├── default.py       # --goal 自主探索循环
+│       ├── action.py        # --action 单步执行
+│       ├── workflow.py      # --workflow 半结构化执行
+│       ├── plan.py          # --plan-only
+│       └── dry_run.py       # --dry-run
 ├── config/
-│   └── config.py            # 全局配置 (API Keys, 超时, 多环境配置)
+│   └── config.py            # 全局配置 (API Keys, 超时, 多环境配置, 自愈阈值)
 ├── common/
 │   ├── ai.py                # AI 交互基础层 (单步解析与缓存)
 │   ├── ai_autonomous.py     # 🤖 自主推理大脑 (带自愈、多模态支持、记忆流)
+│   ├── ai_heal.py           # 结构化自愈引擎 (HealResult, 4 策略 JSON 解析, AST 校验)
 │   ├── executor.py          # 动作物理执行器与 Python 代码生成
-│   │                         # ├── ActionHandler (抽象基类)
-│   │                         # ├── ClickHandler
-│   │                         # ├── LongClickHandler / HoverHandler
-│   │                         # ├── InputHandler
-│   │                         # ├── SwipeHandler / PressHandler
-│   │                         # ├── AssertExistHandler
-│   │                         # └── AssertTextEqualsHandler
+│   ├── visual_fallback.py   # 视觉 fallback (VLM 坐标解析)
 │   ├── history_manager.py   # 历史记录管理器与代码回滚流控制
 │   ├── logs.py              # 日志系统 (基于 loguru)
 │   ├── run_reporter.py      # 结构化运行产物输出 (summary / steps / artifacts)
 │   ├── cache/               # 本地混合语义缓存系统 (精准匹配+向量检索)
-│   │   ├── cache_manager.py      # 缓存管理器 (L1/L2 混合检索)
-│   │   ├── embedding_loader.py   # 句子向量模型加载器 (懒加载、缓存清理)
-│   │   ├── cache_hash.py         # UI 页面指纹与指令哈希计算
-│   │   ├── cache_storage.py     # 缓存文件的读写与 TTL 管理
-│   │   └── cache_stats.py        # 缓存命中率统计
 │   └── adapters/            # 📱 跨平台多端底层适配器 (Android/iOS/Web)
-│       ├── base_adapter.py      # 适配器基类
-│       ├── android_adapter.py   # Android uiautomator2 适配层
-│       ├── ios_adapter.py       # iOS facebook-wda 适配层
-│       └── web_adapter.py       # Web Playwright 适配层
-├── docs/
-│   ├── agent_guide.md       # 超级 Agent 协作规范 (喂给 Claude/Cursor)
-│   ├── capability-matrix.md # 平台/动作/定位器支持矩阵
-│   └── skills/              # Agent Tool 描述文件 (如 execute_ui_automation.md)
 ├── utils/
-│   └── utils_xml.py         # Android XML 清洗与降维算法，极致省 Token
+│   ├── utils_xml.py         # Android XML 清洗与降维算法
+│   ├── utils_web.py         # Web DOM 压缩与 URL 处理
+│   └── screenshot_annotator.py  # 截图标注 (ref 编号叠加到截图上)
+├── tests/                   # 框架单元测试 (32 用例)
+│   ├── test_ai_heal.py      # 自愈引擎解析与置信度
+│   ├── test_executor.py     # ref 缓存、定位器构建、动作处理器
+│   ├── test_screenshot_annotator.py  # 截图标注
+│   ├── test_utils_web.py    # DOM 压缩与 URL 归一化
+│   └── test_visual_fallback.py      # VLM 坐标解析
+├── docs/
+│   ├── agent_guide.md       # Agent 集成规范
+│   └── capability-matrix.md # 平台/动作/定位器支持矩阵
 └── test_cases/              # 自动生成的自动化测试脚本存放目录
-    ├── android/             # Android 平台测试脚本
-    ├── ios/                 # iOS 平台测试脚本
-    └── web/                 # Web 平台测试脚本
+    ├── android/
+    ├── ios/
+    └── web/
 ```
 
 ## 📊 模块调用链
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         main.py / agent_cli.py                  │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        ▼                       ▼                       ▼
-   ┌─────────┐           ┌───────────┐           ┌─────────────────┐
-   │ AIBrain │           │ UIExecutor│           │StepHistoryManager│
-   └────┬────┘           └─────┬─────┘           └────────┬────────┘
-        │                      │                          │
-        ▼                      ▼                          │
-   ┌──────────┐          ┌──────────┐                    │
-   │CacheManager│         │ActionHandler│                   │
-   └────┬─────┘          └──────────┘                    │
-        │                      │                          │
-        ▼                      │                          │
-   ┌──────────────┐            │                          │
-   │EmbeddingModel│            │                          │
-   │    Loader    │            │                          │
-   └──────────────┘            │                          │
-                                │                          │
-┌───────────────────────────────┴───────────────────────────────┐
-│                    BasePlatformAdapter                         │
-│            (AndroidU2Adapter / IosWdaAdapter / WebAdapter)    │
-└────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  main.py (人类)    agent_cli.py → cli/dispatch.py (Agent)         │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+    ┌──────────┐        ┌───────────┐        ┌─────────────────┐
+    │ AIBrain  │        │ UIExecutor│        │StepHistoryManager│
+    └────┬─────┘        └─────┬─────┘        └────────┬────────┘
+         │                    │                       │
+    ┌────▼─────┐         ┌────▼──────┐                │
+    │CacheManager│        │ActionHandler│               │
+    └──────────┘         └───────────┘                │
+                               │                       │
+┌──────────────────────────────┴───────────────────────────────┐
+│                    BasePlatformAdapter                        │
+│            (AndroidU2Adapter / IosWdaAdapter / WebAdapter)   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## 🗂️ 缓存系统架构
@@ -414,7 +457,7 @@ screenforge/
 如果你的测试页面是标准的 Android Native 页面，通常仅靠 XML 压缩算法（默认）就足够了，速度快且便宜。但如果你在测试复杂的 Web H5 画布、Unity 游戏界面，或是遇到了动态乱码 `resource-id`，强烈建议追加 `--vision` 参数，让多模态大模型结合截图精准定位。
 
 **Q5: 为什么 `agent_cli.py` 跑着跑着报错退出了？**
-这是触发了**自愈熔断机制**。如果引擎在一个页面连续多次尝试执行动作失败（例如被遮挡），或是 UI 发生"僵死"（点完页面毫无反应），在达到 `--max_retries` 阈值后，它会主动带着非 0 状态码中止，防止大模型陷入无限死循环。此时请查看输出日志修改你的 `--goal` 或补充前置上下文。
+这是触发了**自愈熔断机制**。如果引擎在一个页面连续多次尝试执行动作失败（例如被遮挡），或是 UI 发生"僵死"（点完页面毫无反应），在达到 `--max_retries` 阈值后，它会主动带着非 0 状态码中止，防止执行链陷入无限死循环。此时请查看输出日志，修改你的 workflow/action 设计或补充前置上下文。
 
 **Q6: 视频录制功能无法使用？**
 确保已安装 scrcpy。运行 `scrcpy --version` 验证安装。如果仍然失败，检查手机是否授权了屏幕录制权限。失败用例的视频会自动挂载到 Allure 报告中。

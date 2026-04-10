@@ -152,6 +152,7 @@ class AutonomousBrain(AIBrain):
         {vision_prompt}
 
         允许的 action 类型:
+        - "goto": 导航到指定 URL (仅 Web 端)。必须在 extra_value 填入目标 URL (如 "https://www.google.com")。此时 locator_type 填 "global"，locator_value 填 "global"。
         - "click": 点击元素
         - "long_click": 长按元素
         - "hover": 悬停元素 (针对 Web 端，触发下拉菜单等交互)

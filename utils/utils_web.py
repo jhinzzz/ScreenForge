@@ -27,6 +27,7 @@ def compress_web_dom(page) -> str:
     js_script = """
     () => {
         const elements = [];
+        let refIndex = 0;
 
         // Web 端具有明确交互语义的 role 集合
         const interactiveRoles = new Set(['button', 'link', 'menuitem', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox']);
@@ -101,13 +102,18 @@ def compress_web_dom(page) -> str:
             // 5. 构建低 Token 结构体
             // ==========================================
             // 采用按需压入（过滤掉值为 空字符串 的 Key），极致压缩 Token 消耗
-            const nodeData = { "class": tag, "clickable": isInteractive };
+            refIndex++;
+            const nodeData = { "ref": "@" + refIndex, "class": tag, "clickable": isInteractive };
             if (el.id) nodeData.id = el.id;
             if (name) nodeData.name = name;
             if (type) nodeData.type = type;
             if (placeholder) nodeData.placeholder = placeholder;
             if (ariaLabel) nodeData.desc = ariaLabel;
             if (displayText) nodeData.text = displayText;
+            nodeData.x = Math.round(rect.x);
+            nodeData.y = Math.round(rect.y);
+            nodeData.w = Math.round(rect.width);
+            nodeData.h = Math.round(rect.height);
 
             elements.push(nodeData);
         });
@@ -118,7 +124,8 @@ def compress_web_dom(page) -> str:
         const uniqueElements = [];
         const seen = new Set();
         elements.forEach(el => {
-            const key = JSON.stringify(el, Object.keys(el).sort());
+            const dedupKeys = Object.keys(el).filter(k => k !== 'ref').sort();
+            const key = JSON.stringify(el, dedupKeys);
             if (!seen.has(key)) {
                 seen.add(key);
                 uniqueElements.push(el);

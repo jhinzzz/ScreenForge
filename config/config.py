@@ -36,6 +36,8 @@ VISION_MODEL_NAME = os.getenv("VISION_MODEL_NAME", "doubao-seed-2-0-lite-260215"
 AUTO_HEAL_ENABLED = str(os.getenv("AUTO_HEAL_ENABLED", "True")).lower() in ('true', '1', 'yes')
 # 连续失败多少次后触发自愈
 AUTO_HEAL_TRIGGER_THRESHOLD = int(os.getenv("AUTO_HEAL_TRIGGER_THRESHOLD", 2))
+# 自愈置信度阈值 — 低于此值的修复方案将被丢弃
+AUTO_HEAL_MIN_CONFIDENCE = float(os.getenv("AUTO_HEAL_MIN_CONFIDENCE", 0.7))
 
 # ==========================================
 # 5. 自动化测试框架配置
@@ -44,7 +46,7 @@ AUTO_HEAL_TRIGGER_THRESHOLD = int(os.getenv("AUTO_HEAL_TRIGGER_THRESHOLD", 2))
 OUTPUT_SCRIPT_FILE = str(BASE_DIR / "test_cases" / "test_auto_generated.py")
 
 # 全局隐式等待时间，强转为 float 确保安全
-DEFAULT_TIMEOUT = float(os.getenv("DEFAULT_TIMEOUT", 5.0))
+DEFAULT_TIMEOUT = float(os.getenv("DEFAULT_TIMEOUT", 30.0))
 
 # ==========================================
 # 6. App 环境配置
@@ -83,7 +85,12 @@ WEB_CDP_URL = os.getenv("WEB_CDP_URL", "http://localhost:9222")
 RUN_REPORT_BASE_DIR = BASE_DIR / "report" / "runs"
 
 # ==========================================
-# 10. Pytest 真机回放测试控制
+# 10. 跨运行测试记忆目录
+# ==========================================
+CASE_MEMORY_PATH = Path(os.getenv("CASE_MEMORY_PATH", str(BASE_DIR / "memory" / "case_memory.json")))
+
+# ==========================================
+# 11. Pytest 真机回放测试控制
 # ==========================================
 TEST_PLATFORM = os.getenv("TEST_PLATFORM", "android").lower()
 RUN_LIVE_PLATFORM_TESTS = str(os.getenv("RUN_LIVE_PLATFORM_TESTS", "False")).lower() in (

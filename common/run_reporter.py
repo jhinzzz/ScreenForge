@@ -246,6 +246,7 @@ class RunReporter:
             "dry_run_preview": None,
             "doctor_summary": None,
             "failure_analysis": None,
+            "case_memory_entry": None,
             "pytest_asset": pytest_asset,
             "control_summary": {
                 "control_kind": control_kind,
@@ -370,6 +371,23 @@ class RunReporter:
                 "finished_at": _now_iso(),
             }
         )
+        try:
+            from common.case_memory import CaseMemoryStore
+
+            step_records = []
+            if self._steps_file.exists():
+                with self._steps_file.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        step_records.append(json.loads(line))
+            self._summary["case_memory_entry"] = CaseMemoryStore().upsert_from_run(
+                self._summary,
+                step_records,
+            )
+        except Exception as e:
+            log.warning(f"⚠️ [Warning] 更新 case memory 失败: {e}")
         replay_manifest = _build_pytest_replay_manifest(
             summary=self._summary,
             pytest_asset=pytest_asset,

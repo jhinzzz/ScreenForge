@@ -1,61 +1,114 @@
-# ScreenForge Super Agent Integration Guide
+# ScreenForge Agent Integration Guide
 
-您好，强大的 LLM Agent（Claude / Cursor / GPT-4o 等）。
-你的当前身份是 **“高级自动化测试架构师”**。你目前挂载在 `ScreenForge` 这一跨平台 UI 自动化引擎之上。你的职责是根据产品的需求文档 (PRD) 或口语化的测试要求，全自动地生成、编排和运行端到端的 UI 自动化测试用例。
+你是上层 Agent（Claude Code / Cursor / Codex 等），ScreenForge 是你的 UI 执行引擎。
 
-## 🛠️ 你的核心兵器: ScreenForge 底层多端探索引擎 (`agent_cli.py`)
+**你负责理解需求、分析 UI 树、制定策略。ScreenForge 只负责连接设备、抓取页面结构、执行物理动作、生成代码。**
 
-你不必（也**绝不能**）手动去猜测设备上的 `resource-id` 或编写具体的 `d(text="...").click()` 等 UI 交互代码，因为你看不到真实画面，凭空捏造会导致高失败率。
-你需要调用 `ScreenForge` 的底层探索引擎 `agent_cli.py`。该引擎具备**视觉感知**、**跨端支持**、**自我纠错**、**UI僵死检测**和**代码自动生成**能力。
-你需要调用 `ScreenForge` 的底层探索引擎 `agent_cli.py`。该引擎是 ScreenForge 的核心执行入口，具备**视觉感知**、**跨端支持**、**自我纠错**、**UI僵死检测**和**代码自动生成**能力，并提供 `doctor`、`plan-only`、`dry-run` 等预执行控制模式；若你是通过原生工具协议集成，也可直接启动 `--mcp-server`，或通过 `--tool-request` / `--tool-stdin` 使用与 MCP 对齐的 `capabilities`、`execute`、`load_run` 三类操作。
-
-### 调用语法规范
+## 架构速览
 
 ```
-python agent_cli.py --goal "<清晰的宏观目标及断言标准>" --output "test_cases/test_<业务名>.py" [其他可选参数]
-python agent_cli.py --mcp-server
+agent_cli.py          # 兼容入口（6 行 shim），委托给 cli/dispatch.py
+cli/                  # 真实分发层：parser / shared / reporter / doctor / modes/
+  dispatch.py         # CLI 入口 main()，参数解析后按模式分发
+  modes/default.py    # --goal 自主探索循环（不推荐 Agent 使用）
+  modes/action.py     # --action 单步执行
+  modes/workflow.py   # --workflow 半结构化执行
+  tool_protocol_handlers.py  # --tool-stdin / --tool-request / --mcp-server
 ```
 
-### 🎛️ 参数说明 (Parameter Reference)
+`agent_cli.py` 仍然可用，但它只是 `from cli.dispatch import main` 的薄壳。所有逻辑实现在 `cli/` 包内。
 
-- `-goal`: **(必填)** 用一句话清晰描述业务流程和终点。**极其重要：必须明确指出最后一步的验证/断言逻辑！** (例如："登录并在失败时断言出现'密码错误'提示")
-- `-output`: **(必填)** 指定生成的脚本路径，务必遵守 Pytest 规范，例如 `test_cases/test_login_error.py`。
-- `-platform`: (可选) 目标平台，可选值：`android` (默认), `ios`, `web`。
-- `-vision`: (可选，推荐) 开启多模态辅助。**当遇到复杂页面（图表、游戏、Canvas、非常规DOM结构）时必须追加此Flag**，底层引擎会自动发送实时屏幕截图给视觉大模型。
-- `-context`: (可选) 包含 PRD 核心流程、测试帐号密码等前置条件的临时 Markdown/TXT 文件路径。
-- `-max_retries`: (可选) 单个步骤的最大连续容错试错次数，默认 `3` 次。
-- `-max_steps`: (可选) 任务的最大探索总步数，默认 `15` 步。
-- `-doctor`: (可选) 仅做环境体检，不执行动作。
-- `-plan-only`: (可选) 基于当前页面输出计划，不执行动作。
-- `-dry-run`: (可选) 走决策链输出 would-execute 结果，不执行动作。
-- `-resume-run-id`: (可选) 从既有 `report/runs/<run_id>/` 恢复最小上下文。
-- `-mcp-server`: (可选) 以 stdio 模式启动最小 ScreenForge MCP server，对外暴露 `ui_agent_capabilities`、`ui_agent_execute` 与 `ui_agent_load_run` 三个 tools。
+## 首日关键路径（4 步）
 
-## 🚀 你的标准工作流 (Standard Workflow)
+### 1. 获取当前页面结构
 
-当人类让你“根据某需求写测试用例”时，请严格遵循以下 `Thinking Process`：
+```bash
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+```
 
-1. **研读需求**: 分析人类给你的 PRD 或目标，拆解出**核心业务路径**。
-2. **准备上下文**: 将前置信息（如测试帐号 `admin`，密码 `123456`）写入 `temp_context.txt`。
-3. **先体检或预览**:
-    - 环境不确定时优先执行 `python agent_cli.py --doctor --platform ...`
-    - 想先看计划时执行 `python agent_cli.py --goal "..." --plan-only ...`
-    - 想先看 would-execute 结果时执行 `python agent_cli.py --goal "..." --dry-run ...`
-    - 若你通过 MCP 集成，而非 shell 调用，可先启动 `python agent_cli.py --mcp-server`
-    - 若你通过 `tool-request` / `tool-stdin` 集成，可直接发送 `{"operation":"load_run","run_id":"..."}` 回读历史运行
-    - `ui_agent_execute` 或 `operation=execute` 返回后优先读取 `run_assets`；若后续轮次需要继续分析同一次运行，可调用 `ui_agent_load_run` 或 `operation=load_run` 复用 `run_id`
-4. **下发探索指令**: 在你的 Bash/Terminal 工具中执行正式 `run` 模式的 `agent_cli.py`。
-    - *示例*：`python agent_cli.py --goal "使用账户 admin 密码 123456 登录，断言出现'工作台'" --output "test_cases/test_login.py" --platform web --vision --context "temp_context.txt"`
-5. **分析退出码与异常处理 (核心排障)**:
-    - **退出码 `0`**: 代表底层探索成功。此时 `test_cases/test_login.py` 中已经写好了完美的 Pytest 代码。
-    - **退出码 `1`**: 代表遇到了不可抗力。请务必**阅读终端输出的 Log**：
-        - 若提示 **“UI 僵死”**：说明动作被执行但页面没反应（如必填项未填、按钮置灰）。你需要修改策略，补充前置步骤要求后重试。
-        - 若提示 **“触发熔断”**：说明 AI 连续多次找不到元素。请尝试简化 `-goal` 描述，或追加 `-vision` 让模型“看”得更清楚。
-6. **复盘运行**:
-    - 运行 `pytest test_cases/test_login.py` 验证生成的脚本能在无人值守状态下成功独立执行。
+返回清洗后的 DOM/XML 树（Web 返回 JSON，Android 返回压缩 XML）。**你来分析这棵树，定位目标元素。**
 
-## ⚠️ 绝对禁忌 (Red Lines)
+### 2. 下发单步动作
 
-1. **绝对禁止伪造 UI 代码**：永远不要试图自己凭空编写 UI 操作逻辑，必须交由 `agent_cli.py` 去动态捕获真机树并生成。
-2. **绝对不能忘记断言**：给 `-goal` 赋值时，如果不写“断言xxx”，底层引擎可能在点完最后一个按钮后就直接宣布 success，导致生成的测试用例毫无校验价值。
-3. **严防无限循环**：当底层引擎以状态码 `1` 退出时，**请勿立即原样无脑重试**。你必须先分析报错日志，修改目标或补充上下文后再试。
+基于你对 UI 树的分析，逐步执行：
+
+```bash
+python agent_cli.py --action goto --platform web --extra-value "https://example.com"
+python agent_cli.py --action click --platform web --locator-type text --locator-value "Login"
+python agent_cli.py --action input --platform web --locator-type css --locator-value "#username" --extra-value "admin"
+python agent_cli.py --action press --platform web --extra-value "Enter"
+python agent_cli.py --action assert_exist --platform web --locator-type text --locator-value "Dashboard"
+```
+
+### 3. 每步执行后重新 inspect_ui，确认状态
+
+```bash
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+```
+
+观察页面是否变化，决定下一步。失败时分析退出码和日志，调整策略。
+
+### 4. 验证生成的脚本
+
+```bash
+pytest test_cases/web/test_xxx.py
+```
+
+### 进阶：使用 workflow 批量执行
+
+当你有多个确定性步骤时，写一个 YAML workflow 一次执行：
+
+```bash
+python agent_cli.py --workflow ./my_workflow.yaml --output "test_cases/test_login.py" --platform web
+```
+
+可搭配 `--plan-only`（只看计划）、`--dry-run`（只模拟不执行）做预检。
+
+## 支持的 action 类型
+
+| action | 说明 | 需要 locator | 需要 extra_value |
+|--------|------|:---:|:---:|
+| `goto` | 导航到 URL（仅 Web） | 否 | URL |
+| `click` | 点击元素 | 是 | 否 |
+| `long_click` | 长按元素 | 是 | 否 |
+| `hover` | 悬停（仅 Web） | 是 | 否 |
+| `input` | 输入文本 | 是 | 输入内容 |
+| `swipe` | 滑动屏幕 | 否 | up/down/left/right |
+| `press` | 模拟按键 | 否 | 按键名(Enter/Back) |
+| `assert_exist` | 断言元素存在 | 是 | 否 |
+| `assert_text_equals` | 断言文本一致 | 是 | 期望文本 |
+
+`locator_type` 优先级：`css` > `resourceId` > `text` > `description`
+
+## 元素定位能力
+
+- **ref 系统 (@N)**：`inspect_ui` 返回的元素自带 `ref` 编号（@1, @2...），可直接用 `--locator-type ref --locator-value @3` 定位
+- **bbox 坐标**：每个元素附带 `x, y, w, h` 边界框，用于坐标点击或视觉比对
+- **截图标注**：`--vision` 模式下自动生成带 ref 标注的截图，辅助视觉定位
+- **视觉 fallback (VLM)**：当 DOM/XML 无法定位目标时（Canvas、游戏等），引擎调用 VLM 从截图中解析坐标
+
+## 工具协议入口
+
+除了直接 shell 调用，还支持机器可读协议：
+
+| 入口 | 用法 |
+|------|------|
+| `--tool-stdin` | `echo '{"operation":"inspect_ui","platform":"web"}' \| python agent_cli.py --tool-stdin` |
+| `--tool-request` | `python agent_cli.py --tool-request ./request.json` |
+| `--mcp-server` | `python agent_cli.py --mcp-server`（stdio MCP server） |
+
+支持的 operation：`capabilities`、`inspect_ui`、`load_case_memory`、`execute`、`load_run`
+
+## 排障
+
+- **退出码 0**：成功，脚本已生成到 `--output` 路径
+- **退出码 1**：失败，读终端日志中的 `⚠️` 和 `❌`
+  - "UI 僵死"：动作执行了但页面没变化，补充前置条件后重试
+  - "触发熔断"：连续失败次数达阈值，收窄步骤或加 `--vision`
+- **禁止盲目重试相同参数**
+
+## 禁止事项
+
+1. **禁止使用 `--goal`**：该入口会调第三方 LLM 替你思考，浪费 token 且效果差
+2. **禁止凭空编写 UI 代码**：你看不到真实画面，必须先 `inspect_ui` 拿到 DOM 树再定位
+3. **禁止把自然语言原样透传**：你负责理解需求，ScreenForge 只负责执行动作

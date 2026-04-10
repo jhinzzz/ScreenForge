@@ -1,41 +1,94 @@
+import json
 import os
 import shutil
+import subprocess
+import time
 from common.logs import log
 import config.config as config
-from utils.utils_web import normalize_loopback_url
 from .base_adapter import BasePlatformAdapter
 
+_SESSION_FILE = os.path.abspath(os.path.join("report", "web_session.json"))
+_CDP_PORT = 9333  # 使用独立端口，避免与用户自己的 Chrome 冲突
 
-def _is_environment_restricted_error(message: str) -> bool:
-    text = str(message).lower()
-    return any(
-        pattern in text
-        for pattern in (
-            "operation not permitted",
-            "permission denied",
-            " eperm ",
-            "connect eperm",
+
+def _read_session() -> dict | None:
+    if not os.path.exists(_SESSION_FILE):
+        return None
+    try:
+        with open(_SESSION_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _write_session(cdp_url: str, pid: int) -> None:
+    os.makedirs(os.path.dirname(_SESSION_FILE), exist_ok=True)
+    with open(_SESSION_FILE, "w") as f:
+        json.dump({"cdp_url": cdp_url, "pid": pid}, f)
+
+
+def _clear_session() -> None:
+    if os.path.exists(_SESSION_FILE):
+        os.remove(_SESSION_FILE)
+
+
+def _is_process_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def _find_chromium_path() -> str:
+    """找到 Playwright 安装的 Chromium 可执行文件路径"""
+    try:
+        import subprocess as sp
+        result = sp.run(
+            ["python", "-c", "from playwright._impl._driver import compute_driver_executable; print(compute_driver_executable())"],
+            capture_output=True, text=True, cwd=os.getcwd(),
         )
-    )
+        driver_path = result.stdout.strip()
+        if driver_path:
+            # playwright driver 在 node_modules/.cache/ms-playwright 附近
+            # 用 playwright 的 API 来获取更可靠
+            pass
+    except Exception:
+        pass
+
+    # 直接用 playwright 的 registry 查找
+    try:
+        from playwright._impl._driver import compute_driver_executable
+        import pathlib
+        driver = pathlib.Path(compute_driver_executable())
+        # Chromium 通常在 driver 同级的 package/.local-browsers 或系统缓存目录
+        # 最可靠的方式：用 playwright 自己 launch 一次拿到 executable_path
+    except Exception:
+        pass
+
+    return ""
 
 
 class WebPlaywrightAdapter(BasePlatformAdapter):
-    """Web Playwright 适配层"""
+    """Web Playwright 适配层（持久 session 模式）
+
+    浏览器以独立进程运行，不随 Playwright 连接的断开而关闭。
+    - 首次 setup()：launch Chromium 子进程 + CDP，保存 session
+    - 后续 setup()：通过 CDP reconnect 到已有浏览器
+    - teardown()：保存状态，断开 Playwright 连接，浏览器进程继续运行
+    """
 
     def __init__(self):
         super().__init__()
         self.playwright = None
         self.browser = None
         self.context = None
-        self.driver = None  # 规范化：明确声明 driver 属性
+        self.driver = None
+        self._chromium_process = None
 
-        # 视频存放路径
         self.video_dir = os.path.abspath(os.path.join("report", "videos_web"))
-        # 定义缓存状态文件(Cookies, LocalStorage)的路径
         self.state_file = os.path.abspath(os.path.join("report", "browser_state.json"))
-        # 定义浏览器真实的渲染视口大小 (1080p)
         self.viewport_size = {"width": 1920, "height": 1080}
-        # 独立定义录像的分辨率 (720p)。Playwright 会自动将 1080p 的画面缩放为 720p 录制，大幅减小视频体积
         self.video_size = {"width": 1280, "height": 720}
 
     def setup(self):
@@ -47,80 +100,153 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
             raise
 
         self.playwright = sync_playwright().start()
-        # 通过 CDP 连接已运行的系统 Chrome
-        cdp_url = normalize_loopback_url(config.WEB_CDP_URL)
+
+        # 尝试 reconnect 到已有的持久浏览器
+        if self._try_reconnect():
+            return
+
+        # 没有已有浏览器，启动新的
+        self._launch_persistent_browser()
+
+    def _try_reconnect(self) -> bool:
+        """尝试 reconnect 到已有的持久浏览器 session"""
+        session = _read_session()
+        if not session:
+            return False
+
+        cdp_url = session.get("cdp_url", "")
+        pid = session.get("pid", 0)
+
+        if not cdp_url or not _is_process_alive(pid):
+            log.info("⚠️ [System] 持久浏览器已不存在，将启动新浏览器")
+            _clear_session()
+            return False
+
         try:
             self.browser = self.playwright.chromium.connect_over_cdp(cdp_url)
-        except Exception as e:
-            if _is_environment_restricted_error(e):
-                self.playwright.stop()
-                self.playwright = None
-                raise RuntimeError(
-                    "当前运行环境限制了 Playwright 连接本地 Chrome CDP，"
-                    "请在宿主终端中直接运行，或放宽本地网络权限后重试。"
-                    f" 原始错误: {e}"
-                ) from e
-            log.error(
-                f"❌ [Error] 无法连接到 Chrome CDP ({config.WEB_CDP_URL})，"
-                f"请先在终端启动系统 Chrome：\n"
-                f"  macOS: open -a 'Google Chrome' --args --remote-debugging-port=9222\n"
-                f"  Linux: google-chrome --remote-debugging-port=9222\n"
-                f"  Windows: start chrome --remote-debugging-port=9222\n"
-                f"  原始错误: {e}"
-            )
-            # M-2: 确保已启动的 playwright 后台线程被释放，避免资源泄漏
-            self.playwright.stop()
-            self.playwright = None
-            raise
+            log.info("✅ [System] 已 reconnect 到持久浏览器 session")
 
-        # 预先确保视频目录存在
+            # 复用已有的 context 和 page
+            if self.browser.contexts:
+                self.context = self.browser.contexts[0]
+                if self.context.pages:
+                    self.driver = self.context.pages[0]
+                    self.driver.set_default_timeout(config.DEFAULT_TIMEOUT * 1000)
+                    log.info(f"✅ [System] 复用已有页面: {self.driver.url}")
+                    return True
+
+            # 有 browser 但没有 page，创建新的
+            self._create_context_and_page()
+            return True
+
+        except Exception as e:
+            log.info(f"⚠️ [System] reconnect 失败 ({e})，将启动新浏览器")
+            _clear_session()
+            return False
+
+    def _launch_persistent_browser(self):
+        """通过 Playwright 启动独立的 Chromium 进程（带 CDP 端口）"""
+        # 用 Playwright 的 launch_server 获取可执行文件路径
+        # 然后用 subprocess 手动启动，这样进程不受 playwright.stop() 影响
+        chromium_path = self.playwright.chromium.executable_path
+        if not chromium_path or not os.path.exists(chromium_path):
+            log.error("❌ [Error] 未找到 Playwright Chromium，请执行 `playwright install chromium`")
+            raise RuntimeError("Playwright Chromium not found")
+
+        cdp_url = f"http://127.0.0.1:{_CDP_PORT}"
+        user_data_dir = os.path.abspath(os.path.join("report", "chromium_profile"))
+        os.makedirs(user_data_dir, exist_ok=True)
+
+        log.info(f"🚀 [System] 启动持久 Chromium 进程 (CDP: {cdp_url})...")
+        self._chromium_process = subprocess.Popen(
+            [
+                chromium_path,
+                f"--remote-debugging-port={_CDP_PORT}",
+                f"--user-data-dir={user_data_dir}",
+                "--no-first-run",
+                "--no-default-browser-check",
+                f"--window-size={self.viewport_size['width']},{self.viewport_size['height']}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # 等待 CDP 端口就绪
+        for _ in range(30):
+            try:
+                import urllib.request
+                urllib.request.urlopen(f"{cdp_url}/json/version", timeout=1)
+                break
+            except Exception:
+                time.sleep(0.5)
+        else:
+            raise RuntimeError(f"Chromium CDP 端口 {_CDP_PORT} 启动超时")
+
+        # 保存 session 信息
+        _write_session(cdp_url, self._chromium_process.pid)
+
+        # 通过 CDP 连接
+        self.browser = self.playwright.chromium.connect_over_cdp(cdp_url)
+        log.info("✅ [System] 持久 Chromium 已启动并连接成功")
+
+        # 复用或创建 page
+        if self.browser.contexts and self.browser.contexts[0].pages:
+            self.context = self.browser.contexts[0]
+            self.driver = self.context.pages[0]
+            self.driver.set_default_timeout(config.DEFAULT_TIMEOUT * 1000)
+        else:
+            self._create_context_and_page()
+
+    def _create_context_and_page(self):
+        """在 default context 中创建新 page。
+
+        CDP 连接模式下，browser.new_context() 创建的 BrowserContext
+        在 Playwright 断开后不会被浏览器保留。因此必须复用 default context，
+        这样 page 才能跨连接持久化。
+        """
         os.makedirs(self.video_dir, exist_ok=True)
 
-        # 准备新上下文的参数
-        context_kwargs = {
-            "viewport": self.viewport_size,
-            "record_video_dir": self.video_dir,
-            "record_video_size": self.video_size,
-        }
-
-        # 若存在状态文件，则加载缓存以实现免登录
-        if os.path.exists(self.state_file):
-            log.info(
-                f"✅ [System] 发现浏览器状态缓存，正在加载以恢复会话: {self.state_file}"
-            )
-            context_kwargs["storage_state"] = self.state_file
+        # 优先使用浏览器的 default context（CDP 模式下 contexts[0]）
+        if self.browser.contexts:
+            self.context = self.browser.contexts[0]
         else:
-            log.info("⚠️ [Warning] 未找到状态缓存，本次测试可能需要进行登录流程。")
+            self.context = self.browser.new_context(viewport=self.viewport_size)
 
-        self.context = self.browser.new_context(**context_kwargs)
+        # 尝试恢复 storage state（cookie/localStorage）
+        if os.path.exists(self.state_file):
+            try:
+                import json as _json
+                with open(self.state_file, "r") as f:
+                    state = _json.load(f)
+                for cookie in state.get("cookies", []):
+                    self.context.add_cookies([cookie])
+                log.info(f"✅ [System] 发现浏览器状态缓存，已恢复 cookies: {self.state_file}")
+            except Exception as e:
+                log.warning(f"⚠️ [Warning] 恢复浏览器状态缓存失败: {e}")
+
         self.driver = self.context.new_page()
-
-        # 统一全局超时时间（毫秒）
         self.driver.set_default_timeout(config.DEFAULT_TIMEOUT * 1000)
 
     def teardown(self):
-        log.info("⏱️ [System] 关闭 Web 浏览器资源并处理缓存...")
+        """断开连接但不杀浏览器——浏览器留给下次调用复用"""
+        log.info("⏱️ [System] 保存状态并断开浏览器连接（浏览器保持运行）...")
         try:
             if self.context:
                 try:
-                    # 在关闭 context 前保存当前最新的登录状态供下次复用
                     os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
                     self.context.storage_state(path=self.state_file)
                     log.info(f"✅ [System] 已成功保存当前浏览器登录状态至: {self.state_file}")
                 except Exception as e:
                     log.warning(f"⚠️ [Warning] 保存浏览器状态缓存失败: {e}")
-                try:
-                    self.context.close()
-                except Exception as e:
-                    # S-1: context.close 异常不得阻断 playwright.stop，避免后台线程泄漏
-                    log.warning(f"⚠️ [Warning] 关闭浏览器 context 失败: {e}")
         finally:
-            # CDP 模式下不关闭浏览器进程（由用户自行管理），但确保 playwright 后台线程始终停止
+            # 只停止 Playwright 连接线程，不关闭浏览器进程
             if self.playwright:
-                self.playwright.stop()
+                try:
+                    self.playwright.stop()
+                except Exception:
+                    pass
 
     def start_record(self, video_name: str):
-        # Playwright 在 new_context 时已经自动开启录制，此处无需额外操作
         log.info("✅ [System] Playwright 原生录制引擎已就绪...")
 
     def stop_record_and_get_path(self, video_name: str) -> str:
@@ -129,12 +255,9 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
             return ""
 
         try:
-            # 获取 Playwright 自动生成的视频路径
             original_path = self.driver.video.path()
-
-            # 为了确保视频完整写入，先 close page (不影响 Context 记录 state)
             self.driver.close()
-            self.driver = None  # S-2: 标记 page 已关闭，避免 teardown 重复操作
+            self.driver = None
 
             if os.path.exists(original_path):
                 shutil.move(original_path, video_name)

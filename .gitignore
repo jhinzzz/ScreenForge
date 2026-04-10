@@ -25,5 +25,11 @@ __pycache__/
 *.key
 id_rsa*
 
-test_cases/
+test_cases/android/
+test_cases/ios/
+test_cases/web/
+test_cases/__pycache__/
+test_cases/test_auto_generated*.py
 report/
+specs/
+memory/*.json

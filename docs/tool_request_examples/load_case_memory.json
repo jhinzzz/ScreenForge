@@ -1,0 +1,7 @@
+{
+  "operation": "load_case_memory",
+  "platform": "android",
+  "control_kind": "workflow",
+  "query": "登录",
+  "limit": 10
+}

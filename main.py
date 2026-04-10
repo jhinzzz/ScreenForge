@@ -5,8 +5,6 @@ import base64
 import argparse
 from datetime import datetime
 
-import uiautomator2 as u2
-
 from common.ai import AIBrain
 from common.logs import log
 from common.executor import UIExecutor

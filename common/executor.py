@@ -2,6 +2,23 @@ from abc import ABC, abstractmethod
 from common.logs import log
 import config.config as config
 
+# 模块级 UI 元素缓存, 由 inspect_ui 写入, ref 定位器读取
+_cached_ui_elements: list[dict] = []
+
+
+def set_ui_elements(elements: list[dict]) -> None:
+    """缓存最近一次 inspect_ui 返回的元素列表 (含 ref/x/y/w/h)"""
+    global _cached_ui_elements
+    _cached_ui_elements = list(elements) if elements else []
+
+
+def _resolve_ref(ref_value: str) -> dict | None:
+    """根据 ref 值 (如 @5) 查找缓存中的元素"""
+    for el in _cached_ui_elements:
+        if el.get("ref") == ref_value:
+            return el
+    return None
+
 
 def _escape_locator_value(value: str) -> str:
     return str(value).replace("\\", "\\\\").replace("'", "\\'")
@@ -16,7 +33,20 @@ class LocatorBuilder:
     def build_code(platform: str, u2_key: str, l_value: str) -> str:
         safe_val = _escape_locator_value(l_value)
         if platform == "web":
-            if u2_key in ["resourceId", "id"]:
+            if u2_key == "ref":
+                # ref 定位: 查找元素, 降级为具体 locator 写入脚本
+                el_data = _resolve_ref(l_value)
+                if el_data and el_data.get("id"):
+                    return f"locator('#{_escape_locator_value(el_data['id'])}').first"
+                if el_data and el_data.get("text"):
+                    return f"get_by_text('{_escape_locator_value(el_data['text'])}').first"
+                # 坐标兜底
+                if el_data:
+                    cx = el_data.get("x", 0) + el_data.get("w", 0) // 2
+                    cy = el_data.get("y", 0) + el_data.get("h", 0) // 2
+                    return f"mouse.click({cx}, {cy})  # ref {l_value} coordinate fallback"
+                return f"locator('{safe_val}').first"
+            elif u2_key in ["resourceId", "id"]:
                 return f"locator('#{safe_val}').first"
             elif u2_key == "text":
                 return f"get_by_text('{safe_val}').first"
@@ -30,7 +60,19 @@ class LocatorBuilder:
     @staticmethod
     def get_element(d, platform: str, u2_key: str, l_value: str):
         if platform == "web":
-            if u2_key in ["resourceId", "id"]:
+            if u2_key == "ref":
+                # ref 定位: 优先用 id/text, 兜底用坐标点击
+                el_data = _resolve_ref(l_value)
+                if not el_data:
+                    log.warning(f"⚠️ [Ref] 未找到 {l_value}, 缓存中共 {len(_cached_ui_elements)} 个元素")
+                    return None
+                if el_data.get("id"):
+                    return d.locator(f"#{el_data['id']}").first
+                if el_data.get("text"):
+                    return d.get_by_text(el_data["text"]).first
+                # 坐标兜底: 返回 None, 由 execute_and_record 处理坐标点击
+                return None
+            elif u2_key in ["resourceId", "id"]:
                 return d.locator(f"#{l_value}").first
             elif u2_key == "text":
                 return d.get_by_text(l_value).first
@@ -380,6 +422,38 @@ class AssertTextEqualsHandler(ActionHandler):
         return f"[Assert] 校验文本一致: {l_type}='{l_value}', 期望='{extra_value}'"
 
 
+class GotoHandler(ActionHandler):
+    """Web 端页面导航动作：跳转到指定 URL"""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if platform != "web":
+            log.warning("⚠️ [Warning] goto 动作仅支持 Web 平台")
+            return False
+        url = extra_value.strip()
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        d.goto(url, wait_until="domcontentloaded", timeout=config.DEFAULT_TIMEOUT * 1000)
+        d.wait_for_timeout(2000)
+        return True
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+    ) -> list:
+        url = extra_value.strip()
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        safe_url = _escape_python_string(url)
+        return [
+            f"    with allure.step('导航到: [{safe_url}]'):\n",
+            f"        log.info('执行操作: 导航到 [{safe_url}]')\n",
+            f"        d.goto('{safe_url}', wait_until='domcontentloaded')\n",
+            f"        d.wait_for_timeout(2000)\n",
+        ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Action] 正在导航到: {extra_value}"
+
+
 class UIExecutor:
     _handlers = {}
 
@@ -394,6 +468,7 @@ class UIExecutor:
                 "input": InputHandler(),
                 "swipe": SwipeHandler(),
                 "press": PressHandler(),
+                "goto": GotoHandler(),
                 "assert_exist": AssertExistHandler(),
                 "assert_text_equals": AssertTextEqualsHandler(),
             }
@@ -446,13 +521,74 @@ class UIExecutor:
                 "text": "text",
                 "description": "description",
                 "id": "resourceId",
+                "ref": "ref",
             }
             u2_key = u2_locator_map.get(l_type, l_type)
+
+            # ref 定位器: 缓存为空时自动 inspect 填充
+            if u2_key == "ref" and not _cached_ui_elements and self.platform == "web":
+                try:
+                    from utils.utils_web import compress_web_dom
+                    import json as _json
+                    ui_json = compress_web_dom(self.d)
+                    tree = _json.loads(ui_json)
+                    set_ui_elements(tree.get("ui_elements", []))
+                    log.info(f"🔍 [Ref] 自动 inspect 填充缓存: {len(_cached_ui_elements)} 个元素")
+                except Exception as e:
+                    log.warning(f"⚠️ [Ref] 自动 inspect 失败: {e}")
+
             try:
                 element = get_actual_element(self.d, self.platform, u2_key, l_value)
             except Exception as e:
                 log.warning(f"⚠️ [Warning] 生成元素定位器失败: {e}")
                 return result
+
+            # ref 定位器坐标兜底: element 为 None 但有坐标数据
+            if element is None and u2_key == "ref" and self.platform == "web":
+                el_data = _resolve_ref(l_value)
+                if el_data and el_data.get("w", 0) > 0:
+                    cx = el_data["x"] + el_data["w"] // 2
+                    cy = el_data["y"] + el_data["h"] // 2
+                    log.info(f"🎯 [Ref] {l_value} 使用坐标定位: ({cx}, {cy})")
+                    try:
+                        self.d.mouse.click(cx, cy)
+                        code_lines = [
+                            f"    with allure.step('点击元素: [{l_value}] (坐标定位)'):\n",
+                            f"        log.info('执行操作: 点击 [{l_value}] at ({cx}, {cy})')\n",
+                            f"        d.mouse.click({cx}, {cy})  # ref {l_value} coordinate fallback\n",
+                        ]
+                        result["success"] = True
+                        result["code_lines"] = code_lines
+                        result["action_description"] = f"🎯 [Ref] 点击 {l_value} at ({cx}, {cy})"
+                        return result
+                    except Exception as e:
+                        log.error(f"❌ [Error] 坐标点击失败: {e}")
+                        return result
+
+            # 视觉 Fallback: DOM 定位失败时, 用 VLM 截图定位坐标
+            if element is None and self.platform == "web":
+                try:
+                    from common.visual_fallback import visual_locate
+                    screenshot_bytes = self.d.screenshot()
+                    coords = visual_locate(
+                        screenshot_bytes,
+                        f"{l_type}={l_value}",
+                    )
+                    if coords:
+                        cx, cy = coords
+                        log.info(f"👁️ [Visual Fallback] 使用 VLM 坐标定位: ({cx}, {cy})")
+                        self.d.mouse.click(cx, cy)
+                        code_lines = [
+                            f"    with allure.step('点击元素: [{l_value}] (视觉定位)'):\n",
+                            f"        log.info('执行操作: 点击 [{l_value}] at ({cx}, {cy})')\n",
+                            f"        d.mouse.click({cx}, {cy})  # visual fallback\n",
+                        ]
+                        result["success"] = True
+                        result["code_lines"] = code_lines
+                        result["action_description"] = f"👁️ [Visual Fallback] 点击 {l_value} at ({cx}, {cy})"
+                        return result
+                except Exception as e:
+                    log.warning(f"⚠️ [Visual Fallback] 尝试失败: {e}")
 
             if element is None:
                 log.error("❌ [Error] 元素定位器为空，放弃录制！")
@@ -463,7 +599,7 @@ class UIExecutor:
         try:
             log.info(handler.get_log_message(l_type, l_value, extra_value))
 
-            if element:
+            if element or action in ("goto", "swipe", "press"):
                 if not handler.execute(self.d, element, self.platform, extra_value):
                     log.error(
                         f"❌ [Error] 动作执行受阻或 {timeout} 秒内未找到依赖元素，放弃录制！"

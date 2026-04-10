@@ -1,0 +1,36 @@
+[project]
+name = "screenforge"
+version = "0.1.0"
+description = "AI-driven cross-platform UI automation engine with test script generation"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+    "playwright>=1.50",
+    "openai>=2.0",
+    "allure-pytest>=2.15",
+    "loguru>=0.7",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "pillow>=12.0",
+    "lxml>=5.0",
+    "requests>=2.30",
+    "rich>=14.0",
+    "typer>=0.24",
+    "retry2>=0.9",
+    "opencv-python>=4.10",
+]
+
+[project.optional-dependencies]
+android = ["uiautomator2>=3.5", "adbutils>=2.12"]
+ios = ["facebook-wda>=1.0"]
+ml = ["torch>=2.0", "sentence-transformers>=5.0", "scikit-learn>=1.8"]
+all = ["screenforge[android,ios,ml]"]
+
+[project.scripts]
+screenforge = "agent_cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"

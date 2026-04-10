@@ -6,20 +6,30 @@
 >
 > Cross-platform agentic UI automation engine for UI exploration, self-healing, and test generation.
 
-ScreenForge is a cross-platform UI automation engine powered by large language models (LLMs) and multimodal vision models (VLMs), focused on UI exploration, interactive recording, self-healing execution, and test script generation.
+ScreenForge is a cross-platform UI automation engine focused on UI exploration, interactive recording, structured execution, and test script generation.
 
-The project has evolved from pure "Human-in-the-loop" recording into an **"Agent-in-the-loop" exploration engine**. Whether a human records flows through natural-language interaction or an external super agent such as Claude Code, Cursor, or AutoGen sends high-level goals, ScreenForge can observe, reason, act, and generate Pytest + Allure test scripts that follow enterprise-grade practices.
+### Who are you? Start here
+
+| You are... | Entry point | First command |
+|------------|-------------|---------------|
+| **Human developer**, want to debug interactively | `main.py` | `python main.py --platform android` |
+| **AI Agent** (Claude Code / Cursor / Codex), want to drive UI | `agent_cli.py --action` / `--tool-stdin` | See Agent Quick Start below |
+
+**Human path** preserves the natural-language + LLM/VLM interactive recording experience.
+**Agent path**: the upstream Agent understands PRD/commands; ScreenForge only does structured execution: `inspect_ui -> action/workflow -> verify`.
 
 ## ✨ Key Features
 
 🗣️ **Two operating modes**:
 
-- **Interactive recording mode**: control the device like a chat session, generate standard test code step by step, and use built-in L1/L2 semantic action cache to reduce cost and improve speed.
-- **Agentic exploration mode**: provide a high-level goal such as "log in and verify the failure message," and the engine performs multi-step exploration, closed-loop validation, and full-script generation autonomously.
+- **Interactive recording mode (`main.py`)**: control the device like a chat session, generate standard test code step by step, with L1/L2 semantic cache.
+- **Agent execution mode (`agent_cli.py --action/--workflow`)**: the upstream Agent understands PRD/commands, then calls ScreenForge's structured capabilities. `agent_cli.py` is a 6-line shim; all logic lives in the `cli/` package.
 
-👁️ **Multimodal visual perception (`--vision`)**: beyond the XML cleanup and dimensionality reduction pipeline, ScreenForge can inject live screenshots into the model context. When facing game UIs, charts, canvas-heavy pages, or custom-rendered interfaces, vision helps the model actually see what is happening.
+🎯 **ref locator system**: `inspect_ui` assigns a ref number (@1, @2...) to every interactive element, with bbox coordinates (x, y, w, h). Upstream Agents can reference elements directly without guessing resource-ids or xpaths.
 
-🛡️ **Self-healing and anti-stagnation**: the engine includes UI stagnation detection and circuit breaking. When it hits invalid taps or blocked elements, it feeds the failure back into the model to change strategy. Only repeated failures or a frozen page will trip the circuit breaker, which prevents wasting tokens in infinite loops.
+👁️ **Multimodal visual perception (`--vision`)**: beyond the XML cleanup pipeline, supports annotated screenshots (ref numbers overlaid on screenshots) and visual fallback (VLM). When DOM/XML cannot locate the target (Canvas, games, custom-rendered UI), the engine calls a VLM to parse coordinates from screenshots.
+
+🛡️ **Structured self-heal engine**: `HealResult` returns `confidence / fix_description / fixed_code`, validated by `ast.parse`, filtered by confidence threshold (default 0.7), with automatic `.bak` backup before overwriting. Built-in UI stagnation detection and circuit breaking prevent token waste.
 
 📦 **Unified cross-platform architecture**: the engine uses a clean adapter pattern so the same workflow can target:
 
@@ -109,35 +119,47 @@ export MODEL_NAME="doubao-seed-2.0-lite-260215"
 
 ## 🚀 Core Workflow 1: Integrate with a Super Agent (Agentic Mode)
 
-This is the **ultimate form** of ScreenForge. You can expose ScreenForge as a Tool or Skill for external super agents such as Claude Code or Cursor. The model can read `docs/agent_guide.md` directly to learn how to drive the engine.
+Expose ScreenForge as a Tool/Skill for external Agents (Claude Code, Cursor, Codex). Have the Agent read `docs/agent_guide.md` for the full integration guide.
 
-**Typical usage**:
-From Cursor Terminal, or as an instruction to Claude Code:
-
-> *"Please read `docs/agent_guide.md`. We added a logout feature. Generate a test case for it, save it as `test_logout.py`, and then run pytest."*
-
-The external agent will call the underlying CLI exploration engine:
+**Agent Quick Start** (3 steps):
 
 ```bash
-python agent_cli.py --goal "Open Settings, log out, and finally verify that the login button is visible" \
-                    --output "test_cases/test_logout.py" \
-                    --platform android \
-                    --vision \
-                    --json \
-                    --max_retries 3
+# 1. Get current page UI tree (Agent analyzes it, not ScreenForge)
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+
+# 2. Agent analyzes the UI tree, then sends precise single-step actions
+python agent_cli.py --action click --platform web --locator-type text --locator-value "Login"
+
+# 3. inspect_ui again to confirm page change, loop until done
+echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
+```
+
+**Batch execution** via workflow:
+
+```bash
+python agent_cli.py --workflow ./docs/workflows/login_failure.yaml \
+                    --output "test_cases/test_login.py" \
+                    --platform android --json
+```
+
+**MCP integration**:
+
+```bash
+python agent_cli.py --mcp-server
 ```
 
 ### Core CLI parameters
 
-- `-goal`: required, a high-level test goal that must include both the flow and the final assertion
-- `-output`: optional, output path for the generated script. The engine automatically creates platform-specific directories such as `test_cases/android/`
-- `-platform`: optional, target platform, one of `android`, `ios`, or `web`
-- `-vision`: optional flag, enables multimodal visual assistance and is recommended for graphically complex UIs
-- `-json`: optional flag, streams JSON Lines events to stdout for upstream agents or orchestration systems
-- `-context`: optional, path to a temporary `txt` or `md` file containing PRD details, credentials, or other complex constraints
-- `-max_retries`: optional, circuit-breaker threshold for consecutive retries on a single step, default is `3`
+- `--action`: single-step action (`click`, `input`, `assert_exist`, etc.). **Recommended Agent entry point.**
+- `--workflow`: YAML workflow for multi-step structured execution
+- `--goal`: (legacy) autonomous exploration with internal LLM. **Not recommended for Agent integration.**
+- `--platform`: target platform (`android` | `ios` | `web`)
+- `--vision`: enable multimodal visual assistance (annotated screenshots + VLM fallback)
+- `--json`: stream JSON Lines events to stdout
+- `--output`: output path for generated script
+- `--tool-stdin` / `--tool-request` / `--mcp-server`: machine-readable protocol entries
 
-When exploration finishes, the engine exits with `0` on success and `1` on failure or circuit breaker activation. Upstream agents can use that exit code to decide whether to reflect and retry.
+Exit code `0` = success, `1` = failure or circuit breaker triggered.
 
 ### Run artifacts
 
@@ -145,11 +167,12 @@ When exploration finishes, the engine exits with `0` on success and `1` on failu
 - `report/runs/<run_id>/steps.jsonl`: persisted structured event stream
 - `report/runs/<run_id>/artifacts.json`: generated script, screenshots, and other artifact indexes
 - `report/runs/<run_id>/screenshots/`: screenshots captured in `--vision` mode
+- `memory/case_memory.json`: cross-run test memory for reuse
 
 ### Recommended docs for integrators
 
-- `docs/agent_guide.md`: integration rules for upstream agents
-- `docs/skills/execute_ui_automation.md`: execution skill contract and parameter rules
+- `docs/agent_guide.md`: Agent integration guide (Day 1 critical path)
+- `docs/capability-matrix.md`: platform/action/locator support matrix
 
 ## 💻 Core Workflow 2: Interactive Recording Mode
 
@@ -187,77 +210,76 @@ In this mode, the framework enables the local **L1/L2 semantic cache (`CacheMana
 
 ```text
 screenforge/
-├── agent_cli.py             # 🤖 Agentic entry point for super-agent-driven exploration
-├── main.py                  # 🙋‍♂️ Interactive recording entry point
+├── agent_cli.py             # Compatibility entry (6-line shim, delegates to cli/dispatch.py)
+├── main.py                  # Interactive recording entry point
 ├── conftest.py              # Pytest fixtures, cross-platform dispatch, video/screenshot attachments
 ├── pytest.ini               # Pytest configuration
+├── cli/                     # CLI dispatch layer (split from agent_cli.py in P1-2)
+│   ├── dispatch.py          # CLI entry main(), routes by execution mode
+│   ├── parser.py            # build_parser, validate_cli_args
+│   ├── shared.py            # Lazy proxies, adapter connection, UI state capture
+│   ├── reporter.py          # Reporter helpers
+│   ├── doctor.py            # Environment diagnostics
+│   ├── tool_protocol_handlers.py  # --tool-stdin / --tool-request / --mcp-server
+│   └── modes/               # Execution modes
+│       ├── default.py       # --goal autonomous exploration loop
+│       ├── action.py        # --action single-step execution
+│       ├── workflow.py      # --workflow structured execution
+│       ├── plan.py          # --plan-only
+│       └── dry_run.py       # --dry-run
 ├── config/
-│   └── config.py            # Global configuration (API keys, timeouts, multi-env settings)
+│   └── config.py            # Global config (API keys, timeouts, self-heal thresholds)
 ├── common/
 │   ├── ai.py                # Base AI interaction layer (single-step parsing and cache)
-│   ├── ai_autonomous.py     # 🤖 Autonomous reasoning brain (self-healing, multimodal, memory flow)
+│   ├── ai_autonomous.py     # Autonomous reasoning brain (self-healing, multimodal, memory)
+│   ├── ai_heal.py           # Structured self-heal engine (HealResult, AST validation)
 │   ├── executor.py          # Action executor and Python code generation
-│   │                         # ├── ActionHandler (abstract base class)
-│   │                         # ├── ClickHandler
-│   │                         # ├── LongClickHandler / HoverHandler
-│   │                         # ├── InputHandler
-│   │                         # ├── SwipeHandler / PressHandler
-│   │                         # ├── AssertExistHandler
-│   │                         # └── AssertTextEqualsHandler
+│   ├── visual_fallback.py   # Visual fallback (VLM coordinate parsing)
 │   ├── history_manager.py   # History manager and code rollback control
 │   ├── logs.py              # Logging system based on loguru
 │   ├── run_reporter.py      # Structured run output (summary / steps / artifacts)
 │   ├── cache/               # Local hybrid semantic cache (exact match + vector retrieval)
-│   │   ├── cache_manager.py      # Cache manager (L1/L2 hybrid retrieval)
-│   │   ├── embedding_loader.py   # Sentence embedding loader (lazy loading and cleanup)
-│   │   ├── cache_hash.py         # UI fingerprint and instruction hash utilities
-│   │   ├── cache_storage.py      # Cache persistence and TTL management
-│   │   └── cache_stats.py        # Cache hit-rate statistics
-│   └── adapters/            # 📱 Cross-platform adapters (Android / iOS / Web)
-│       ├── base_adapter.py      # Adapter base class
-│       ├── android_adapter.py   # Android uiautomator2 adapter
-│       ├── ios_adapter.py       # iOS facebook-wda adapter
-│       └── web_adapter.py       # Web Playwright adapter
-├── docs/
-│   ├── agent_guide.md       # Super-agent integration guide
-│   └── skills/
-│       └── execute_ui_automation.md
+│   └── adapters/            # Cross-platform adapters (Android / iOS / Web)
 ├── utils/
-│   └── utils_xml.py         # Android XML cleanup and dimensionality reduction
+│   ├── utils_xml.py         # Android XML cleanup and dimensionality reduction
+│   ├── utils_web.py         # Web DOM compression and URL handling
+│   └── screenshot_annotator.py  # Screenshot annotation (ref numbers on screenshots)
+├── tests/                   # Framework unit tests (32 test cases)
+│   ├── test_ai_heal.py
+│   ├── test_executor.py
+│   ├── test_screenshot_annotator.py
+│   ├── test_utils_web.py
+│   └── test_visual_fallback.py
+├── docs/
+│   ├── agent_guide.md       # Agent integration guide
+│   └── capability-matrix.md # Platform/action/locator support matrix
 └── test_cases/              # Generated automation test scripts
-    ├── android/             # Android platform scripts
-    ├── ios/                 # iOS platform scripts
-    └── web/                 # Web platform scripts
+    ├── android/
+    ├── ios/
+    └── web/
 ```
 
 ## 📊 Module Call Chain
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                         main.py / agent_cli.py                  │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        ▼                       ▼                       ▼
-   ┌─────────┐           ┌───────────┐           ┌─────────────────┐
-   │ AIBrain │           │ UIExecutor│           │StepHistoryManager│
-   └────┬────┘           └─────┬─────┘           └────────┬────────┘
-        │                      │                          │
-        ▼                      ▼                          │
-   ┌──────────┐          ┌──────────┐                    │
-   │CacheManager│         │ActionHandler│                   │
-   └────┬─────┘          └──────────┘                    │
-        │                      │                          │
-        ▼                      │                          │
-   ┌──────────────┐            │                          │
-   │EmbeddingModel│            │                          │
-   │    Loader    │            │                          │
-   └──────────────┘            │                          │
-                                │                          │
-┌───────────────────────────────┴───────────────────────────────┐
-│                    BasePlatformAdapter                         │
-│            (AndroidU2Adapter / IosWdaAdapter / WebAdapter)    │
-└────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│  main.py (Human)    agent_cli.py → cli/dispatch.py (Agent)        │
+└──────────────────────────────┬─────────────────────────────────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+    ┌──────────┐        ┌───────────┐        ┌─────────────────┐
+    │ AIBrain  │        │ UIExecutor│        │StepHistoryManager│
+    └────┬─────┘        └─────┬─────┘        └────────┬────────┘
+         │                    │                       │
+    ┌────▼─────┐         ┌────▼──────┐                │
+    │CacheManager│        │ActionHandler│               │
+    └──────────┘         └───────────┘                │
+                               │                       │
+┌──────────────────────────────┴───────────────────────────────┐
+│                    BasePlatformAdapter                        │
+│            (AndroidU2Adapter / IosWdaAdapter / WebAdapter)   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ## 🗂️ Cache Architecture
@@ -316,7 +338,7 @@ This is often caused by page animations or slow network loading. Increase `DEFAU
 For standard Android native screens, the default XML compression pipeline is usually enough and is both faster and cheaper. But for complex Web H5 canvas pages, Unity game UIs, or dynamic garbled `resource-id`s, `--vision` is strongly recommended so the multimodal model can use screenshots to locate targets accurately.
 
 **Q5: Why does `agent_cli.py` stop with an error in the middle of a run?**  
-That means the **self-healing circuit breaker** was triggered. If the engine fails repeatedly on the same page, for example because the target is covered, or the UI becomes stagnant and nothing responds after an action, it stops proactively with a non-zero exit code once `--max_retries` is reached. At that point, inspect the logs, refine `--goal`, or provide better context.
+That means the **self-healing circuit breaker** was triggered. If the engine fails repeatedly on the same page, for example because the target is covered, or the UI becomes stagnant and nothing responds after an action, it stops proactively with a non-zero exit code once `--max_retries` is reached. At that point, inspect the logs, refine your workflow/action design, or provide better context.
 
 **Q6: Video recording does not work.**  
 Make sure Scrcpy is installed. Run `scrcpy --version` to verify. If it still fails, check whether the device has granted screen recording permission. Videos for failed cases are attached to the Allure report automatically.

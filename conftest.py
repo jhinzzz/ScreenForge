@@ -7,7 +7,7 @@ import allure
 from common.logs import log
 from utils.utils_xml import compress_android_xml
 from utils.utils_web import compress_web_dom
-from common.ai_heal import HealerBrain
+from common.ai_heal import HealerBrain, HealResult
 import config.config as config
 
 _failure_tracker = {}
@@ -164,8 +164,10 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
     with open(file_path, "r", encoding="utf-8") as f:
         original_script = f.read()
 
+    import shutil
+
     healer = HealerBrain()
-    fixed_code = healer.heal_script(
+    result: HealResult = healer.heal_script(
         script_content=original_script,
         error_msg=error_msg,
         error_line_num=error_line_num,
@@ -174,17 +176,35 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
         platform=platform_name,
     )
 
-    if fixed_code:
-        if "def test_" in fixed_code:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(fixed_code)
-            log.info("✅ [Self-Healing] 脚本自愈手术成功！")
-            log.info(f"✅ [Self-Healing] 修复文件已精准落盘: {file_path}")
-            log.info("💡 [Self-Healing] 提示: 您可以重新运行 pytest 体验修复后的用例。")
-        else:
-            log.error("❌ 自愈引擎返回的代码结构异常，放弃覆盖文件。")
-    else:
+    if not result.fixed_code:
         log.error("❌ 自愈引擎未能生成修复代码。")
+        return
+
+    if result.confidence < config.AUTO_HEAL_MIN_CONFIDENCE:
+        log.warning(
+            f"⚠️ [Self-Healing] 置信度 {result.confidence:.2f} 低于阈值 "
+            f"{config.AUTO_HEAL_MIN_CONFIDENCE}，跳过自动修复。"
+            f"(原因: {result.fix_description})"
+        )
+        return
+
+    if "def test_" not in result.fixed_code:
+        log.error("❌ 自愈引擎返回的代码结构异常（缺少 test 函数），放弃覆盖文件。")
+        return
+
+    # Backup before overwriting
+    backup_path = file_path + ".bak"
+    shutil.copy2(file_path, backup_path)
+    log.info(f"📦 [Self-Healing] 已备份原始脚本至: {backup_path}")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(result.fixed_code)
+    log.info(
+        f"✅ [Self-Healing] 脚本自愈成功！(confidence={result.confidence:.2f}, "
+        f"desc={result.fix_description})"
+    )
+    log.info(f"✅ [Self-Healing] 修复文件已落盘: {file_path}")
+    log.info("💡 [Self-Healing] 提示: 您可以重新运行 pytest 体验修复后的用例。")
 
 
 @pytest.fixture(scope="session")

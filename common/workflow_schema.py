@@ -20,6 +20,7 @@ class WorkflowLoadError(ValueError):
 class WorkflowStep(BaseModel):
     name: str = ""
     action: Literal[
+        "goto",
         "click",
         "long_click",
         "hover",
