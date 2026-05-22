@@ -4,8 +4,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import cli.shared as _shared
 from cli.shared import (
-    RunReporter,
     _ensure_reporter_class,
     config,
     log,
@@ -164,7 +164,7 @@ def _build_reporter(args, output_script_path: str, execution_mode: str):
     _ensure_reporter_class()
     control_identity = _resolve_control_identity(args, execution_mode)
     goal_label = control_identity["control_label"] or f"{args.platform} {execution_mode}"
-    return RunReporter(
+    return _shared.RunReporter(
         goal=goal_label,
         platform=args.platform,
         env_name=args.env,

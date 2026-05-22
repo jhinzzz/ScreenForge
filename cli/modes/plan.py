@@ -1,5 +1,6 @@
 """Plan-only execution modes."""
 
+import cli.shared as _shared
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -8,7 +9,6 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
-    AutonomousBrain,
     _capture_ui_state,
     _connect_adapter,
     _ensure_runtime_classes,
@@ -36,7 +36,7 @@ def run_plan_only_mode(
         adapter = _connect_adapter(args, reporter)
         ui_json, screenshot_base64 = _capture_ui_state(args, adapter, reporter, 1)
         _ensure_runtime_classes()
-        brain = AutonomousBrain()
+        brain = _shared.AutonomousBrain()
         plan = brain.get_execution_plan(
             goal=args.goal,
             context=context_content,

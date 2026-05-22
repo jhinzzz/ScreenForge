@@ -5,12 +5,12 @@ import os
 import sys
 from pathlib import Path
 
+import cli.shared as _shared
 from cli.reporter import _build_reporter, _emit_run_started
 from cli.shared import (
     _ensure_preflight_runner,
     config,
     log,
-    run_preflight,
 )
 from common.capabilities import get_capabilities_payload
 from common.runtime_modes import MODE_DOCTOR
@@ -330,7 +330,7 @@ def run_doctor_mode(args, output_script_path: str) -> int:
 
     try:
         _ensure_preflight_runner()
-        result = run_preflight(
+        result = _shared.run_preflight(
             platform=args.platform,
             script_dir=Path(os.path.dirname(os.path.abspath(output_script_path))),
             run_dir=Path(config.RUN_REPORT_BASE_DIR),

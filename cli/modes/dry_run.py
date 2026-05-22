@@ -1,5 +1,6 @@
 """Dry-run execution modes."""
 
+import cli.shared as _shared
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -8,12 +9,10 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
-    AutonomousBrain,
     _capture_ui_state,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_runtime_classes,
-    get_actual_element,
     log,
 )
 from common.runtime_modes import MODE_DRY_RUN
@@ -34,7 +33,7 @@ def _preview_action_resolution(device, platform: str, action_data: dict) -> dict
     }
     u2_key = u2_locator_map.get(l_type, l_type)
     try:
-        element = get_actual_element(device, platform, u2_key, l_value)
+        element = _shared.get_actual_element(device, platform, u2_key, l_value)
         return {"resolvable": element is not None, "resolution_error": ""}
     except Exception as e:
         return {"resolvable": False, "resolution_error": str(e)}
@@ -68,7 +67,7 @@ def run_dry_run_mode(
         adapter = _connect_adapter(args, reporter)
         ui_json, screenshot_base64 = _capture_ui_state(args, adapter, reporter, 1)
         _ensure_runtime_classes()
-        brain = AutonomousBrain()
+        brain = _shared.AutonomousBrain()
         decision_data = brain.get_next_autonomous_action(
             goal=args.goal,
             context=context_content,

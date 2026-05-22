@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import cli.shared as _shared
 from cli.modes.dry_run import _build_resolution_hint, _preview_action_resolution
 from cli.reporter import (
     _apply_resume_summary,
@@ -9,18 +10,12 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
-    StepHistoryManager,
-    UIExecutor,
-    WorkflowLoadError,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_history_manager,
     _ensure_workflow_loader,
     get_initial_header,
-    load_workflow_file,
     log,
-    parse_workflow_var_overrides,
-    resolve_workflow_definition,
     save_to_disk,
 )
 from common.runtime_modes import MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
@@ -28,12 +23,12 @@ from common.runtime_modes import MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
 
 def _load_workflow_definition(args):
     _ensure_workflow_loader()
-    workflow = load_workflow_file(args.workflow)
-    workflow_var_overrides = parse_workflow_var_overrides(args.workflow_var)
-    workflow = resolve_workflow_definition(workflow, workflow_var_overrides)
+    workflow = _shared.load_workflow_file(args.workflow)
+    workflow_var_overrides = _shared.parse_workflow_var_overrides(args.workflow_var)
+    workflow = _shared.resolve_workflow_definition(workflow, workflow_var_overrides)
 
     if workflow.platform and workflow.platform != args.platform:
-        raise WorkflowLoadError(
+        raise _shared.WorkflowLoadError(
             f"Workflow platform [{workflow.platform}] conflicts with --platform [{args.platform}]"
         )
 
@@ -286,9 +281,9 @@ def run_workflow_default_mode(
 
         _ensure_history_manager()
         _ensure_executor_runtime()
-        history_manager = StepHistoryManager(initial_content=get_initial_header())
+        history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
         save_to_disk(output_script_path, get_initial_header())
-        executor = UIExecutor(device, platform=args.platform)
+        executor = _shared.UIExecutor(device, platform=args.platform)
 
         executed_steps = 0
         for index, step in enumerate(workflow.steps, start=1):

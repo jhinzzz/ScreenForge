@@ -1,14 +1,12 @@
 """Default autonomous brain loop mode."""
 
+import cli.shared as _shared
 from cli.reporter import (
     _apply_resume_summary,
     _build_reporter,
     _emit_run_started,
 )
 from cli.shared import (
-    AutonomousBrain,
-    StepHistoryManager,
-    UIExecutor,
     _capture_ui_state,
     _connect_adapter,
     _ensure_executor_runtime,
@@ -48,12 +46,12 @@ def run_default_mode(
 
         _ensure_history_manager()
         _ensure_executor_runtime()
-        history_manager = StepHistoryManager(initial_content=get_initial_header())
+        history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
         save_to_disk(output_script_path, get_initial_header())
 
         _ensure_runtime_classes()
-        brain = AutonomousBrain()
-        executor = UIExecutor(device, platform=args.platform)
+        brain = _shared.AutonomousBrain()
+        executor = _shared.UIExecutor(device, platform=args.platform)
 
         step_count = 0
         last_error = ""

@@ -2,6 +2,7 @@
 
 import os
 
+import cli.shared as _shared
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -10,8 +11,6 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
-    StepHistoryManager,
-    UIExecutor,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_history_manager,
@@ -79,13 +78,13 @@ def run_action_default_mode(
         if os.path.exists(output_script_path):
             with open(output_script_path, "r", encoding="utf-8") as f:
                 existing_lines = f.readlines()
-            history_manager = StepHistoryManager(initial_content=existing_lines)
-            log.info(f"📎 [System] 追加模式：在已有脚本上继续录制 ({output_script_path})")
+            history_manager = _shared.StepHistoryManager(initial_content=existing_lines)
+            log.info(f"📎 [System] Append mode: continuing on existing script ({output_script_path})")
         else:
-            history_manager = StepHistoryManager(initial_content=get_initial_header())
+            history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
             save_to_disk(output_script_path, get_initial_header())
 
-        executor = UIExecutor(device, platform=args.platform)
+        executor = _shared.UIExecutor(device, platform=args.platform)
 
         reporter.emit_event(
             "step_started",
