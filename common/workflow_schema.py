@@ -47,7 +47,7 @@ class WorkflowStep(BaseModel):
             return self
 
         if not str(self.locator_type).strip() or not str(self.locator_value).strip():
-            raise ValueError("元素类工作流步骤必须提供 locator_type 和 locator_value")
+            raise ValueError("Element workflow steps require locator_type and locator_value")
 
         return self
 
@@ -64,31 +64,31 @@ class WorkflowDefinition(BaseModel):
 def load_workflow_file(file_path: str | Path) -> WorkflowDefinition:
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
-        raise WorkflowLoadError(f"未找到 workflow 文件: {path}")
+        raise WorkflowLoadError(f"Workflow file not found: {path}")
 
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as exc:
-        raise WorkflowLoadError(f"workflow YAML 解析失败: {exc}") from exc
+        raise WorkflowLoadError(f"Workflow YAML parse error: {exc}") from exc
 
     if not isinstance(payload, dict):
-        raise WorkflowLoadError("workflow 文件顶层必须是 object")
+        raise WorkflowLoadError("Workflow file top-level must be an object")
 
     try:
         return WorkflowDefinition.model_validate(payload)
     except Exception as exc:
-        raise WorkflowLoadError(f"workflow 校验失败: {exc}") from exc
+        raise WorkflowLoadError(f"Workflow validation failed: {exc}") from exc
 
 
 def parse_workflow_var_overrides(items: list[str] | None) -> dict[str, str]:
     resolved = {}
     for item in items or []:
         if "=" not in str(item):
-            raise WorkflowLoadError("workflow 变量覆盖格式必须为 KEY=VALUE")
+            raise WorkflowLoadError("Workflow variable override format must be KEY=VALUE")
         key, value = str(item).split("=", 1)
         key = key.strip()
         if not key:
-            raise WorkflowLoadError("workflow 变量名不能为空")
+            raise WorkflowLoadError("Workflow variable name cannot be empty")
         resolved[key] = value
     return resolved
 
@@ -99,7 +99,7 @@ def _render_template(value: str, variables: dict[str, str]) -> str:
     def replace(match: re.Match[str]) -> str:
         key = match.group(1)
         if key not in variables:
-            raise WorkflowLoadError(f"workflow 引用了未定义变量: {key}")
+            raise WorkflowLoadError(f"Workflow references undefined variable: {key}")
         return str(variables[key])
 
     return WORKFLOW_VAR_PATTERN.sub(replace, text)

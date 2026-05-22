@@ -34,12 +34,12 @@ class ActionToolControl(BaseModel):
     @model_validator(mode="after")
     def validate_action(self):
         if self.action not in SUPPORTED_ACTIONS:
-            raise ValueError(f"不支持的即时动作类型: {self.action}")
+            raise ValueError(f"Unsupported action: {self.action}")
         if self.action not in {"goto", "swipe", "press"}:
             if not str(self.locator_type).strip() or not str(self.locator_value).strip():
-                raise ValueError("元素类即时动作必须提供 locator_type 和 locator_value")
+                raise ValueError("Element actions require locator_type and locator_value")
         if self.action in ACTIONS_REQUIRING_EXTRA_VALUE and not str(self.extra_value).strip():
-            raise ValueError("该即时动作必须提供 extra_value")
+            raise ValueError(f"Action '{self.action}' requires extra_value")
         return self
 
 
@@ -75,37 +75,37 @@ class ToolRequest(BaseModel):
         if _normalize_text := str(self.goal).strip():
             if self.operation == "execute":
                 raise ValueError(
-                    "Agent execute tool request 不支持 goal；请由 Codex/Claude Code/Gemini CLI 先理解自然语言，再传入 workflow 或 action"
+                    "Execute tool request does not accept goal; the calling Agent should interpret natural language and pass workflow or action"
                 )
-            raise ValueError(f"{self.operation} tool request 不能携带 goal")
+            raise ValueError(f"{self.operation} tool request cannot include goal")
 
         if self.operation in {"execute", "inspect_ui"} and self.platform not in SUPPORTED_PLATFORMS:
-            raise ValueError(f"不支持的平台: {self.platform}")
+            raise ValueError(f"Unsupported platform: {self.platform}")
 
         control_count = int(self.workflow is not None) + int(self.action is not None)
         if self.operation == "load_run":
             if control_count:
-                raise ValueError("load_run tool request 不能同时携带 workflow 或 action")
+                raise ValueError("load_run tool request cannot include workflow or action")
             if not str(self.run_id).strip():
-                raise ValueError("load_run tool request 必须提供 run_id")
+                raise ValueError("load_run tool request requires run_id")
             return self
         if self.operation == "load_case_memory":
             if control_count:
-                raise ValueError("load_case_memory tool request 不能同时携带 workflow 或 action")
+                raise ValueError("load_case_memory tool request cannot include workflow or action")
             return self
         if self.operation == "inspect_ui":
             if control_count:
-                raise ValueError("inspect_ui tool request 不能同时携带 workflow 或 action")
+                raise ValueError("inspect_ui tool request cannot include workflow or action")
             return self
 
         if self.mode == MODE_DOCTOR:
             if control_count:
-                raise ValueError("doctor tool request 不能同时携带 workflow 或 action")
+                raise ValueError("doctor tool request cannot include workflow or action")
             return self
 
         if control_count != 1:
             raise ValueError(
-                "Agent execute tool request 必须且只能提供一种控制面：workflow 或 action；自然语言 goal 请交由 Codex/Claude Code/Gemini CLI 解释后再调用 ScreenForge"
+                "Execute tool request must provide exactly one control: workflow or action"
             )
         return self
 
@@ -114,18 +114,18 @@ def _validate_tool_request_payload(payload: dict, source_label: str) -> ToolRequ
     try:
         return ToolRequest.model_validate(payload)
     except ValidationError as exc:
-        raise ToolRequestError(f"{source_label} 校验失败: {exc}") from exc
+        raise ToolRequestError(f"{source_label} validation failed: {exc}") from exc
 
 
 def load_tool_request(file_path: str | Path) -> ToolRequest:
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
-        raise ToolRequestError(f"未找到 tool request 文件: {path}")
+        raise ToolRequestError(f"Tool request file not found: {path}")
 
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise ToolRequestError(f"tool request JSON 解析失败: {exc}") from exc
+        raise ToolRequestError(f"Tool request JSON parse error: {exc}") from exc
 
     return _validate_tool_request_payload(payload, "tool request")
 
