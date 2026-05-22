@@ -68,13 +68,12 @@ def run_action_default_mode(
         except Exception as e:
             final_error = str(e)
             reporter.emit_event("startup_failed", platform=args.platform, error=str(e))
-            log.error(f"❌ [Error]{args.platform} 连接失败: {e}")
+            log.error(f"❌ [Error] {args.platform} connection failed: {e}")
             return 1
 
         _ensure_history_manager()
         _ensure_executor_runtime()
 
-        # 如果 output 文件已存在，追加到已有脚本；否则创建新脚本
         if os.path.exists(output_script_path):
             with open(output_script_path, "r", encoding="utf-8") as f:
                 existing_lines = f.readlines()
@@ -94,14 +93,14 @@ def run_action_default_mode(
         )
         result = executor.execute_and_record(action_data)
         if not result.get("success"):
-            final_error = f"即时动作执行失败: {action_data['name']}"
+            final_error = f"Action failed: {action_data['name']}"
             reporter.emit_event(
                 "action_executed",
                 step=1,
                 success=False,
                 action_description=action_data["name"],
             )
-            log.error(f"❌ [Action] 执行失败: {action_data['name']}")
+            log.error(f"❌ [Action] Failed: {action_data['name']}")
             return 1
 
         history_manager.add_step(result["code_lines"], result["action_description"])
@@ -125,7 +124,7 @@ def run_action_default_mode(
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("action_run_failed", error=str(e))
-        log.error(f"❌ [Action] 执行失败: {e}")
+        log.error(f"❌ [Action] Failed: {e}")
         return 1
     finally:
         reporter.finalize(
@@ -134,9 +133,9 @@ def run_action_default_mode(
             steps_executed=steps_executed,
             last_error=final_error,
         )
-        log.info(f"🏁 任务结束，当前已录制的代码安全存档于: {output_script_path}")
+        log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if owns_adapter and adapter:
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")

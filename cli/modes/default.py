@@ -41,7 +41,7 @@ def run_default_mode(
         except Exception as e:
             final_error = str(e)
             reporter.emit_event("startup_failed", platform=args.platform, error=str(e))
-            log.error(f"❌ [Error]{args.platform} 连接失败: {e}")
+            log.error(f"❌ [Error] {args.platform} connection failed: {e}")
             return 1
 
         _ensure_history_manager()
@@ -61,7 +61,7 @@ def run_default_mode(
         while step_count < args.max_steps:
             step_count += 1
             steps_executed = step_count
-            log.info(f"\n--- 🔄 第 {step_count} 轮探索 ---")
+            log.info(f"\n--- 🔄 Step {step_count} ---")
             reporter.emit_event("step_started", step=step_count)
 
             ui_json, screenshot_base64 = _capture_ui_state(
@@ -70,7 +70,7 @@ def run_default_mode(
             current_history = history_manager.get_history()
 
             if last_ui_json == ui_json and step_count > 1 and not last_error:
-                last_error = "【系统环境警告】: 上一步动作已被物理执行，但页面 UI 没有任何改变！可能原因：1.输入项不合法导致按钮无效 2.需要先勾选协议 3.遇到了不可见弹窗。请切勿重复执行相同的动作，请更换策略！"
+                last_error = "[System Warning] The previous action was executed but the page UI did not change. Possible causes: invalid input, unchecked checkbox, or invisible overlay. Do NOT repeat the same action — try a different strategy."
                 log.warning("[E020] UI stagnation detected: action executed but page did not change. Possible causes: invalid input, unchecked checkbox, or invisible overlay.")
 
             last_ui_json = ui_json
@@ -100,7 +100,7 @@ def run_default_mode(
             if status == "success":
                 if action_data and action_data.get("action"):
                     log.info(
-                        "🔍 检测到伴随 success 状态的最终动作/断言，正在执行固化..."
+                        "🔍 Final action/assertion detected with success status, executing..."
                     )
                     result = executor.execute_and_record(action_data)
                     if result.get("success"):
@@ -111,7 +111,7 @@ def run_default_mode(
                             output_script_path,
                             history_manager.get_current_file_content(),
                         )
-                        log.info(f"✅ 最终动作执行成功: {result['action_description']}")
+                        log.info(f"✅ Final action succeeded: {result['action_description']}")
                         reporter.emit_event(
                             "action_executed",
                             step=step_count,
@@ -119,29 +119,29 @@ def run_default_mode(
                             action_description=result["action_description"],
                         )
                     else:
-                        final_error = "最终动作/断言执行失败，任务验证未通过"
+                        final_error = "Final action/assertion failed — task verification did not pass"
                         reporter.emit_event(
                             "action_executed",
                             step=step_count,
                             success=False,
                             action_description="final_action_failed",
                         )
-                        log.error("❌ 最终动作/断言执行失败，任务验证未通过！")
+                        log.error("❌ Final action/assertion failed — task verification did not pass")
                         return 1
 
                 final_status = "success"
                 exit_code = 0
-                log.info("🎉 [Agent 结论]: 核心目标与断言已全部达成！")
+                log.info("🎉 [Agent] All goals and assertions achieved!")
                 return 0
 
             if status == "failed":
-                final_error = "任务无法继续，AI 主动判断为失败"
-                log.warning("⚠️ [Agent 结论]: 任务无法继续，AI 主动判断为失败。")
+                final_error = "Task cannot continue — AI determined failure"
+                log.warning("⚠️ [Agent] Task cannot continue — AI determined failure.")
                 return 1
 
             if status == "running":
                 if not action_data:
-                    last_error = "模型返回了 running 状态，但没有提供具体的 action。请提供明确的动作。"
+                    last_error = "Model returned 'running' status but provided no action. Please provide a concrete action."
                     consecutive_failures += 1
                     reporter.emit_event(
                         "action_executed",
@@ -170,7 +170,7 @@ def run_default_mode(
                     else:
                         consecutive_failures += 1
                         action_repr = f"{action_data.get('action')} - {action_data.get('locator_type')}={action_data.get('locator_value')}"
-                        last_error = f"尝试执行动作 [{action_repr}] 失败！未在当前页面找到该元素，或元素不可操作。"
+                        last_error = f"Action [{action_repr}] failed — element not found or not interactable on the current page."
                         reporter.emit_event(
                             "action_executed",
                             step=step_count,
@@ -204,9 +204,9 @@ def run_default_mode(
         return 1
 
     except KeyboardInterrupt:
-        final_error = "收到外部强杀信号 (KeyboardInterrupt)"
+        final_error = "Interrupted by user (KeyboardInterrupt)"
         reporter.emit_event("interrupted", reason="KeyboardInterrupt")
-        log.warning("\n⚠️ 收到外部强杀信号 (KeyboardInterrupt)！正在安全中止...")
+        log.warning("\n⚠️ Interrupted — safely aborting...")
         return 1
 
     finally:
@@ -216,9 +216,9 @@ def run_default_mode(
             steps_executed=steps_executed,
             last_error=final_error,
         )
-        log.info(f"🏁 任务结束，当前已录制的代码安全存档于: {output_script_path}")
+        log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if adapter:
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")

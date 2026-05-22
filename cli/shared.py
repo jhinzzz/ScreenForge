@@ -218,7 +218,7 @@ def _connect_adapter(args, reporter):
     adapter = _create_adapter(args.platform)
     adapter.setup()
     device = adapter.driver
-    log.info(f"✅ {args.platform} 平台已连接并初始化完成")
+    log.info(f"✅ {args.platform} platform connected and initialized")
     try:
         launch_app(device, args.env, args.platform)
         reporter.emit_event("adapter_ready", platform=args.platform)
@@ -227,7 +227,7 @@ def _connect_adapter(args, reporter):
         try:
             adapter.teardown()
         except Exception as e:
-            log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+            log.warning(f"⚠️ [Warning] Cleanup failed during teardown: {e}")
         raise
 
 
@@ -251,12 +251,12 @@ def _capture_ui_state(args, adapter, reporter, step_index: int):
         try:
             ui_json = compress_android_xml(device.dump_hierarchy())
         except Exception as e:
-            log.warning(f"⚠️ 抓取 UI 树失败: {e}")
+            log.warning(f"⚠️ Failed to capture UI tree: {e}")
     elif args.platform == "web":
         try:
             ui_json = compress_web_dom(device)
         except Exception as e:
-            log.warning(f"⚠️ 抓取 Web DOM 失败: {e}")
+            log.warning(f"⚠️ Failed to capture Web DOM: {e}")
 
     screenshot_base64 = None
     if args.vision:
@@ -264,18 +264,18 @@ def _capture_ui_state(args, adapter, reporter, step_index: int):
             img_bytes = adapter.take_screenshot()
             reporter.save_screenshot(img_bytes, step_index)
             screenshot_base64 = base64.b64encode(img_bytes).decode("utf-8")
-            log.info("📸 已截取当前屏幕画面，准备发送给视觉大模型。")
+            log.info("📸 Screenshot captured, sending to vision model.")
         except Exception as e:
-            log.warning(f"⚠️ 截图失败，将降级为纯文本树模式: {e}")
+            log.warning(f"⚠️ Screenshot failed, falling back to text-only UI tree: {e}")
 
     return ui_json, screenshot_base64
 
 
 class _SharedAdapterManager:
-    """MCP session 内的共享 adapter 管理器。
+    """Shared adapter manager for MCP sessions.
 
-    同一 platform 的 adapter 只创建一次，后续请求直接复用。
-    MCP server 退出时调用 teardown_all 统一清理。
+    Each platform adapter is created once and reused across requests.
+    Call teardown_all() on MCP server exit to clean up.
     """
 
     def __init__(self):
@@ -284,7 +284,7 @@ class _SharedAdapterManager:
     def get_or_create(self, platform: str, env: str = "dev"):
         if platform in self._adapters:
             adapter = self._adapters[platform]
-            log.info(f"♻️ [System] 复用已有 {platform} adapter")
+            log.info(f"♻️ [System] Reusing existing {platform} adapter")
             return adapter
         from cli.parser import build_parser
         from cli.tool_protocol_handlers import _NullRunReporter
@@ -301,7 +301,7 @@ class _SharedAdapterManager:
         for platform, adapter in self._adapters.items():
             try:
                 adapter.teardown()
-                log.info(f"✅ [System] 已清理 {platform} adapter")
+                log.info(f"✅ [System] Cleaned up {platform} adapter")
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理 {platform} adapter 失败: {e}")
+                log.warning(f"⚠️ [Warning] Failed to clean up {platform} adapter: {e}")
         self._adapters.clear()

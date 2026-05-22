@@ -56,18 +56,18 @@ def run_plan_only_mode(
             risks=plan.get("risks", []),
         )
         reporter.update_summary(plan_preview=plan)
-        log.info(f"🧭 [Plan] 当前页面摘要: {plan.get('current_state_summary', '')}")
+        log.info(f"🧭 [Plan] Current page summary: {plan.get('current_state_summary', '')}")
         for index, step in enumerate(planned_steps, start=1):
-            log.info(f"🧭 [Plan] 步骤 {index}: {step}")
+            log.info(f"🧭 [Plan] Step {index}: {step}")
         if plan.get("suggested_assertion"):
-            log.info(f"🧭 [Plan] 建议断言: {plan.get('suggested_assertion', '')}")
+            log.info(f"🧭 [Plan] Suggested assertion: {plan.get('suggested_assertion', '')}")
 
         final_status = "success"
         exit_code = 0
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("plan_failed", error=str(e))
-        log.error(f"❌ [Plan] 计划生成失败: {e}")
+        log.error(f"❌ [Plan] Plan generation failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,
@@ -79,7 +79,7 @@ def run_plan_only_mode(
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")
     return exit_code
 
 
@@ -98,7 +98,7 @@ def run_action_plan_only_mode(
     try:
         action_data = _build_inline_action_data(args)
         plan = {
-            "current_state_summary": f"即时动作 [{action_data['name']}] 预览",
+            "current_state_summary": f"Inline action [{action_data['name']}] preview",
             "planned_steps": [action_data["name"]],
             "suggested_assertion": "",
             "risks": [],
@@ -129,15 +129,15 @@ def run_action_plan_only_mode(
         )
         reporter.update_summary(plan_preview=plan, action_summary=action_summary)
 
-        log.info(f"🧭 [Action] 即时动作名称: {action_summary['action_name']}")
-        log.info(f"🧭 [Action] 预览步骤: {action_summary['action_name']}")
+        log.info(f"🧭 [Action] Action name: {action_summary['action_name']}")
+        log.info(f"🧭 [Action] Preview step: {action_summary['action_name']}")
 
         final_status = "success"
         exit_code = 0
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("action_plan_failed", error=str(e))
-        log.error(f"❌ [Action] 计划生成失败: {e}")
+        log.error(f"❌ [Action] Plan generation failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,

@@ -45,11 +45,11 @@ def _classify_doctor_check(check: dict) -> dict:
     check_name = str(check.get("name", "")).strip()
 
     if check_name == "config":
-        return {"category": "config", "title": "配置问题", "priority": 1}
+        return {"category": "config", "title": "Configuration", "priority": 1}
     if check_name in {"venv_consistency", "runtime_paths"}:
-        return {"category": "runtime", "title": "运行时问题", "priority": 2}
+        return {"category": "runtime", "title": "Runtime", "priority": 2}
     if check_name in {"adb", "uiautomator2", "wda", "playwright"}:
-        return {"category": "dependency", "title": "依赖问题", "priority": 3}
+        return {"category": "dependency", "title": "Dependency", "priority": 3}
     if check_name in {
         "adb_devices",
         "wda_status",
@@ -57,8 +57,8 @@ def _classify_doctor_check(check: dict) -> dict:
         "http://localhost:8100",
         "http://localhost:9222",
     } or check_name.startswith(("http://", "https://")):
-        return {"category": "connectivity", "title": "连接问题", "priority": 4}
-    return {"category": "other", "title": "其他问题", "priority": 5}
+        return {"category": "connectivity", "title": "Connectivity", "priority": 4}
+    return {"category": "other", "title": "Other", "priority": 5}
 
 
 def _doctor_fix_doc_reference(doc_name: str, section: str) -> dict:
@@ -74,102 +74,102 @@ def _build_doctor_remediation(check_name: str, message: str) -> dict:
     message = str(message).strip()
     normalized_check_name = str(check_name).strip()
     common_doc = _doctor_fix_doc_reference(
-        "docs/agent_guide.md", "排障"
+        "docs/agent_guide.md", "Troubleshooting"
     )
 
     remediation = {
-        "fix_label": "查看诊断文档",
+        "fix_label": "See diagnostics docs",
         "fix_command": "",
         **common_doc,
     }
 
     if normalized_check_name == "config":
         return {
-            "fix_label": "补齐运行配置",
+            "fix_label": "Complete runtime configuration",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name == "venv_consistency":
         return {
-            "fix_label": "修复虚拟环境入口漂移",
+            "fix_label": "Repair venv entry-point drift",
             "fix_command": "./.venv/bin/python scripts/repair_venv.py",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name == "runtime_paths":
         return {
-            "fix_label": "确认运行目录可写",
+            "fix_label": "Verify working directory is writable",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name == "uiautomator2":
         return {
-            "fix_label": "补齐 Android Python 依赖",
+            "fix_label": "Install Android Python dependencies",
             "fix_command": "./.venv/bin/python -m pip install -r requirement.txt",
-            **_doctor_fix_doc_reference("README.md", "安装 Python 依赖库"),
+            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
         }
 
     if normalized_check_name == "playwright":
         return {
-            "fix_label": "安装 Playwright 依赖",
+            "fix_label": "Install Playwright dependencies",
             "fix_command": "./.venv/bin/python -m pip install playwright",
-            **_doctor_fix_doc_reference("README.md", "安装 Python 依赖库"),
+            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
         }
 
     if normalized_check_name == "wda":
         return {
-            "fix_label": "安装 iOS WDA 依赖",
+            "fix_label": "Install iOS WDA dependencies",
             "fix_command": "./.venv/bin/python -m pip install facebook-wda",
-            **_doctor_fix_doc_reference("README.md", "安装 Python 依赖库"),
+            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
         }
 
     if normalized_check_name == "adb":
         return {
-            "fix_label": "安装并暴露 adb 到 PATH",
+            "fix_label": "Install adb and add to PATH",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name == "adb_devices":
-        if "当前运行环境限制了" in message or "宿主终端" in message:
+        if "environment restricts" in message or "host terminal" in message:
             return {
-                "fix_label": "在宿主终端重试 adb 检查",
+                "fix_label": "Retry adb check in host terminal",
                 "fix_command": "adb devices",
-                **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+                **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
             }
         return {
-            "fix_label": "检查 Android 设备连接状态",
+            "fix_label": "Check Android device connection",
             "fix_command": "adb devices",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name in {"http://localhost:8100", "wda_status"}:
         return {
-            "fix_label": "确认 WebDriverAgent 服务状态",
+            "fix_label": "Verify WebDriverAgent service status",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if normalized_check_name in {"http://localhost:9222", "cdp_debug_endpoint"}:
-        if "当前运行环境限制了" in message or "宿主终端" in message:
+        if "environment restricts" in message or "host terminal" in message:
             return {
-                "fix_label": "在宿主终端检查 Chrome DevTools 调试端口",
+                "fix_label": "Check Chrome DevTools port from host terminal",
                 "fix_command": "curl -sS http://localhost:9222/json/version",
-                **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+                **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
             }
         return {
-            "fix_label": "确认 Chrome DevTools 调试端口",
+            "fix_label": "Verify Chrome DevTools debug port",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     if "OPENAI_API_KEY" in message or "WEB_CDP_URL" in message:
         return {
-            "fix_label": "补齐运行配置",
+            "fix_label": "Complete runtime configuration",
             "fix_command": "",
-            **_doctor_fix_doc_reference("docs/agent_guide.md", "排障"),
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 
     return remediation
@@ -241,7 +241,7 @@ def _build_doctor_summary(checks: list[dict]) -> dict:
                     existing["kind"] = kind
                 if not existing["fix_command"] and remediation.get("fix_command", ""):
                     existing["fix_command"] = remediation.get("fix_command", "")
-                if existing.get("fix_doc_section", "") == "排障":
+                if existing.get("fix_doc_section", "") == "Troubleshooting":
                     existing["fix_label"] = remediation.get("fix_label", existing["fix_label"])
                     existing["fix_doc"] = remediation.get("fix_doc", existing["fix_doc"])
                     existing["fix_doc_section"] = remediation.get(
@@ -312,13 +312,13 @@ def _build_doctor_check_failure_message(check: dict) -> str:
 
     if not details:
         if "path" in check and not str(check.get("path", "")).strip():
-            details.append("未找到可执行文件")
+            details.append("Executable not found")
         elif check.get("name") == "runtime_paths":
-            details.append("运行时目录不可用或不可写")
+            details.append("Runtime directory unavailable or not writable")
         else:
-            details.append("检查未通过")
+            details.append("Check failed")
 
-    return f"   - {check.get('name', 'unknown')}: {'；'.join(details)}"
+    return f"   - {check.get('name', 'unknown')}: {'; '.join(details)}"
 
 
 def run_doctor_mode(args, output_script_path: str) -> int:
@@ -354,25 +354,25 @@ def run_doctor_mode(args, output_script_path: str) -> int:
         )
 
         if result.get("ok"):
-            log.info("🩺 [Doctor] 环境体检通过，可以继续执行。")
+            log.info("🩺 [Doctor] Environment check passed.")
             final_status = "success"
             exit_code = 0
         else:
-            final_error = "doctor 检查未通过"
-            log.error("❌ [Doctor] 环境体检未通过，请先修复前置条件。")
+            final_error = "Doctor check failed"
+            log.error("❌ [Doctor] Environment check failed. Fix prerequisites first.")
             for check in result.get("checks", []):
                 if not check.get("ok", False):
                     log.error(_build_doctor_check_failure_message(check))
             remediation_items = doctor_summary.get("recommended_actions", [])
             if remediation_items:
-                log.error("🧭 [Doctor] 建议优先处理以下问题：")
+                log.error("🧭 [Doctor] Recommended actions:")
                 for index, item in enumerate(remediation_items, start=1):
                     log.error(f"   {index}. {item.get('message', '')}")
                     if item.get("fix_command"):
-                        log.error(f"      命令: {item.get('fix_command', '')}")
+                        log.error(f"      Run: {item.get('fix_command', '')}")
                     if item.get("fix_doc"):
                         log.error(
-                            "      文档: "
+                            "      Docs: "
                             f"{item.get('fix_doc', '')} ({item.get('fix_doc_section', '')})"
                         )
     finally:

@@ -98,27 +98,27 @@ def _resolve_output_script_path(args) -> str:
 
 def _format_resume_context(resume_context: dict) -> str:
     actions = resume_context.get("successful_actions", [])
-    actions_str = "；".join(actions) if actions else "无"
-    screenshot_path = resume_context.get("latest_screenshot_path", "") or "无"
+    actions_str = "; ".join(actions) if actions else "N/A"
+    screenshot_path = resume_context.get("latest_screenshot_path", "") or "N/A"
     control_summary = resume_context.get("control_summary", {}) or {}
     failure_analysis = resume_context.get("failure_analysis", {}) or {}
     pytest_asset = resume_context.get("pytest_asset", {}) or {}
     control_kind = control_summary.get("control_kind", "") or "unknown"
     control_label = control_summary.get("control_label", "") or resume_context.get("goal", "")
-    source_ref = control_summary.get("source_ref", "") or "无"
-    failure_category = failure_analysis.get("category", "") or "无"
-    failure_stage = failure_analysis.get("stage", "") or "无"
-    failure_summary = failure_analysis.get("summary", "") or "无"
-    failure_retryable = failure_analysis.get("retryable", "无")
-    failure_recommended_command = failure_analysis.get("recommended_command", "") or "无"
-    recovery_hint = failure_analysis.get("recovery_hint", "") or "无"
-    pytest_target = pytest_asset.get("pytest_target", "") or "无"
-    pytest_command = pytest_asset.get("pytest_command", "") or "无"
-    pytest_manifest_path = pytest_asset.get("manifest_path", "") or "无"
+    source_ref = control_summary.get("source_ref", "") or "N/A"
+    failure_category = failure_analysis.get("category", "") or "N/A"
+    failure_stage = failure_analysis.get("stage", "") or "N/A"
+    failure_summary = failure_analysis.get("summary", "") or "N/A"
+    failure_retryable = failure_analysis.get("retryable", "N/A")
+    failure_recommended_command = failure_analysis.get("recommended_command", "") or "N/A"
+    recovery_hint = failure_analysis.get("recovery_hint", "") or "N/A"
+    pytest_target = pytest_asset.get("pytest_target", "") or "N/A"
+    pytest_command = pytest_asset.get("pytest_command", "") or "N/A"
+    pytest_manifest_path = pytest_asset.get("manifest_path", "") or "N/A"
     resume_commands = pytest_asset.get("resume_commands", {}) or {}
-    resume_dry_run_command = resume_commands.get("dry_run", "") or "无"
+    resume_dry_run_command = resume_commands.get("dry_run", "") or "N/A"
     return (
-        "\n【上次运行恢复上下文】:\n"
+        "\n[Previous Run Resume Context]:\n"
         f"- run_id: {resume_context.get('run_id', '')}\n"
         f"- control_kind: {control_kind}\n"
         f"- control_label: {control_label}\n"
@@ -148,14 +148,14 @@ def _load_context_content(args):
     if args.context and os.path.exists(args.context):
         with open(args.context, "r", encoding="utf-8") as f:
             context_content = f.read()
-        log.info(f"📄 已成功加载业务上下文文件: {args.context}")
+        log.info(f"📄 Loaded context file: {args.context}")
 
     resume_context = {}
     if args.resume_run_id:
         run_dir = Path(config.RUN_REPORT_BASE_DIR) / args.resume_run_id
         resume_context = load_run_context(run_dir)
         context_content = f"{context_content}{_format_resume_context(resume_context)}"
-        log.info(f"🧩 已从 run_id={args.resume_run_id} 恢复最小上下文")
+        log.info(f"🧩 Resumed context from run_id={args.resume_run_id}")
 
     return context_content, resume_context
 

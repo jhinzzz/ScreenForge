@@ -86,7 +86,7 @@ def run_workflow_plan_only_mode(
             if step.enabled
         ]
         plan = {
-            "current_state_summary": f"工作流 [{workflow.name or Path(args.workflow).stem}] 预览",
+            "current_state_summary": f"Workflow [{workflow.name or Path(args.workflow).stem}] preview",
             "planned_steps": planned_steps,
             "suggested_assertion": "",
             "risks": [],
@@ -114,16 +114,16 @@ def run_workflow_plan_only_mode(
         )
         reporter.update_summary(plan_preview=plan, workflow_summary=workflow_summary)
 
-        log.info(f"🧭 [Workflow] 工作流名称: {workflow_summary['workflow_name']}")
+        log.info(f"🧭 [Workflow] Workflow name: {workflow_summary['workflow_name']}")
         for index, step_name in enumerate(planned_steps, start=1):
-            log.info(f"🧭 [Workflow] 步骤 {index}: {step_name}")
+            log.info(f"🧭 [Workflow] Step {index}: {step_name}")
 
         final_status = "success"
         exit_code = 0
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("workflow_plan_failed", error=str(e))
-        log.error(f"❌ [Workflow] 计划生成失败: {e}")
+        log.error(f"❌ [Workflow] Plan generation failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,
@@ -213,7 +213,7 @@ def run_workflow_dry_run_mode(
         )
 
         if unresolved_steps:
-            final_error = f"存在 {unresolved_steps} 个 workflow 步骤无法解析"
+            final_error = f"{unresolved_steps} workflow step(s) could not be resolved"
             exit_code = 1
         else:
             final_status = "success"
@@ -221,7 +221,7 @@ def run_workflow_dry_run_mode(
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("workflow_dry_run_failed", error=str(e))
-        log.error(f"❌ [Workflow] 模拟执行失败: {e}")
+        log.error(f"❌ [Workflow] Dry-run failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,
@@ -233,7 +233,7 @@ def run_workflow_dry_run_mode(
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")
     return exit_code
 
 
@@ -276,7 +276,7 @@ def run_workflow_default_mode(
         except Exception as e:
             final_error = str(e)
             reporter.emit_event("startup_failed", platform=args.platform, error=str(e))
-            log.error(f"❌ [Error]{args.platform} 连接失败: {e}")
+            log.error(f"❌ [Error] {args.platform} connection failed: {e}")
             return 1
 
         _ensure_history_manager()
@@ -300,14 +300,14 @@ def run_workflow_default_mode(
             )
             result = executor.execute_and_record(action_data)
             if not result.get("success"):
-                final_error = f"workflow 步骤执行失败: {action_data['name']}"
+                final_error = f"Workflow step failed: {action_data['name']}"
                 reporter.emit_event(
                     "action_executed",
                     step=index,
                     success=False,
                     action_description=action_data["name"],
                 )
-                log.error(f"❌ [Workflow] 步骤执行失败: {action_data['name']}")
+                log.error(f"❌ [Workflow] Step failed: {action_data['name']}")
                 return 1
 
             history_manager.add_step(
@@ -335,7 +335,7 @@ def run_workflow_default_mode(
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("workflow_run_failed", error=str(e))
-        log.error(f"❌ [Workflow] 执行失败: {e}")
+        log.error(f"❌ [Workflow] Execution failed: {e}")
         return 1
 
     finally:
@@ -345,9 +345,9 @@ def run_workflow_default_mode(
             steps_executed=steps_executed,
             last_error=final_error,
         )
-        log.info(f"🏁 任务结束，当前已录制的代码安全存档于: {output_script_path}")
+        log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if adapter:
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")

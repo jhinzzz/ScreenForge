@@ -132,12 +132,12 @@ def load_tool_request(file_path: str | Path) -> ToolRequest:
 
 def load_tool_request_from_stdin(raw_text: str) -> ToolRequest:
     if not str(raw_text).strip():
-        raise ToolRequestError("tool stdin 为空，无法解析请求")
+        raise ToolRequestError("Tool stdin is empty")
 
     try:
         payload = json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        raise ToolRequestError(f"tool stdin JSON 解析失败: {exc}") from exc
+        raise ToolRequestError(f"Tool stdin JSON parse error: {exc}") from exc
 
     return _validate_tool_request_payload(payload, "tool stdin")
 

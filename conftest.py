@@ -66,9 +66,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(
                 pytest.mark.skip(
                     reason=(
-                        "默认跳过真机/真浏览器回放测试；如需执行，请设置 "
-                        "RUN_LIVE_PLATFORM_TESTS=true，并按需设置 "
-                        "TEST_PLATFORM=android|ios|web。"
+                        "Live platform tests skipped by default. "
+                        "Set RUN_LIVE_PLATFORM_TESTS=true and "
+                        "TEST_PLATFORM=android|ios|web to enable."
                     )
                 )
             )
@@ -78,8 +78,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(
                 pytest.mark.skip(
                     reason=(
-                        f"当前仅启用 TEST_PLATFORM={selected_platform} 的真机回放测试，"
-                        f"已跳过 {item_platform} 平台脚本。"
+                        f"Only TEST_PLATFORM={selected_platform} is enabled; "
+                        f"skipping {item_platform} test."
                     )
                 )
             )
@@ -100,7 +100,7 @@ def _normalize_screenshot_bytes(raw) -> bytes:
 def _capture_failure_screenshot(device, platform_name: str, item) -> bytes:
     img_bytes = None
     try:
-        log.info("📸 正在采集失败现场截图...")
+        log.info("📸 Capturing failure screenshot...")
         if platform_name == "android":
             img_bytes = _normalize_screenshot_bytes(device.screenshot())
         elif platform_name == "ios":
@@ -115,25 +115,25 @@ def _capture_failure_screenshot(device, platform_name: str, item) -> bytes:
         if img_bytes:
             allure.attach(
                 img_bytes,
-                name=f"失败截图_{item.name}",
+                name=f"failure_screenshot_{item.name}",
                 attachment_type=allure.attachment_type.PNG,
             )
-            log.info("✅ [System] 已成功将失败截图挂载至 Allure 报告")
+            log.info("✅ [System] Failure screenshot attached to Allure report")
     except Exception as e:
-        log.error(f"[Error] 捕获失败截图异常: {e}")
+        log.error(f"[Error] Failed to capture failure screenshot: {e}")
     return img_bytes
 
 
 def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: bytes):
     log.info("=" * 60)
-    log.info("🚑 [Self-Healing] 触发自动化自愈机制，正在介入案发现场...")
+    log.info("🚑 [Self-Healing] Triggered — analyzing failure scene...")
     log.info("=" * 60)
 
     if not device:
-        log.error("❌ 自愈引擎无法获取 fixture 'd'，终止自愈。")
+        log.error("❌ Self-healing engine cannot access fixture 'd'. Aborting.")
         return
 
-    log.info("🔍 正在提取 DOM/XML 结构用于自愈分析...")
+    log.info("🔍 Extracting DOM/XML structure for self-healing analysis...")
     ui_json = "{}"
     screenshot_base64 = None
 
@@ -146,7 +146,7 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
         if img_bytes:
             screenshot_base64 = base64.b64encode(img_bytes).decode("utf-8")
     except Exception as e:
-        log.warning(f"⚠️ 现场快照采集出现部分缺失: {e}")
+        log.warning(f"⚠️ Partial snapshot capture failure: {e}")
 
     excinfo = call.excinfo
     error_msg = str(excinfo.value)
@@ -154,7 +154,7 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
     file_path = str(getattr(item, "path", item.fspath))
 
     if not os.path.exists(file_path):
-        log.error(f"❌ 找不到测试脚本文件: {file_path}，终止自愈。")
+        log.error(f"❌ Test script file not found: {file_path}. Aborting self-heal.")
         return
 
     error_line_num = excinfo.traceback[-1].lineno + 1
@@ -179,34 +179,34 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
     )
 
     if not result.fixed_code:
-        log.error("❌ 自愈引擎未能生成修复代码。")
+        log.error("❌ Self-healing engine failed to generate fix code.")
         return
 
     if result.confidence < config.AUTO_HEAL_MIN_CONFIDENCE:
         log.warning(
-            f"⚠️ [Self-Healing] 置信度 {result.confidence:.2f} 低于阈值 "
-            f"{config.AUTO_HEAL_MIN_CONFIDENCE}，跳过自动修复。"
-            f"(原因: {result.fix_description})"
+            f"⚠️ [Self-Healing] Confidence {result.confidence:.2f} below threshold "
+            f"{config.AUTO_HEAL_MIN_CONFIDENCE}. Skipping auto-fix. "
+            f"(reason: {result.fix_description})"
         )
         return
 
     if "def test_" not in result.fixed_code:
-        log.error("❌ 自愈引擎返回的代码结构异常（缺少 test 函数），放弃覆盖文件。")
+        log.error("❌ Self-healing code is malformed (missing test function). Aborting overwrite.")
         return
 
     # Backup before overwriting
     backup_path = file_path + ".bak"
     shutil.copy2(file_path, backup_path)
-    log.info(f"📦 [Self-Healing] 已备份原始脚本至: {backup_path}")
+    log.info(f"📦 [Self-Healing] Original script backed up to: {backup_path}")
 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(result.fixed_code)
     log.info(
-        f"✅ [Self-Healing] 脚本自愈成功！(confidence={result.confidence:.2f}, "
+        f"✅ [Self-Healing] Script healed successfully (confidence={result.confidence:.2f}, "
         f"desc={result.fix_description})"
     )
-    log.info(f"✅ [Self-Healing] 修复文件已落盘: {file_path}")
-    log.info("💡 [Self-Healing] 提示: 您可以重新运行 pytest 体验修复后的用例。")
+    log.info(f"✅ [Self-Healing] Fixed file written to: {file_path}")
+    log.info("💡 [Self-Healing] Re-run pytest to verify the healed test case.")
 
 
 @pytest.fixture(scope="session")
@@ -229,7 +229,7 @@ def d():
     adapter.setup()
     yield adapter.driver
     adapter.teardown()
-    log.info(f"🏁 [Pytest Teardown] {platform} 测试环境已清理")
+    log.info(f"🏁 [Pytest Teardown] {platform} test environment cleaned up")
 
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
@@ -242,7 +242,7 @@ def pytest_runtest_makereport(item, call):
         _failure_tracker[nodeid] = _failure_tracker.get(nodeid, 0) + 1
         current_fails = _failure_tracker[nodeid]
 
-        log.warning(f"⚠️ 检测到用例失败: {nodeid} (当前连续失败次数: {current_fails})")
+        log.warning(f"⚠️ Test failure detected: {nodeid} (consecutive failures: {current_fails})")
 
         device = item.funcargs.get("d")
         platform_name = "android"

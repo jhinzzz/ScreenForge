@@ -156,20 +156,18 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             1,
         )
 
-        # inspect_ui 始终截图 (不受 --vision 开关限制)
         if not screenshot_base64:
             try:
                 img_bytes = adapter.take_screenshot()
                 screenshot_base64 = base64.b64encode(img_bytes).decode("utf-8")
             except Exception as e:
-                log.warning(f"⚠️ [Warning] inspect_ui 截图失败: {e}")
+                log.warning(f"⚠️ [Warning] inspect_ui screenshot capture failed: {e}")
 
         try:
             ui_tree = json.loads(ui_json)
         except json.JSONDecodeError:
             ui_tree = {"ui_elements": [], "raw": ui_json}
 
-        # 生成标注截图 (红框 + ref 标签)
         annotated_screenshot_base64 = ""
         if screenshot_base64 and ui_tree.get("ui_elements"):
             try:
@@ -178,7 +176,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
                 annotated_bytes = annotate_screenshot(raw_bytes, ui_tree["ui_elements"])
                 annotated_screenshot_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 生成标注截图失败: {e}")
+                log.warning(f"⚠️ [Warning] Annotated screenshot generation failed: {e}")
 
         return {
             "ok": True,
@@ -206,7 +204,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")
 
 
 def _requires_model_runtime(args, execution_mode: str) -> bool:

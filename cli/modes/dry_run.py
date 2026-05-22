@@ -45,8 +45,8 @@ def _build_resolution_hint(args, action_data: dict, resolution: dict) -> str:
 
     locator_type = action_data.get("locator_type", "")
     if not args.vision and str(locator_type).lower() != "global":
-        return "定位解析失败，建议先确认当前页面状态，必要时重试并开启 --vision。"
-    return "定位解析失败，建议先确认当前页面结构、上下文约束和目标元素是否真实存在。"
+        return "Locator resolution failed. Verify current page state; consider enabling --vision."
+    return "Locator resolution failed. Verify page structure and whether the target element exists."
 
 
 def run_dry_run_mode(
@@ -109,8 +109,8 @@ def run_dry_run_mode(
         )
 
         if status == "failed":
-            final_error = "任务无法继续，AI 主动判断为失败"
-            log.warning("⚠️ [Dry Run] AI 判断当前任务无法继续。")
+            final_error = "Task cannot continue — AI determined failure"
+            log.warning("⚠️ [Dry Run] AI determined task cannot continue.")
             exit_code = 1
         else:
             log.info(
@@ -122,7 +122,7 @@ def run_dry_run_mode(
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("dry_run_failed", error=str(e))
-        log.error(f"❌ [Dry Run] 模拟执行失败: {e}")
+        log.error(f"❌ [Dry Run] Simulation failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,
@@ -134,7 +134,7 @@ def run_dry_run_mode(
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")
     return exit_code
 
 
@@ -216,12 +216,12 @@ def run_action_dry_run_mode(
             final_status = "success"
             exit_code = 0
         else:
-            final_error = "即时动作无法解析"
+            final_error = "Action locator cannot be resolved"
             exit_code = 1
     except Exception as e:
         final_error = str(e)
         reporter.emit_event("action_dry_run_failed", error=str(e))
-        log.error(f"❌ [Action] 模拟执行失败: {e}")
+        log.error(f"❌ [Action] Dry-run failed: {e}")
     finally:
         reporter.finalize(
             status=final_status,
@@ -233,5 +233,5 @@ def run_action_dry_run_mode(
             try:
                 adapter.teardown()
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 清理资源时发生异常: {e}")
+                log.warning(f"⚠️ [Warning] Cleanup failed: {e}")
     return exit_code
