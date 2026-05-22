@@ -100,8 +100,12 @@ def _dispatch_execution(
 
 
 def main():
+    from cli.shorthand import preprocess_argv
+
+    processed_argv = preprocess_argv(sys.argv)
+
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(processed_argv[1:])
 
     try:
         validate_cli_args(args)
@@ -115,6 +119,9 @@ def main():
         sys.exit(run_demo_mode())
 
     if args.tool_stdin:
+        if sys.stdin.isatty():
+            import io
+            sys.stdin = io.StringIO(f'{{"operation":"inspect_ui","platform":"{args.platform}"}}')
         sys.exit(run_tool_stdin_mode(args))
 
     if args.mcp_server:
