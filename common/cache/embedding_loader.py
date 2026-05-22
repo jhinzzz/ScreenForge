@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Optional
+
 from sentence_transformers import SentenceTransformer
+
 from common.logs import log
 
 
@@ -36,8 +38,8 @@ class EmbeddingModelLoader:
         if not self.disable_ssl_verify:
             return
 
-        import urllib3
         import requests
+        import urllib3
 
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 

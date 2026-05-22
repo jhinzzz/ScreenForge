@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from common.logs import log
 from config.env_loader import resolve_dotenv_path, safe_load_dotenv
 
 # ==========================================
@@ -18,8 +19,8 @@ safe_load_dotenv(dotenv_path=env_path, override=False)
 # 2. 文本大模型配置 (用于处理纯 XML 树，高频、廉价、快速)
 # ==========================================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-MODEL_NAME = os.getenv("MODEL_NAME", "doubao-seed-2-0-lite-260215")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4o")
 
 # ==========================================
 # 3. 多模态视觉大模型配置 (用于处理屏幕截图，低频、复杂场景辅助)
@@ -27,7 +28,7 @@ MODEL_NAME = os.getenv("MODEL_NAME", "doubao-seed-2-0-lite-260215")
 # 默认 fallback 到文本模型的配置，实现优雅降级；若配置了则实现异构解耦
 VISION_API_KEY = os.getenv("VISION_API_KEY", OPENAI_API_KEY)
 VISION_BASE_URL = os.getenv("VISION_BASE_URL", OPENAI_BASE_URL)
-VISION_MODEL_NAME = os.getenv("VISION_MODEL_NAME", "doubao-seed-2-0-lite-260215")
+VISION_MODEL_NAME = os.getenv("VISION_MODEL_NAME", MODEL_NAME)
 
 # ==========================================
 # 4. 自动化自愈配置 (Self-Healing)
@@ -102,19 +103,42 @@ RUN_LIVE_PLATFORM_TESTS = str(os.getenv("RUN_LIVE_PLATFORM_TESTS", "False")).low
 
 
 def validate_config() -> bool:
-    errors = []
+    """Validate required configuration. Returns False and logs errors on failure."""
+    errors: list[tuple[str, str, str]] = []  # (code, what, fix)
+
     if not OPENAI_API_KEY:
-        errors.append("OPENAI_API_KEY 未配置")
+        errors.append((
+            "E001",
+            "OPENAI_API_KEY is not set.",
+            "Fix: export OPENAI_API_KEY=sk-... or add it to your .env file",
+        ))
     if DEFAULT_TIMEOUT <= 0:
-        errors.append(f"DEFAULT_TIMEOUT 必须大于 0，当前值: {DEFAULT_TIMEOUT}")
-    if CACHE_SIMILARITY_THRESHOLD < 0 or CACHE_SIMILARITY_THRESHOLD > 1:
-        errors.append(f"CACHE_SIMILARITY_THRESHOLD 必须在 0-1 之间，当前值: {CACHE_SIMILARITY_THRESHOLD}")
-    if CACHE_EXACT_MATCH_THRESHOLD < 0 or CACHE_EXACT_MATCH_THRESHOLD > 1:
-        errors.append(f"CACHE_EXACT_MATCH_THRESHOLD 必须在 0-1 之间，当前值: {CACHE_EXACT_MATCH_THRESHOLD}")
+        errors.append((
+            "E002",
+            f"DEFAULT_TIMEOUT must be > 0 (current: {DEFAULT_TIMEOUT}).",
+            "Fix: export DEFAULT_TIMEOUT=30",
+        ))
+    if not (0 <= CACHE_SIMILARITY_THRESHOLD <= 1):
+        errors.append((
+            "E003",
+            f"CACHE_SIMILARITY_THRESHOLD must be 0-1 (current: {CACHE_SIMILARITY_THRESHOLD}).",
+            "Fix: export CACHE_SIMILARITY_THRESHOLD=0.90",
+        ))
+    if not (0 <= CACHE_EXACT_MATCH_THRESHOLD <= 1):
+        errors.append((
+            "E004",
+            f"CACHE_EXACT_MATCH_THRESHOLD must be 0-1 (current: {CACHE_EXACT_MATCH_THRESHOLD}).",
+            "Fix: export CACHE_EXACT_MATCH_THRESHOLD=0.98",
+        ))
     if not WEB_CDP_URL.startswith(("http://", "https://")):
-        errors.append(f"WEB_CDP_URL 必须以 http:// 或 https:// 开头，当前值: {WEB_CDP_URL}")
+        errors.append((
+            "E005",
+            f"WEB_CDP_URL must start with http:// or https:// (current: {WEB_CDP_URL}).",
+            "Fix: export WEB_CDP_URL=http://localhost:9222",
+        ))
+
     if errors:
-        for err in errors:
-            print(f"[Config Error] {err}")
+        for code, what, fix in errors:
+            log.error(f"[{code}] {what} {fix}")
         return False
     return True

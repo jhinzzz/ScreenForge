@@ -2,8 +2,6 @@
 
 import os
 
-from common.runtime_modes import MODE_RUN
-
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -14,14 +12,15 @@ from cli.reporter import (
 from cli.shared import (
     StepHistoryManager,
     UIExecutor,
-    _SharedAdapterManager,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_history_manager,
+    _SharedAdapterManager,
     get_initial_header,
     log,
     save_to_disk,
 )
+from common.runtime_modes import MODE_RUN
 
 
 def run_action_default_mode(

@@ -1,7 +1,8 @@
 import json
+
+import config.config as config
 from common.ai import AIBrain
 from common.logs import log
-import config.config as config
 
 
 class AutonomousBrain(AIBrain):

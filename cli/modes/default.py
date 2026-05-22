@@ -1,7 +1,5 @@
 """Default autonomous brain loop mode."""
 
-from common.runtime_modes import MODE_RUN
-
 from cli.reporter import (
     _apply_resume_summary,
     _build_reporter,
@@ -20,6 +18,7 @@ from cli.shared import (
     log,
     save_to_disk,
 )
+from common.runtime_modes import MODE_RUN
 
 
 def run_default_mode(
@@ -74,7 +73,7 @@ def run_default_mode(
 
             if last_ui_json == ui_json and step_count > 1 and not last_error:
                 last_error = "【系统环境警告】: 上一步动作已被物理执行，但页面 UI 没有任何改变！可能原因：1.输入项不合法导致按钮无效 2.需要先勾选协议 3.遇到了不可见弹窗。请切勿重复执行相同的动作，请更换策略！"
-                log.warning("⚠️ 检测到 UI 僵死(操作无响应)，已向大模型注入防重复警告。")
+                log.warning("[E020] UI stagnation detected: action executed but page did not change. Possible causes: invalid input, unchecked checkbox, or invisible overlay.")
 
             last_ui_json = ui_json
 
@@ -163,7 +162,7 @@ def run_default_mode(
                             output_script_path,
                             history_manager.get_current_file_content(),
                         )
-                        log.info(f"✅ 动作执行成功: {result['action_description']}")
+                        log.info(f"Action succeeded: {result['action_description']}")
                         reporter.emit_event(
                             "action_executed",
                             step=step_count,
@@ -181,24 +180,28 @@ def run_default_mode(
                             action_description=action_repr,
                         )
                         log.warning(
-                            f"⚠️ 执行受挫，准备让大模型进行第 {consecutive_failures} 次自愈尝试..."
+                            f"[E021] Step failed (attempt {consecutive_failures}/{args.max_retries}). Self-heal engine will retry with adjusted strategy."
                         )
 
                 if consecutive_failures >= args.max_retries:
-                    final_error = f"连续重试 {args.max_retries} 次均失败，触发熔断机制"
+                    action_repr = f"{action_data.get('action')} - {action_data.get('locator_type')}={action_data.get('locator_value')}"
+                    final_error = f"Circuit breaker triggered after {args.max_retries} consecutive failures on: {action_repr}"
                     log.error(
-                        f"❌ 连续重试 {args.max_retries} 次均失败，触发熔断机制！"
+                        f"[E022] Circuit breaker triggered: {args.max_retries} consecutive failures on [{action_repr}]. "
+                        f"Last error: element not found or not interactable. "
+                        f"Fix: run 'screenforge --action click --platform {args.platform} --dry-run ...' to inspect current page state, "
+                        f"or adjust your workflow/locator strategy."
                     )
                     return 1
                 continue
 
-            final_error = f"未知的状态字: {status}"
-            log.error(f"❌ 未知的状态字: {status}")
+            final_error = f"Unknown decision status: {status}"
+            log.error(f"[E023] Unknown decision status '{status}' returned by AI brain. This is likely a model parsing issue. Fix: check MODEL_NAME supports structured JSON output")
             return 1
 
-        final_error = f"探索超过最大步数限制 ({args.max_steps}步)，可能是逻辑死循环"
+        final_error = f"Max step limit reached ({args.max_steps} steps)"
         log.warning(
-            f"⚠️ 探索超过最大步数限制 ({args.max_steps}步)，可能是逻辑死循环，强制终止。"
+            f"[E024] Exploration exceeded max step limit ({args.max_steps}). Possible infinite loop. Fix: increase --max_steps or refine your --goal to be more specific."
         )
         return 1
 

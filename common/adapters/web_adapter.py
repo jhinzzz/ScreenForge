@@ -3,8 +3,10 @@ import os
 import shutil
 import subprocess
 import time
-from common.logs import log
+
 import config.config as config
+from common.logs import log
+
 from .base_adapter import BasePlatformAdapter
 
 _SESSION_FILE = os.path.abspath(os.path.join("report", "web_session.json"))
@@ -58,9 +60,10 @@ def _find_chromium_path() -> str:
 
     # 直接用 playwright 的 registry 查找
     try:
-        from playwright._impl._driver import compute_driver_executable
         import pathlib
-        driver = pathlib.Path(compute_driver_executable())
+
+        from playwright._impl._driver import compute_driver_executable
+        _driver = pathlib.Path(compute_driver_executable())  # noqa: F841
         # Chromium 通常在 driver 同级的 package/.local-browsers 或系统缓存目录
         # 最可靠的方式：用 playwright 自己 launch 一次拿到 executable_path
     except Exception:

@@ -1,14 +1,16 @@
-import os
-import io
 import base64
+import io
+import os
 from pathlib import Path
-import pytest
+
 import allure
-from common.logs import log
-from utils.utils_xml import compress_android_xml
-from utils.utils_web import compress_web_dom
-from common.ai_heal import HealerBrain, HealResult
+import pytest
+
 import config.config as config
+from common.ai_heal import HealerBrain, HealResult
+from common.logs import log
+from utils.utils_web import compress_web_dom
+from utils.utils_xml import compress_android_xml
 
 _failure_tracker = {}
 _LIVE_PLATFORM_DIRS = {"android", "ios", "web"}
@@ -116,7 +118,7 @@ def _capture_failure_screenshot(device, platform_name: str, item) -> bytes:
                 name=f"失败截图_{item.name}",
                 attachment_type=allure.attachment_type.PNG,
             )
-            log.info(f"✅ [System] 已成功将失败截图挂载至 Allure 报告")
+            log.info("✅ [System] 已成功将失败截图挂载至 Allure 报告")
     except Exception as e:
         log.error(f"[Error] 捕获失败截图异常: {e}")
     return img_bytes

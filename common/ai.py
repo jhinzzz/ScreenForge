@@ -1,10 +1,11 @@
 import json
 import time
+
 from openai import OpenAI
 
 import config.config as config
-from common.logs import log
 from common.cache import CacheManager
+from common.logs import log
 
 
 class AIBrain:

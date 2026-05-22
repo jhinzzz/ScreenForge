@@ -4,15 +4,14 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from common.run_resume import RunContextLoadError, load_run_context
-from common.runtime_modes import MODE_DOCTOR
-
 from cli.shared import (
     RunReporter,
     _ensure_reporter_class,
     config,
     log,
 )
+from common.run_resume import load_run_context
+from common.runtime_modes import MODE_DOCTOR
 
 
 def _resolve_control_identity(args, execution_mode: str) -> dict:

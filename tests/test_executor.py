@@ -1,6 +1,5 @@
 """Tests for common/executor.py — ref cache, LocatorBuilder, handlers."""
 
-from unittest.mock import MagicMock
 
 from common.executor import (
     ClickHandler,

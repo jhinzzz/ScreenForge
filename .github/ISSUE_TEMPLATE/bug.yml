@@ -1,0 +1,78 @@
+name: Bug Report
+description: Report a bug in ScreenForge
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in as much as you can.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or actions to trigger the bug.
+      placeholder: |
+        1. screenforge --action click --platform web --locator-type text --locator-value "Login"
+        2. See error: [E030] Ref @5 not found...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Full error output including stack traces and error codes.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: ScreenForge version
+      description: Output of `screenforge --version`
+      placeholder: screenforge 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Web (Playwright)
+        - Android (uiautomator2)
+        - iOS (wda)
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: macOS 14.5 / Ubuntu 22.04 / Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.11.9"
+    validations:
+      required: true

@@ -1,6 +1,6 @@
 """Shared fixtures for framework unit tests."""
 
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 

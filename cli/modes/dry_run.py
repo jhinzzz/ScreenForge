@@ -1,7 +1,5 @@
 """Dry-run execution modes."""
 
-from common.runtime_modes import MODE_DRY_RUN
-
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -18,6 +16,7 @@ from cli.shared import (
     get_actual_element,
     log,
 )
+from common.runtime_modes import MODE_DRY_RUN
 
 
 def _preview_action_resolution(device, platform: str, action_data: dict) -> dict:

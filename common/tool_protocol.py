@@ -12,7 +12,6 @@ from common.capabilities import (
 )
 from common.runtime_modes import MODE_DOCTOR, MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
 
-
 SUPPORTED_TOOL_MODES = (MODE_RUN, MODE_DOCTOR, MODE_PLAN_ONLY, MODE_DRY_RUN)
 
 

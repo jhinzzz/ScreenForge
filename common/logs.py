@@ -1,9 +1,10 @@
 import os
+import sys
 import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
-import sys
+
 from loguru import logger
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -1,8 +1,10 @@
 import io
 
-from common.logs import log
 import config.config as config
+from common.logs import log
+
 from .base_adapter import BasePlatformAdapter
+
 
 class IosWdaAdapter(BasePlatformAdapter):
     """iOS facebook-wda 适配层"""

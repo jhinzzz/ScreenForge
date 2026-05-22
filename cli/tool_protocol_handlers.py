@@ -6,6 +6,19 @@ import sys
 from contextlib import nullcontext
 from pathlib import Path
 
+from cli.parser import build_parser, validate_cli_args
+from cli.reporter import (
+    _load_context_content,
+    _resolve_control_identity,
+    _resolve_output_script_path,
+)
+from cli.shared import (
+    _capture_ui_state,
+    _connect_adapter,
+    _SharedAdapterManager,
+    config,
+    log,
+)
 from common.run_resume import RunContextLoadError, load_run_bundle
 from common.runtime_modes import MODE_DOCTOR, resolve_execution_mode
 from common.tool_protocol import (
@@ -14,21 +27,6 @@ from common.tool_protocol import (
     build_cli_arg_overrides,
     load_tool_request,
     load_tool_request_from_stdin,
-)
-
-from cli.parser import build_parser, validate_cli_args
-from cli.reporter import (
-    _build_inline_action_data,
-    _load_context_content,
-    _resolve_control_identity,
-    _resolve_output_script_path,
-)
-from cli.shared import (
-    _SharedAdapterManager,
-    _capture_ui_state,
-    _connect_adapter,
-    config,
-    log,
 )
 
 

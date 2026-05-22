@@ -2,11 +2,16 @@
 
 import argparse
 
+from _version import __version__
 from common.runtime_modes import resolve_execution_mode
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="多端自动化测试自主 Agent 底层执行器")
+    parser = argparse.ArgumentParser(
+        prog="screenforge",
+        description="AI-driven cross-platform UI automation engine",
+    )
+    parser.add_argument("--version", action="version", version=f"screenforge {__version__}")
     parser.add_argument("--goal", type=str, default="", help="宏观测试目标")
     parser.add_argument(
         "--context", type=str, default="", help="包含 PRD、用例详细说明的文件路径"
@@ -125,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="以 stdio 模式启动最小 MCP server，供外部 Agent 原生接入",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run a simulated demo showcasing the full ScreenForge flow (no API key needed)",
+    )
     return parser
 
 
@@ -213,6 +223,9 @@ def validate_cli_args(args) -> None:
         raise ValueError("--workflow 模式下不能同时提供 --goal")
     if has_action and (has_goal or has_workflow):
         raise ValueError("--action 模式下不能同时提供 --goal 或 --workflow")
+    has_demo = bool(getattr(args, "demo", False))
+    if has_demo:
+        return
     if not args.doctor and not has_goal and not has_workflow and not has_action:
         raise ValueError("非 doctor 模式必须提供 --goal、--workflow 或 --action")
     if has_workflow:

@@ -89,6 +89,8 @@ def _ensure_executor_runtime() -> None:
     if UIExecutor is None or get_actual_element is None:
         from common.executor import (
             UIExecutor as _UIExecutor,
+        )
+        from common.executor import (
             get_actual_element as _get_actual_element,
         )
 
@@ -143,7 +145,11 @@ def _ensure_adapter_factories() -> None:
     ):
         from common.adapters import (
             AndroidU2Adapter as _AndroidU2Adapter,
+        )
+        from common.adapters import (
             IosWdaAdapter as _IosWdaAdapter,
+        )
+        from common.adapters import (
             WebPlaywrightAdapter as _WebPlaywrightAdapter,
         )
 
@@ -176,8 +182,14 @@ def _ensure_workflow_loader() -> None:
     ):
         from common.workflow_schema import (
             WorkflowLoadError as _WorkflowLoadError,
+        )
+        from common.workflow_schema import (
             load_workflow_file as _load_workflow_file,
+        )
+        from common.workflow_schema import (
             parse_workflow_var_overrides as _parse_workflow_var_overrides,
+        )
+        from common.workflow_schema import (
             resolve_workflow_definition as _resolve_workflow_definition,
         )
 

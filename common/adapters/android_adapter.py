@@ -1,12 +1,15 @@
 import io
 import os
-import sys
-import time
 import signal
 import subprocess
-from common.logs import log
+import sys
+import time
+
 import config.config as config
+from common.logs import log
+
 from .base_adapter import BasePlatformAdapter
+
 
 class AndroidU2Adapter(BasePlatformAdapter):
     """Android uiautomator2 适配层"""

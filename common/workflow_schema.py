@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 
 from common.capabilities import GLOBAL_ACTIONS, SUPPORTED_ACTIONS
 
-
 SUPPORTED_WORKFLOW_ACTIONS = SUPPORTED_ACTIONS
 GLOBAL_WORKFLOW_ACTIONS = GLOBAL_ACTIONS
 WORKFLOW_VAR_PATTERN = re.compile(r"{{\s*([a-zA-Z0-9_\-]+)\s*}}")

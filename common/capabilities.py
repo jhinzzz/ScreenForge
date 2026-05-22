@@ -2,7 +2,6 @@ from pathlib import Path
 
 from common.runtime_modes import MODE_DOCTOR, MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
 
-
 SUPPORTED_PLATFORMS = ("android", "ios", "web")
 SUPPORTED_ACTIONS = (
     "goto",

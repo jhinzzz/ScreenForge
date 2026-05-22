@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from common.logs import log
+
 import config.config as config
+from common.logs import log
 
 # 模块级 UI 元素缓存, 由 inspect_ui 写入, ref 定位器读取
 _cached_ui_elements: list[dict] = []
@@ -64,7 +65,7 @@ class LocatorBuilder:
                 # ref 定位: 优先用 id/text, 兜底用坐标点击
                 el_data = _resolve_ref(l_value)
                 if not el_data:
-                    log.warning(f"⚠️ [Ref] 未找到 {l_value}, 缓存中共 {len(_cached_ui_elements)} 个元素")
+                    log.warning(f"[E030] Ref {l_value} not found in cache ({len(_cached_ui_elements)} elements available). Fix: run inspect_ui first to refresh the element cache")
                     return None
                 if el_data.get("id"):
                     return d.locator(f"#{el_data['id']}").first
@@ -276,7 +277,7 @@ class SwipeHandler(ActionHandler):
                 f"    with allure.step('滑动屏幕: [{direction}]'):\n",
                 f"        log.info('执行操作: 滑动屏幕 [{direction}]')\n",
                 f"        {scroll_code}\n",
-                f"        d.wait_for_timeout(1000)\n",
+                "        d.wait_for_timeout(1000)\n",
             ]
         else:
             return [
@@ -309,7 +310,7 @@ class PressHandler(ActionHandler):
                 f"    with allure.step('触发按键: [{safe_key}]'):\n",
                 f"        log.info('执行操作: 模拟键盘按键 [{safe_key}]')\n",
                 f"        d.keyboard.press('{safe_key}')\n",
-                f"        d.wait_for_timeout(500)\n",
+                "        d.wait_for_timeout(500)\n",
             ]
         else:
             return [
@@ -347,26 +348,26 @@ class AssertExistHandler(ActionHandler):
             return [
                 f"    with allure.step('断言: 验证元素 [{l_value}] 存在'):\n",
                 f"        log.info('执行断言: 检查元素 [{l_value}] 是否存在')\n",
-                f"        import playwright.sync_api\n",
-                f"        try:\n",
+                "        import playwright.sync_api\n",
+                "        try:\n",
                 f"            d.{loc_str}.wait_for(state='visible', timeout={timeout * 1000})\n",
-                f"            is_exist = True\n",
-                f"        except playwright.sync_api.TimeoutError:\n",
-                f"            is_exist = False\n",
-                f"        if not is_exist:\n",
+                "            is_exist = True\n",
+                "        except playwright.sync_api.TimeoutError:\n",
+                "            is_exist = False\n",
+                "        if not is_exist:\n",
                 f"            log.error('断言失败: 期望元素 [{l_value}] 未出现')\n",
                 f"        assert is_exist, '断言失败: 期望元素 {l_value} 未出现'\n",
-                f"        log.info('断言成功: 元素已出现')\n",
+                "        log.info('断言成功: 元素已出现')\n",
             ]
         else:
             return [
                 f"    with allure.step('断言: 验证元素 [{l_value}] 存在'):\n",
                 f"        log.info('执行断言: 检查元素 [{l_value}] 是否存在')\n",
                 f"        is_exist = d({loc_str}).wait(timeout={timeout})\n",
-                f"        if not is_exist:\n",
+                "        if not is_exist:\n",
                 f"            log.error('断言失败: 期望元素 [{l_value}] 未出现')\n",
                 f"        assert is_exist, '断言失败: 期望元素 {l_value} 未出现'\n",
-                f"        log.info('断言成功: 元素已出现')\n",
+                "        log.info('断言成功: 元素已出现')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
@@ -427,7 +428,7 @@ class GotoHandler(ActionHandler):
 
     def execute(self, d, element, platform: str, extra_value: str) -> bool:
         if platform != "web":
-            log.warning("⚠️ [Warning] goto 动作仅支持 Web 平台")
+            log.warning("[E034] 'goto' action is only supported on Web platform. Fix: use --platform web")
             return False
         url = extra_value.strip()
         if not url.startswith(("http://", "https://")):
@@ -447,7 +448,7 @@ class GotoHandler(ActionHandler):
             f"    with allure.step('导航到: [{safe_url}]'):\n",
             f"        log.info('执行操作: 导航到 [{safe_url}]')\n",
             f"        d.goto('{safe_url}', wait_until='domcontentloaded')\n",
-            f"        d.wait_for_timeout(2000)\n",
+            "        d.wait_for_timeout(2000)\n",
         ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
@@ -496,12 +497,12 @@ class UIExecutor:
         }
 
         if not action:
-            log.warning("⚠️ [System] AI 返回的动作类型为空，跳过执行。")
+            log.warning("[E035] AI returned empty action type, skipping execution. This usually means the model failed to parse the UI tree correctly.")
             return result
 
         handler = self._handlers.get(action)
         if not handler:
-            log.error(f"❌ [Error] 不支持的动作类型: {action}")
+            log.error(f"[E031] Unsupported action type: '{action}'. Supported: click, input, swipe, press, assert_exist, assert_text_equals, goto, hover, long_click")
             return result
 
         element = None
@@ -513,7 +514,7 @@ class UIExecutor:
         )
         if needs_locator:
             if not str(l_type).strip():
-                log.error("❌ [Error] 元素类动作缺少 locator_type，放弃录制！")
+                log.error("[E032] Element action missing locator_type. Fix: provide --locator-type (css/text/resourceId/description)")
                 return result
 
             u2_locator_map = {
@@ -528,8 +529,9 @@ class UIExecutor:
             # ref 定位器: 缓存为空时自动 inspect 填充
             if u2_key == "ref" and not _cached_ui_elements and self.platform == "web":
                 try:
-                    from utils.utils_web import compress_web_dom
                     import json as _json
+
+                    from utils.utils_web import compress_web_dom
                     ui_json = compress_web_dom(self.d)
                     tree = _json.loads(ui_json)
                     set_ui_elements(tree.get("ui_elements", []))
@@ -591,7 +593,7 @@ class UIExecutor:
                     log.warning(f"⚠️ [Visual Fallback] 尝试失败: {e}")
 
             if element is None:
-                log.error("❌ [Error] 元素定位器为空，放弃录制！")
+                log.error("[E033] Element locator is empty after resolution. Fix: verify that the target element exists on the current page via inspect_ui")
                 return result
 
         timeout = config.DEFAULT_TIMEOUT

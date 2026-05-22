@@ -4,16 +4,18 @@ os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
-import numpy as np
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 from numpy.linalg import norm
 
 from common.logs import log
-from config.config import CACHE_SIMILARITY_THRESHOLD, CACHE_EXACT_MATCH_THRESHOLD
+from config.config import CACHE_EXACT_MATCH_THRESHOLD, CACHE_SIMILARITY_THRESHOLD
+
+from .cache_hash import compute_instruction_hash, compute_ui_hash
 from .cache_stats import CacheStats
-from .cache_hash import compute_ui_hash, compute_instruction_hash
-from .cache_storage import load_cache, save_cache, cleanup_expired_entries
+from .cache_storage import cleanup_expired_entries, load_cache, save_cache
 from .embedding_loader import EmbeddingModelLoader
 
 

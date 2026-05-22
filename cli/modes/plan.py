@@ -1,7 +1,5 @@
 """Plan-only execution modes."""
 
-from common.runtime_modes import MODE_PLAN_ONLY
-
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -16,6 +14,7 @@ from cli.shared import (
     _ensure_runtime_classes,
     log,
 )
+from common.runtime_modes import MODE_PLAN_ONLY
 
 
 def run_plan_only_mode(

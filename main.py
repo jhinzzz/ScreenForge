@@ -1,18 +1,18 @@
+import argparse
+import base64
 import os
 import sys
 import time
-import base64
-import argparse
 from datetime import datetime
 
+import config.config as config
+from common.adapters import AndroidU2Adapter, IosWdaAdapter, WebPlaywrightAdapter
 from common.ai import AIBrain
-from common.logs import log
 from common.executor import UIExecutor
 from common.history_manager import StepHistoryManager
-from common.adapters import AndroidU2Adapter, IosWdaAdapter, WebPlaywrightAdapter
-import config.config as config
-from utils.utils_xml import compress_android_xml
+from common.logs import log
 from utils.utils_web import compress_web_dom
+from utils.utils_xml import compress_android_xml
 
 
 def get_initial_header() -> list:

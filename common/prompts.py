@@ -89,7 +89,7 @@ def get_autonomous_system_prompt(platform: str, screenshot_base64: str = None) -
     vision_prompt = ""
     if screenshot_base64:
         vision_prompt = "\n👁️ 【视觉辅助】: 你同时收到了一张真实屏幕截图。请结合视觉画面与 UI 树，更精准地理解页面布局、按钮状态。如果 XML 树混乱，请以视觉画面为准。"
-    
+
     return f"""
         你是一个完全自主的{platform} {'多模态视觉' if screenshot_base64 else '纯文本'} 高级自动化测试 Agent。
         你需要根据用户的【宏观测试目标】、【参考上下文】、【已执行的历史步骤】以及【当前屏幕 UI 树】{'和【屏幕截图】' if screenshot_base64 else ''}，自主决定下一步需要执行什么动作。

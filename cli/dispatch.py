@@ -2,14 +2,6 @@
 
 import sys
 
-from common.run_resume import RunContextLoadError
-from common.runtime_modes import (
-    MODE_DOCTOR,
-    MODE_DRY_RUN,
-    MODE_PLAN_ONLY,
-    resolve_execution_mode,
-)
-
 from cli.doctor import run_capabilities_mode, run_doctor_mode
 from cli.modes.action import run_action_default_mode
 from cli.modes.default import run_default_mode
@@ -28,6 +20,13 @@ from cli.tool_protocol_handlers import (
     run_mcp_server_mode,
     run_tool_request_mode,
     run_tool_stdin_mode,
+)
+from common.run_resume import RunContextLoadError
+from common.runtime_modes import (
+    MODE_DOCTOR,
+    MODE_DRY_RUN,
+    MODE_PLAN_ONLY,
+    resolve_execution_mode,
 )
 
 
@@ -107,8 +106,13 @@ def main():
     try:
         validate_cli_args(args)
     except ValueError as e:
-        log.error(f"❌ [CLI] 参数校验失败: {e}")
+        log.error(f"[E010] Invalid CLI arguments: {e}. Fix: run 'screenforge --help' to see valid options")
         sys.exit(2)
+
+    if getattr(args, "demo", False):
+        from cli.modes.demo import run_demo_mode
+
+        sys.exit(run_demo_mode())
 
     if args.tool_stdin:
         sys.exit(run_tool_stdin_mode(args))
@@ -130,7 +134,7 @@ def main():
     output_script_path = _resolve_output_script_path(args)
 
     log.info("=" * 60)
-    log.info("🚀 启动 ScreenForge UI 测试引擎")
+    log.info("Starting ScreenForge UI automation engine")
     target_label = (
         args.goal
         or getattr(args, "action_name", "")
@@ -138,23 +142,23 @@ def main():
         or args.workflow
         or "doctor / no-goal mode"
     )
-    log.info(f"🎯 核心目标: {target_label}")
-    log.info(f"🛡️ 熔断配置: 单步最多连续重试 {args.max_retries} 次")
+    log.info(f"Target: {target_label}")
+    log.info(f"Circuit breaker: max {args.max_retries} retries per step")
     log.info(
-        f"📱 目标平台: {args.platform} | 👁️ 视觉辅助: {'开启' if args.vision else '关闭'}"
+        f"Platform: {args.platform} | Vision: {'on' if args.vision else 'off'}"
     )
-    log.info(f"🧭 运行模式: {execution_mode}")
-    log.info(f"📁 目标文件: {output_script_path}")
+    log.info(f"Mode: {execution_mode}")
+    log.info(f"Output: {output_script_path}")
     log.info("=" * 60)
 
     try:
         context_content, resume_context = _load_context_content(args)
     except RunContextLoadError as e:
-        log.error(f"❌ [CLI] 恢复上下文失败: {e}")
+        log.error(f"[E011] Failed to restore run context: {e}. Fix: check that report/runs/<run_id>/ exists and contains summary.json")
         sys.exit(2)
 
     if _requires_model_runtime(args, execution_mode) and not config.validate_config():
-        log.error("❌ [Config] 配置校验失败，请检查上述错误信息")
+        log.error("[E012] Configuration validation failed. See errors above for details and fix instructions")
         sys.exit(1)
 
     sys.exit(

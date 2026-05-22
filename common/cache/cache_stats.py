@@ -2,8 +2,10 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 from filelock import FileLock
+
 
 class CacheStats:
     def __init__(self, cache_dir: str = ".cache"):

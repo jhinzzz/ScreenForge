@@ -13,7 +13,6 @@ from common.capabilities import (
 )
 from common.tool_protocol import ToolRequest
 
-
 JSONRPC_VERSION = "2.0"
 MCP_SERVER_NAME = "screenforge"
 MCP_SERVER_VERSION = "0.1.0"

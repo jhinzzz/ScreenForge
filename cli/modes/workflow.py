@@ -2,8 +2,6 @@
 
 from pathlib import Path
 
-from common.runtime_modes import MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
-
 from cli.modes.dry_run import _build_resolution_hint, _preview_action_resolution
 from cli.reporter import (
     _apply_resume_summary,
@@ -25,6 +23,7 @@ from cli.shared import (
     resolve_workflow_definition,
     save_to_disk,
 )
+from common.runtime_modes import MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
 
 
 def _load_workflow_definition(args):

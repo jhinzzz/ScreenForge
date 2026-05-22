@@ -7,9 +7,9 @@ import agent_cli as autonomous_cli
 import conftest as project_conftest
 import main as interactive_main
 from common.ai import AIBrain
-from common.executor import UIExecutor
 from common.ai_autonomous import AutonomousBrain
 from common.cache.cache_manager import CacheManager
+from common.executor import UIExecutor
 
 
 class _FakeCompletions:

@@ -5,9 +5,6 @@ import os
 import sys
 from pathlib import Path
 
-from common.capabilities import get_capabilities_payload
-from common.runtime_modes import MODE_DOCTOR
-
 from cli.reporter import _build_reporter, _emit_run_started
 from cli.shared import (
     _ensure_preflight_runner,
@@ -15,6 +12,8 @@ from cli.shared import (
     log,
     run_preflight,
 )
+from common.capabilities import get_capabilities_payload
+from common.runtime_modes import MODE_DOCTOR
 
 
 def _normalize_doctor_message(message: str) -> str:
