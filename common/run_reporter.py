@@ -73,37 +73,35 @@ def _build_failure_analysis(
     lowered_error = error_text.lower()
     category = "execution_failure"
     stage = "execution"
-    summary = "执行链路失败，需要结合上下文继续排查"
-    recovery_hint = "建议先基于最近一次运行做 dry-run 复核，再决定是否直接重试。"
+    summary = "Execution failed; review context to determine next steps"
+    recovery_hint = "Run dry-run to verify current state before retrying."
     recommended_mode = "dry_run"
     retryable = True
 
-    if any(token in lowered_error for token in ("operation not permitted", "permission denied", " eperm")) or "当前运行环境限制了" in error_text:
+    if any(token in lowered_error for token in ("operation not permitted", "permission denied", " eperm", "environment restricts")):
         category = "environment_restricted"
         stage = "preflight"
-        summary = "当前运行环境限制了本地设备或浏览器连接"
-        recovery_hint = "建议先在宿主终端执行 doctor 或 dry-run，确认不是沙箱权限导致的假阴性。"
+        summary = "Runtime environment restricts local device or browser connection"
+        recovery_hint = "Run doctor or dry-run in the host terminal to rule out sandbox permission issues."
         recommended_mode = "doctor"
         retryable = False
-    elif any(token in error_text for token in ("未找到", "不可操作", "未出现")):
+    elif any(token in lowered_error for token in ("not found", "not interactable", "element not found", "locator cannot be resolved")):
         category = "locator_resolution"
         stage = "execution"
-        summary = "当前页面未成功定位到目标元素，或元素状态不可操作"
-        recovery_hint = "建议先做 dry-run 复核定位策略，再基于恢复上下文继续重试。"
+        summary = "Target element not found or not interactable on the current page"
+        recovery_hint = "Run dry-run to verify locator strategy, then retry with resume context."
         recommended_mode = "dry_run"
-    elif any(token in error_text for token in ("连续重试", "熔断", "最大步数", "死循环")):
+    elif any(token in lowered_error for token in ("circuit breaker", "consecutive failures", "max step limit")):
         category = "stagnation"
         stage = "planning" if execution_mode in {"plan_only", "dry_run"} else "execution"
-        summary = "执行过程触发了重试上限或步数上限"
-        recovery_hint = "建议先做计划预演，再缩小目标范围或补充业务上下文。"
+        summary = "Execution hit retry limit or max step cap"
+        recovery_hint = "Run plan-only to refine strategy, then narrow the goal or add context."
         recommended_mode = "plan_only"
-    elif any(token in error_text for token in ("未配置", "配置校验失败")) or any(
-        token in lowered_error for token in ("api_key", "base_url", "config")
-    ):
+    elif any(token in lowered_error for token in ("api_key", "base_url", "config", "configuration validation failed")):
         category = "configuration"
         stage = "preflight"
-        summary = "运行前置配置不完整或不合法"
-        recovery_hint = "建议先执行 doctor 修复配置，再重新运行。"
+        summary = "Required configuration is incomplete or invalid"
+        recovery_hint = "Run doctor to fix configuration, then re-run."
         recommended_mode = "doctor"
         retryable = False
     elif steps_executed == 0:
@@ -294,7 +292,7 @@ class RunReporter:
             if self._json_output:
                 print(json.dumps(record, ensure_ascii=False), file=sys.stdout, flush=True)
         except Exception as e:
-            log.warning(f"⚠️ [Warning] 写入运行事件失败: {e}")
+            log.warning(f"⚠️ [Warning] Failed to write run event: {e}")
 
     def save_screenshot(
         self, img_bytes: bytes, step_index: int, name: Optional[str] = None
@@ -322,7 +320,7 @@ class RunReporter:
             )
             return str(screenshot_path)
         except Exception as e:
-            log.warning(f"⚠️ [Warning] 保存运行截图失败: {e}")
+            log.warning(f"⚠️ [Warning] Failed to save screenshot: {e}")
             return ""
 
     def finalize(
@@ -387,7 +385,7 @@ class RunReporter:
                 step_records,
             )
         except Exception as e:
-            log.warning(f"⚠️ [Warning] 更新 case memory 失败: {e}")
+            log.warning(f"⚠️ [Warning] Failed to update case memory: {e}")
         replay_manifest = _build_pytest_replay_manifest(
             summary=self._summary,
             pytest_asset=pytest_asset,
