@@ -10,9 +10,9 @@ def validate_mode_conflicts(
     dry_run: bool,
 ) -> None:
     if doctor and (plan_only or dry_run):
-        raise ValueError("doctor 模式不能与 plan-only 或 dry-run 同时使用")
+        raise ValueError("--doctor cannot be combined with --plan-only or --dry-run")
     if plan_only and dry_run:
-        raise ValueError("plan-only 与 dry-run 模式不能同时使用")
+        raise ValueError("--plan-only and --dry-run are mutually exclusive")
 
 
 def resolve_execution_mode(

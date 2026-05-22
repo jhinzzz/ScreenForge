@@ -9,7 +9,7 @@ class RunContextLoadError(Exception):
 
 def _read_summary(summary_file: Path) -> Dict[str, object]:
     if not summary_file.exists():
-        raise RunContextLoadError(f"未找到可恢复的运行记录: {summary_file.parent}")
+        raise RunContextLoadError(f"No recoverable run record found: {summary_file.parent}")
     return json.loads(summary_file.read_text(encoding="utf-8"))
 
 
@@ -74,7 +74,7 @@ def load_run_context(run_dir: Path) -> Dict[str, object]:
     except RunContextLoadError:
         raise
     except Exception as exc:
-        raise RunContextLoadError(f"读取运行记录失败: {run_dir}") from exc
+        raise RunContextLoadError(f"Failed to read run record: {run_dir}") from exc
 
     successful_actions = [
         item.get("action_description", "")
