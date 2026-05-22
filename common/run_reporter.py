@@ -85,7 +85,7 @@ def _build_failure_analysis(
         recovery_hint = "Run doctor or dry-run in the host terminal to rule out sandbox permission issues."
         recommended_mode = "doctor"
         retryable = False
-    elif any(token in lowered_error for token in ("not found", "not interactable", "element not found", "locator cannot be resolved")):
+    elif any(token in lowered_error for token in ("element not found", "not interactable", "locator cannot be resolved", "not found on the current page")):
         category = "locator_resolution"
         stage = "execution"
         summary = "Target element not found or not interactable on the current page"
