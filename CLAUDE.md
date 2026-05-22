@@ -179,3 +179,21 @@ docs/tech-api-overview.yaml 采用 OpenAPI 3.1 标准，维护时须遵守：
 2. 所有 type: array 的 items 必须有 properties 或 $ref，禁止空 object
 3. 所有 $ref 引用必须在 components/schemas 中存在且完整展开
 4. 外部类型（protobuf/外部包 struct）必须追溯源码获取字段，禁止凭印象编写
+
+## Skill routing
+
+When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
+
+Key routing rules:
+- Product ideas/brainstorming → invoke /office-hours
+- Strategy/scope → invoke /plan-ceo-review
+- Architecture → invoke /plan-eng-review
+- Design system/plan review → invoke /design-consultation or /plan-design-review
+- Full review pipeline → invoke /autoplan
+- Bugs/errors → invoke /investigate
+- QA/testing site behavior → invoke /qa or /qa-only
+- Code review/diff check → invoke /review
+- Visual polish → invoke /design-review
+- Ship/deploy/PR → invoke /ship or /land-and-deploy
+- Save progress → invoke /context-save
+- Resume context → invoke /context-restore
