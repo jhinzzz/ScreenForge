@@ -3,18 +3,15 @@ from abc import ABC, abstractmethod
 import config.config as config
 from common.logs import log
 
-# 模块级 UI 元素缓存, 由 inspect_ui 写入, ref 定位器读取
 _cached_ui_elements: list[dict] = []
 
 
 def set_ui_elements(elements: list[dict]) -> None:
-    """缓存最近一次 inspect_ui 返回的元素列表 (含 ref/x/y/w/h)"""
     global _cached_ui_elements
     _cached_ui_elements = list(elements) if elements else []
 
 
 def _resolve_ref(ref_value: str) -> dict | None:
-    """根据 ref 值 (如 @5) 查找缓存中的元素"""
     for el in _cached_ui_elements:
         if el.get("ref") == ref_value:
             return el
@@ -35,13 +32,11 @@ class LocatorBuilder:
         safe_val = _escape_locator_value(l_value)
         if platform == "web":
             if u2_key == "ref":
-                # ref 定位: 查找元素, 降级为具体 locator 写入脚本
                 el_data = _resolve_ref(l_value)
                 if el_data and el_data.get("id"):
                     return f"locator('#{_escape_locator_value(el_data['id'])}').first"
                 if el_data and el_data.get("text"):
                     return f"get_by_text('{_escape_locator_value(el_data['text'])}').first"
-                # 坐标兜底
                 if el_data:
                     cx = el_data.get("x", 0) + el_data.get("w", 0) // 2
                     cy = el_data.get("y", 0) + el_data.get("h", 0) // 2
@@ -62,7 +57,6 @@ class LocatorBuilder:
     def get_element(d, platform: str, u2_key: str, l_value: str):
         if platform == "web":
             if u2_key == "ref":
-                # ref 定位: 优先用 id/text, 兜底用坐标点击
                 el_data = _resolve_ref(l_value)
                 if not el_data:
                     log.warning(f"[E030] Ref {l_value} not found in cache ({len(_cached_ui_elements)} elements available). Fix: run inspect_ui first to refresh the element cache")
@@ -71,7 +65,6 @@ class LocatorBuilder:
                     return d.locator(f"#{el_data['id']}").first
                 if el_data.get("text"):
                     return d.get_by_text(el_data["text"]).first
-                # 坐标兜底: 返回 None, 由 execute_and_record 处理坐标点击
                 return None
             elif u2_key in ["resourceId", "id"]:
                 return d.locator(f"#{l_value}").first
@@ -115,7 +108,7 @@ class HoverHandler(ActionHandler):
             element.hover()
             return True
         else:
-            log.warning("⚠️ [Warning] 移动端不支持 hover，跳过物理悬停操作")
+            log.warning("⚠️ [Warning] Hover not supported on mobile, skipping")
             return True
 
     def generate_code(
@@ -124,18 +117,18 @@ class HoverHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('悬停元素: [{l_value}]'):\n",
-                f"        log.info('✅ [Action] 悬停元素 [{l_value}]')\n",
+                f"    with allure.step('Hover: [{l_value}]'):\n",
+                f"        log.info('Action: hover [{l_value}]')\n",
                 f"        d.{loc_str}.hover(timeout={timeout * 1000})\n",
             ]
         else:
             return [
-                f"    with allure.step('悬停元素 (移动端忽略): [{l_value}]'):\n",
-                f"        log.warning('⚠️ [Warning] 移动端不支持悬停 [{l_value}]')\n",
+                f"    with allure.step('Hover (mobile skip): [{l_value}]'):\n",
+                f"        log.warning('Hover not supported on mobile [{l_value}]')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"✅ [Action] 正在等待并悬停: {l_type}='{l_value}'"
+        return f"✅ [Action] Hover: {l_type}='{l_value}'"
 
 
 class ClickHandler(ActionHandler):
@@ -156,20 +149,20 @@ class ClickHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('点击元素: [{l_value}]'):\n",
-                f"        log.info('执行操作: 点击元素 [{l_value}]')\n",
+                f"    with allure.step('Click: [{l_value}]'):\n",
+                f"        log.info('Action: click [{l_value}]')\n",
                 f"        d.{loc_str}.click(timeout={timeout * 1000})\n",
             ]
         else:
             return [
-                f"    with allure.step('点击元素: [{l_value}]'):\n",
-                f"        log.info('执行操作: 点击元素 [{l_value}]')\n",
+                f"    with allure.step('Click: [{l_value}]'):\n",
+                f"        log.info('Action: click [{l_value}]')\n",
                 f"        d({loc_str}).wait(timeout={timeout})\n",
                 f"        d({loc_str}).click()\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"✅ [Action] 正在等待并点击: {l_type}='{l_value}'"
+        return f"✅ [Action] Click: {l_type}='{l_value}'"
 
 
 class LongClickHandler(ActionHandler):
@@ -192,20 +185,20 @@ class LongClickHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('长按元素: [{l_value}]'):\n",
-                f"        log.info('执行操作: 长按元素 [{l_value}]')\n",
+                f"    with allure.step('Long click: [{l_value}]'):\n",
+                f"        log.info('Action: long click [{l_value}]')\n",
                 f"        d.{loc_str}.click(delay=1000, timeout={timeout * 1000})\n",
             ]
         else:
             return [
-                f"    with allure.step('长按元素: [{l_value}]'):\n",
-                f"        log.info('执行操作: 长按元素 [{l_value}]')\n",
+                f"    with allure.step('Long click: [{l_value}]'):\n",
+                f"        log.info('Action: long click [{l_value}]')\n",
                 f"        d({loc_str}).wait(timeout={timeout})\n",
                 f"        d({loc_str}).long_click()\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"✅ [Action] 正在等待并长按: {l_type}='{l_value}'"
+        return f"✅ [Action] Long click: {l_type}='{l_value}'"
 
 
 class InputHandler(ActionHandler):
@@ -227,20 +220,20 @@ class InputHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('输入文本: [{safe_extra}] 到 [{l_value}]'):\n",
-                f"        log.info('执行操作: 在 [{l_value}] 输入 [{safe_extra}]')\n",
+                f"    with allure.step('Input: [{safe_extra}] into [{l_value}]'):\n",
+                f"        log.info('Action: input [{safe_extra}] into [{l_value}]')\n",
                 f"        d.{loc_str}.fill('{safe_extra}', timeout={timeout * 1000})\n",
             ]
         else:
             return [
-                f"    with allure.step('输入文本: [{safe_extra}] 到 [{l_value}]'):\n",
-                f"        log.info('执行操作: 在 [{l_value}] 输入 [{safe_extra}]')\n",
+                f"    with allure.step('Input: [{safe_extra}] into [{l_value}]'):\n",
+                f"        log.info('Action: input [{safe_extra}] into [{l_value}]')\n",
                 f"        d({loc_str}).wait(timeout={timeout})\n",
                 f"        d({loc_str}).set_text('{safe_extra}')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Action] 正在等待并输入: {l_type}='{l_value}', 内容='{extra_value}'"
+        return f"[Action] Input: {l_type}='{l_value}', value='{extra_value}'"
 
 
 class SwipeHandler(ActionHandler):
@@ -274,20 +267,20 @@ class SwipeHandler(ActionHandler):
                 scroll_code = "d.mouse.wheel(600, 0)"
 
             return [
-                f"    with allure.step('滑动屏幕: [{direction}]'):\n",
-                f"        log.info('执行操作: 滑动屏幕 [{direction}]')\n",
+                f"    with allure.step('Swipe: [{direction}]'):\n",
+                f"        log.info('Action: swipe [{direction}]')\n",
                 f"        {scroll_code}\n",
                 "        d.wait_for_timeout(1000)\n",
             ]
         else:
             return [
-                f"    with allure.step('滑动屏幕: [{direction}]'):\n",
-                f"        log.info('执行操作: 向上/下/左/右 滑动屏幕 [{direction}]')\n",
+                f"    with allure.step('Swipe: [{direction}]'):\n",
+                f"        log.info('Action: swipe [{direction}]')\n",
                 f"        d.swipe_ext('{direction}')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Action] 全局动作：正在滑动屏幕，方向='{extra_value}'"
+        return f"[Action] Swipe: direction='{extra_value}'"
 
 
 class PressHandler(ActionHandler):
@@ -307,20 +300,20 @@ class PressHandler(ActionHandler):
         safe_key = _escape_python_string(key)
         if platform == "web":
             return [
-                f"    with allure.step('触发按键: [{safe_key}]'):\n",
-                f"        log.info('执行操作: 模拟键盘按键 [{safe_key}]')\n",
+                f"    with allure.step('Press key: [{safe_key}]'):\n",
+                f"        log.info('Action: press key [{safe_key}]')\n",
                 f"        d.keyboard.press('{safe_key}')\n",
                 "        d.wait_for_timeout(500)\n",
             ]
         else:
             return [
-                f"    with allure.step('触发物理按键: [{safe_key}]'):\n",
-                f"        log.info('执行操作: 模拟手机系统按键 [{safe_key}]')\n",
+                f"    with allure.step('Press key: [{safe_key}]'):\n",
+                f"        log.info('Action: press key [{safe_key}]')\n",
                 f"        d.press('{safe_key.lower()}')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Action] 全局动作：正在触发按键事件，按键='{extra_value}'"
+        return f"[Action] Press key: '{extra_value}'"
 
 
 class AssertExistHandler(ActionHandler):
@@ -333,11 +326,11 @@ class AssertExistHandler(ActionHandler):
                 is_exist = element.wait(timeout=config.DEFAULT_TIMEOUT)
 
                 if not is_exist:
-                    log.warning("❌ [Warning] 元素未出现 (但仍会生成断言代码)")
+                    log.warning("❌ [Warning] Element not visible (assertion code still generated)")
                 else:
-                    log.info("[Assert] 校验通过")
+                    log.info("[Assert] Passed")
         except Exception:
-            log.warning("❌ [Warning] 等待元素超时 (但仍会生成断言代码)")
+            log.warning("❌ [Warning] Wait for element timed out (assertion code still generated)")
         return True
 
     def generate_code(
@@ -346,8 +339,8 @@ class AssertExistHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('断言: 验证元素 [{l_value}] 存在'):\n",
-                f"        log.info('执行断言: 检查元素 [{l_value}] 是否存在')\n",
+                f"    with allure.step('Assert: element [{l_value}] exists'):\n",
+                f"        log.info('Assert: check element [{l_value}] exists')\n",
                 "        import playwright.sync_api\n",
                 "        try:\n",
                 f"            d.{loc_str}.wait_for(state='visible', timeout={timeout * 1000})\n",
@@ -355,23 +348,23 @@ class AssertExistHandler(ActionHandler):
                 "        except playwright.sync_api.TimeoutError:\n",
                 "            is_exist = False\n",
                 "        if not is_exist:\n",
-                f"            log.error('断言失败: 期望元素 [{l_value}] 未出现')\n",
-                f"        assert is_exist, '断言失败: 期望元素 {l_value} 未出现'\n",
-                "        log.info('断言成功: 元素已出现')\n",
+                f"            log.error('Assertion failed: element [{l_value}] not found')\n",
+                f"        assert is_exist, 'Assertion failed: element {l_value} not found'\n",
+                "        log.info('Assertion passed: element exists')\n",
             ]
         else:
             return [
-                f"    with allure.step('断言: 验证元素 [{l_value}] 存在'):\n",
-                f"        log.info('执行断言: 检查元素 [{l_value}] 是否存在')\n",
+                f"    with allure.step('Assert: element [{l_value}] exists'):\n",
+                f"        log.info('Assert: check element [{l_value}] exists')\n",
                 f"        is_exist = d({loc_str}).wait(timeout={timeout})\n",
                 "        if not is_exist:\n",
-                f"            log.error('断言失败: 期望元素 [{l_value}] 未出现')\n",
-                f"        assert is_exist, '断言失败: 期望元素 {l_value} 未出现'\n",
-                "        log.info('断言成功: 元素已出现')\n",
+                f"            log.error('Assertion failed: element [{l_value}] not found')\n",
+                f"        assert is_exist, 'Assertion failed: element {l_value} not found'\n",
+                "        log.info('Assertion passed: element exists')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Assert] 校验元素存在: {l_type}='{l_value}'"
+        return f"[Assert] Element exists: {l_type}='{l_value}'"
 
 
 class AssertTextEqualsHandler(ActionHandler):
@@ -386,11 +379,11 @@ class AssertTextEqualsHandler(ActionHandler):
                 actual_text = element.get_text()
 
             if actual_text != extra_value:
-                log.warning(f"[Warning] 期望 '{extra_value}', 实际 '{actual_text}'")
+                log.warning(f"[Warning] Expected '{extra_value}', got '{actual_text}'")
             else:
-                log.info("[Assert] 校验通过")
+                log.info("[Assert] Passed")
         except Exception:
-            log.warning("[Warning] 获取文本失败 (但仍会生成断言代码)")
+            log.warning("[Warning] Failed to get text (assertion code still generated)")
         return True
 
     def generate_code(
@@ -400,31 +393,30 @@ class AssertTextEqualsHandler(ActionHandler):
         loc_str = build_locator_code(platform, u2_key, l_value)
         if platform == "web":
             return [
-                f"    with allure.step('断言: 验证元素文本等于 [{safe_expected}]'):\n",
-                f"        log.info('执行断言: 检查元素 [{l_value}] 文本是否为 [{safe_expected}]')\n",
+                f"    with allure.step('Assert: text equals [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] text == [{safe_expected}]')\n",
                 f"        actual_text = d.{loc_str}.inner_text().strip()\n",
                 f"        if actual_text != '{safe_expected}':\n",
-                f"            log.error(f'断言失败: 期望 [{safe_expected}], 实际 [{{actual_text}}]')\n",
-                f"        assert actual_text == '{safe_expected}', f'断言失败: 期望 {safe_expected}, 实际 {{actual_text}}'\n",
-                f"        log.info(f'断言成功: 元素文本确为 [{safe_expected}]')\n",
+                f"            log.error(f'Assertion failed: expected [{safe_expected}], got [{{actual_text}}]')\n",
+                f"        assert actual_text == '{safe_expected}', f'Assertion failed: expected {safe_expected}, got {{actual_text}}'\n",
+                f"        log.info(f'Assertion passed: text is [{safe_expected}]')\n",
             ]
         else:
             return [
-                f"    with allure.step('断言: 验证元素文本等于 [{safe_expected}]'):\n",
-                f"        log.info('执行断言: 检查元素 [{l_value}] 文本是否为 [{safe_expected}]')\n",
+                f"    with allure.step('Assert: text equals [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] text == [{safe_expected}]')\n",
                 f"        actual_text = d({loc_str}).get_text()\n",
                 f"        if actual_text != '{safe_expected}':\n",
-                f"            log.error(f'断言失败: 期望 [{safe_expected}], 实际 [{{actual_text}}]')\n",
-                f"        assert actual_text == '{safe_expected}', f'断言失败: 期望 {safe_expected}, 实际 {{actual_text}}'\n",
-                f"        log.info(f'断言成功: 元素文本确为 [{safe_expected}]')\n",
+                f"            log.error(f'Assertion failed: expected [{safe_expected}], got [{{actual_text}}]')\n",
+                f"        assert actual_text == '{safe_expected}', f'Assertion failed: expected {safe_expected}, got {{actual_text}}'\n",
+                f"        log.info(f'Assertion passed: text is [{safe_expected}]')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Assert] 校验文本一致: {l_type}='{l_value}', 期望='{extra_value}'"
+        return f"[Assert] Text equals: {l_type}='{l_value}', expected='{extra_value}'"
 
 
 class GotoHandler(ActionHandler):
-    """Web 端页面导航动作：跳转到指定 URL"""
 
     def execute(self, d, element, platform: str, extra_value: str) -> bool:
         if platform != "web":
@@ -445,14 +437,14 @@ class GotoHandler(ActionHandler):
             url = "https://" + url
         safe_url = _escape_python_string(url)
         return [
-            f"    with allure.step('导航到: [{safe_url}]'):\n",
-            f"        log.info('执行操作: 导航到 [{safe_url}]')\n",
+            f"    with allure.step('Navigate to: [{safe_url}]'):\n",
+            f"        log.info('Action: navigate to [{safe_url}]')\n",
             f"        d.goto('{safe_url}', wait_until='domcontentloaded')\n",
             "        d.wait_for_timeout(2000)\n",
         ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
-        return f"[Action] 正在导航到: {extra_value}"
+        return f"[Action] Navigate to: {extra_value}"
 
 
 class UIExecutor:
@@ -526,7 +518,6 @@ class UIExecutor:
             }
             u2_key = u2_locator_map.get(l_type, l_type)
 
-            # ref 定位器: 缓存为空时自动 inspect 填充
             if u2_key == "ref" and not _cached_ui_elements and self.platform == "web":
                 try:
                     import json as _json
@@ -535,39 +526,37 @@ class UIExecutor:
                     ui_json = compress_web_dom(self.d)
                     tree = _json.loads(ui_json)
                     set_ui_elements(tree.get("ui_elements", []))
-                    log.info(f"🔍 [Ref] 自动 inspect 填充缓存: {len(_cached_ui_elements)} 个元素")
+                    log.info(f"🔍 [Ref] Auto-inspect populated cache: {len(_cached_ui_elements)} elements")
                 except Exception as e:
-                    log.warning(f"⚠️ [Ref] 自动 inspect 失败: {e}")
+                    log.warning(f"⚠️ [Ref] Auto-inspect failed: {e}")
 
             try:
                 element = get_actual_element(self.d, self.platform, u2_key, l_value)
             except Exception as e:
-                log.warning(f"⚠️ [Warning] 生成元素定位器失败: {e}")
+                log.warning(f"⚠️ [Warning] Element locator resolution failed: {e}")
                 return result
 
-            # ref 定位器坐标兜底: element 为 None 但有坐标数据
             if element is None and u2_key == "ref" and self.platform == "web":
                 el_data = _resolve_ref(l_value)
                 if el_data and el_data.get("w", 0) > 0:
                     cx = el_data["x"] + el_data["w"] // 2
                     cy = el_data["y"] + el_data["h"] // 2
-                    log.info(f"🎯 [Ref] {l_value} 使用坐标定位: ({cx}, {cy})")
+                    log.info(f"🎯 [Ref] {l_value} using coordinate fallback: ({cx}, {cy})")
                     try:
                         self.d.mouse.click(cx, cy)
                         code_lines = [
-                            f"    with allure.step('点击元素: [{l_value}] (坐标定位)'):\n",
-                            f"        log.info('执行操作: 点击 [{l_value}] at ({cx}, {cy})')\n",
+                            f"    with allure.step('Click: [{l_value}] (coordinate)'):\n",
+                            f"        log.info('Action: click [{l_value}] at ({cx}, {cy})')\n",
                             f"        d.mouse.click({cx}, {cy})  # ref {l_value} coordinate fallback\n",
                         ]
                         result["success"] = True
                         result["code_lines"] = code_lines
-                        result["action_description"] = f"🎯 [Ref] 点击 {l_value} at ({cx}, {cy})"
+                        result["action_description"] = f"🎯 [Ref] Click {l_value} at ({cx}, {cy})"
                         return result
                     except Exception as e:
-                        log.error(f"❌ [Error] 坐标点击失败: {e}")
+                        log.error(f"❌ [Error] Coordinate click failed: {e}")
                         return result
 
-            # 视觉 Fallback: DOM 定位失败时, 用 VLM 截图定位坐标
             if element is None and self.platform == "web":
                 try:
                     from common.visual_fallback import visual_locate
@@ -578,19 +567,19 @@ class UIExecutor:
                     )
                     if coords:
                         cx, cy = coords
-                        log.info(f"👁️ [Visual Fallback] 使用 VLM 坐标定位: ({cx}, {cy})")
+                        log.info(f"👁️ [Visual Fallback] Using VLM coordinates: ({cx}, {cy})")
                         self.d.mouse.click(cx, cy)
                         code_lines = [
-                            f"    with allure.step('点击元素: [{l_value}] (视觉定位)'):\n",
-                            f"        log.info('执行操作: 点击 [{l_value}] at ({cx}, {cy})')\n",
+                            f"    with allure.step('Click: [{l_value}] (visual)'):\n",
+                            f"        log.info('Action: click [{l_value}] at ({cx}, {cy})')\n",
                             f"        d.mouse.click({cx}, {cy})  # visual fallback\n",
                         ]
                         result["success"] = True
                         result["code_lines"] = code_lines
-                        result["action_description"] = f"👁️ [Visual Fallback] 点击 {l_value} at ({cx}, {cy})"
+                        result["action_description"] = f"👁️ [Visual Fallback] Click {l_value} at ({cx}, {cy})"
                         return result
                 except Exception as e:
-                    log.warning(f"⚠️ [Visual Fallback] 尝试失败: {e}")
+                    log.warning(f"⚠️ [Visual Fallback] Attempt failed: {e}")
 
             if element is None:
                 log.error("[E033] Element locator is empty after resolution. Fix: verify that the target element exists on the current page via inspect_ui")
@@ -604,7 +593,7 @@ class UIExecutor:
             if element or action in ("goto", "swipe", "press"):
                 if not handler.execute(self.d, element, self.platform, extra_value):
                     log.error(
-                        f"❌ [Error] 动作执行受阻或 {timeout} 秒内未找到依赖元素，放弃录制！"
+                        f"❌ [Error] Action blocked or dependent element not found within {timeout}s"
                     )
                     return result
 
@@ -627,5 +616,5 @@ class UIExecutor:
             return result
 
         except Exception as e:
-            log.error(f"❌ [Execute Error] 执行时发生异常: {e}")
+            log.error(f"❌ [Execute Error] Exception during execution: {e}")
             return result

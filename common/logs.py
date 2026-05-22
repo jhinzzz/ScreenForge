@@ -94,7 +94,7 @@ def _generate_logs_dir():
         if not os.path.exists(dirname):
             os.makedirs(dirname)
     except OSError as e:
-        print(f"创建目录 {dirname} 时出错: {e}")
+        print(f"Failed to create directory {dirname}: {e}")
     return dirname
 
 
