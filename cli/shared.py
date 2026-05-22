@@ -211,7 +211,7 @@ def _create_adapter(platform: str):
         return IosWdaAdapter()
     if platform == "web":
         return WebPlaywrightAdapter()
-    raise ValueError(f"不支持的平台: {platform}")
+    raise ValueError(f"Unsupported platform: {platform}")
 
 
 def _connect_adapter(args, reporter):

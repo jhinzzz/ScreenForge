@@ -3,7 +3,7 @@
 import sys
 import time
 
-from _version import __version__
+from cli._version import __version__
 
 DEMO_SCENARIO = {
     "title": "Login Flow Test",

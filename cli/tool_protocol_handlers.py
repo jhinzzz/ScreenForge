@@ -279,7 +279,7 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
             "operation": "execute",
             "exit_code": 1,
             "mode": execution_mode,
-            "error": "配置校验失败",
+            "error": "Configuration validation failed",
         }
 
     mute_logs_context = nullcontext

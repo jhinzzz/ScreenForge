@@ -46,7 +46,7 @@ def _get_selected_live_platform() -> str:
     return str(
         os.getenv(
             "TEST_PLATFORM",
-            getattr(config, "TEST_PLATFORM", "android"),
+            getattr(config, "TEST_PLATFORM", "web"),
         )
     ).lower()
 
@@ -213,9 +213,9 @@ def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: byt
 def d():
     from common.adapters import AndroidU2Adapter, IosWdaAdapter, WebPlaywrightAdapter
 
-    platform = os.getenv("TEST_PLATFORM", "android").lower()
+    platform = os.getenv("TEST_PLATFORM", "web").lower()
 
-    log.info(f"🚀 [Pytest Setup] 正在初始化 {platform} 测试环境...")
+    log.info(f"🚀 [Pytest Setup] Initializing {platform} test environment...")
     if platform == "android":
         adapter = AndroidU2Adapter()
     elif platform == "ios":
@@ -223,8 +223,8 @@ def d():
     elif platform == "web":
         adapter = WebPlaywrightAdapter()
     else:
-        log.warning(f"⚠️ 未识别平台 '{platform}'，默认回退到 android")
-        adapter = AndroidU2Adapter()
+        log.warning(f"⚠️ Unrecognized platform '{platform}', falling back to web")
+        adapter = WebPlaywrightAdapter()
 
     adapter.setup()
     yield adapter.driver

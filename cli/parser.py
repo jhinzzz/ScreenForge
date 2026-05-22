@@ -2,7 +2,7 @@
 
 import argparse
 
-from _version import __version__
+from cli._version import __version__
 from common.runtime_modes import resolve_execution_mode
 
 
@@ -12,128 +12,128 @@ def build_parser() -> argparse.ArgumentParser:
         description="AI-driven cross-platform UI automation engine",
     )
     parser.add_argument("--version", action="version", version=f"screenforge {__version__}")
-    parser.add_argument("--goal", type=str, default="", help="宏观测试目标")
+    parser.add_argument("--goal", type=str, default="", help="High-level test goal (natural language)")
     parser.add_argument(
-        "--context", type=str, default="", help="包含 PRD、用例详细说明的文件路径"
+        "--context", type=str, default="", help="Path to PRD or test case specification file"
     )
     parser.add_argument(
         "--env",
         type=str,
         default="dev",
         choices=["dev", "prod", "us_dev", "us_prod"],
-        help="测试环境",
+        help="Target environment (default: dev)",
     )
-    parser.add_argument("--max_steps", type=int, default=15, help="最大自主探索步数")
+    parser.add_argument("--max_steps", type=int, default=15, help="Max autonomous exploration steps")
     parser.add_argument(
         "--max_retries",
         type=int,
         default=3,
-        help="单步操作的最大连续容错重试次数，防 Token 消耗死循环",
+        help="Max retries per step before circuit breaker triggers",
     )
     parser.add_argument(
-        "--output", type=str, default="", help="指定生成的 pytest 脚本路径"
+        "--output", type=str, default="", help="Output path for generated pytest script"
     )
     parser.add_argument(
         "--platform",
         type=str,
-        default="android",
+        default="web",
         choices=["android", "ios", "web"],
-        help="目标测试平台",
+        help="Target platform (default: web)",
     )
     parser.add_argument(
-        "--vision", action="store_true", help="是否开启多模态(视觉)模式"
+        "--vision", action="store_true", help="Enable multimodal (vision) mode"
     )
     parser.add_argument(
         "--json",
         action="store_true",
-        help="是否向 stdout 输出结构化 JSON 事件，便于上层 Agent 解析",
+        help="Emit structured JSON events to stdout for Agent integration",
     )
     parser.add_argument(
-        "--doctor", action="store_true", help="仅执行环境体检，不启动测试执行"
+        "--doctor", action="store_true", help="Run environment diagnostics only"
     )
     parser.add_argument(
         "--plan-only",
         action="store_true",
-        help="基于当前页面生成执行计划，但不执行物理动作",
+        help="Generate execution plan without performing actions",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="模拟执行链路并输出 would-execute 结果，但不执行物理动作",
+        help="Simulate execution and output would-execute results",
     )
     parser.add_argument(
         "--resume-run-id",
         type=str,
         default="",
-        help="从 report/runs/<run_id>/ 中恢复最小上下文",
+        help="Resume from a previous run (reads report/runs/<run_id>/)",
     )
     parser.add_argument(
         "--workflow",
         type=str,
         default="",
-        help="指定结构化 workflow YAML 文件路径，启用半结构化执行模式",
+        help="Path to structured workflow YAML file",
     )
     parser.add_argument(
         "--workflow-var",
         action="append",
         default=[],
-        help="覆盖 workflow 变量，格式为 KEY=VALUE，可重复传入",
+        help="Override workflow variable (KEY=VALUE, repeatable)",
     )
     parser.add_argument(
         "--action",
         type=str,
         default="",
-        help="指定单步即时动作，启用最小控制面模式",
+        help="Execute a single immediate action (click, input, goto, etc.)",
     )
     parser.add_argument(
         "--action-name",
         type=str,
         default="",
-        help="指定单步即时动作的人类可读名称",
+        help="Human-readable name for the action (for reporting)",
     )
     parser.add_argument(
         "--locator-type",
         type=str,
         default="",
-        help="指定单步即时动作的定位器类型",
+        help="Locator strategy: css, text, resourceId, description, ref",
     )
     parser.add_argument(
         "--locator-value",
         type=str,
         default="",
-        help="指定单步即时动作的定位器值",
+        help="Locator value to find the target element",
     )
     parser.add_argument(
         "--extra-value",
         type=str,
         default="",
-        help="指定单步即时动作附加值，如输入内容、按键名或期望文本",
+        help="Extra value for action (input text, key name, expected text, URL)",
     )
     parser.add_argument(
         "--capabilities",
         action="store_true",
-        help="输出当前 CLI 已落地能力的机器可读快照",
+        help="Output machine-readable capability snapshot",
     )
     parser.add_argument(
         "--tool-request",
         type=str,
         default="",
-        help="从 JSON 文件读取机器可读请求并返回统一 JSON 响应",
+        help="Read request from JSON file and return unified JSON response",
     )
     parser.add_argument(
         "--tool-stdin",
         action="store_true",
-        help="从 stdin 读取机器可读请求并返回统一 JSON 响应",
+        help="Read request from stdin and return unified JSON response",
     )
     parser.add_argument(
         "--mcp-server",
         action="store_true",
-        help="以 stdio 模式启动最小 MCP server，供外部 Agent 原生接入",
+        help="Start MCP server (stdio transport) for Agent integration",
     )
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="Run a simulated demo showcasing the full ScreenForge flow (no API key needed)",
+        help="Run simulated demo (no API key needed)",
     )
     return parser
 
@@ -152,7 +152,7 @@ def validate_cli_args(args) -> None:
     has_tool_stdin = bool(getattr(args, "tool_stdin", False))
     has_mcp_server = bool(getattr(args, "mcp_server", False))
     if has_tool_request and has_tool_stdin:
-        raise ValueError("--tool-request 不能与 --tool-stdin 同时使用")
+        raise ValueError("--tool-request and --tool-stdin are mutually exclusive")
     if has_mcp_server:
         if any(
             [
@@ -168,7 +168,7 @@ def validate_cli_args(args) -> None:
                 bool(str(getattr(args, "resume_run_id", "")).strip()),
             ]
         ):
-            raise ValueError("--mcp-server 不能与执行类参数同时使用")
+            raise ValueError("--mcp-server cannot be combined with other execution flags")
         return
     if has_tool_request:
         if any(
@@ -185,7 +185,7 @@ def validate_cli_args(args) -> None:
                 bool(str(getattr(args, "resume_run_id", "")).strip()),
             ]
         ):
-            raise ValueError("--tool-request 不能与执行类参数同时使用")
+            raise ValueError("--tool-request cannot be combined with other execution flags")
         return
     if has_tool_stdin:
         if any(
@@ -201,7 +201,7 @@ def validate_cli_args(args) -> None:
                 bool(str(getattr(args, "resume_run_id", "")).strip()),
             ]
         ):
-            raise ValueError("--tool-stdin 不能与执行类参数同时使用")
+            raise ValueError("--tool-stdin cannot be combined with other execution flags")
         return
     if has_capabilities:
         if any(
@@ -217,21 +217,21 @@ def validate_cli_args(args) -> None:
                 has_mcp_server,
             ]
         ):
-            raise ValueError("--capabilities 不能与执行类参数同时使用")
+            raise ValueError("--capabilities cannot be combined with other execution flags")
         return
     if has_goal and has_workflow:
-        raise ValueError("--workflow 模式下不能同时提供 --goal")
+        raise ValueError("--goal and --workflow are mutually exclusive")
     if has_action and (has_goal or has_workflow):
-        raise ValueError("--action 模式下不能同时提供 --goal 或 --workflow")
+        raise ValueError("--action cannot be combined with --goal or --workflow")
     has_demo = bool(getattr(args, "demo", False))
     if has_demo:
         return
     if not args.doctor and not has_goal and not has_workflow and not has_action:
-        raise ValueError("非 doctor 模式必须提供 --goal、--workflow 或 --action")
+        raise ValueError("Must provide --goal, --workflow, or --action (use --doctor for diagnostics)")
     if has_workflow:
         for item in getattr(args, "workflow_var", []) or []:
             if "=" not in str(item):
-                raise ValueError("workflow 变量覆盖格式必须为 KEY=VALUE")
+                raise ValueError("--workflow-var format must be KEY=VALUE")
     if has_action:
         from common.capabilities import (
             ACTIONS_REQUIRING_EXTRA_VALUE,
@@ -241,13 +241,13 @@ def validate_cli_args(args) -> None:
 
         action = str(args.action).strip()
         if action not in SUPPORTED_ACTIONS:
-            raise ValueError(f"不支持的即时动作类型: {action}")
+            raise ValueError(f"Unsupported action: {action}")
         if action not in GLOBAL_ACTIONS:
             if not str(getattr(args, "locator_type", "")).strip() or not str(
                 getattr(args, "locator_value", "")
             ).strip():
-                raise ValueError("元素类即时动作必须提供 locator_type 和 locator_value")
+                raise ValueError("Element actions require --locator-type and --locator-value")
         if action in ACTIONS_REQUIRING_EXTRA_VALUE and not str(
             getattr(args, "extra_value", "")
         ).strip():
-            raise ValueError("该即时动作必须提供 extra_value")
+            raise ValueError(f"Action '{action}' requires --extra-value")

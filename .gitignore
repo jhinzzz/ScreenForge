@@ -1,20 +1,25 @@
-# 日志&报告
+# Logs & reports
 .logs/
 .report/
 *.log
 
-# 虚拟环境
+# Virtual environment
 .venv/
 
-# 项目缓存
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Caches
 __pycache__/
 .pytest_cache/
 .test_cache/
 .cache/
 *.pyc
-*.DS_Store
+.DS_Store
 
-# IDE 缓存
+# IDE
 .qoder/
 .trae/
 .worktrees/

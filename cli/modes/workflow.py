@@ -34,7 +34,7 @@ def _load_workflow_definition(args):
 
     if workflow.platform and workflow.platform != args.platform:
         raise WorkflowLoadError(
-            f"workflow 平台 [{workflow.platform}] 与当前 --platform [{args.platform}] 不一致"
+            f"Workflow platform [{workflow.platform}] conflicts with --platform [{args.platform}]"
         )
 
     return workflow
