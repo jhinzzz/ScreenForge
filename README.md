@@ -96,6 +96,20 @@ Or start the MCP server for native Agent integration:
 screenforge --mcp-server
 ```
 
+## GitHub Actions
+
+Add ScreenForge to your CI pipeline:
+
+```yaml
+- uses: jhinzzz/ScreenForge@v1
+  with:
+    platform: web
+    workflow: ./workflows/login.yaml
+    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+```
+
+Results are auto-uploaded as Allure artifacts. See [action.yml](action.yml) for all inputs.
+
 See [Agent Integration Guide](docs/agent_guide.md) for the complete protocol.
 
 ## Installation (from source)

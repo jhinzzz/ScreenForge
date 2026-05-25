@@ -1,0 +1,112 @@
+name: "ScreenForge Test"
+description: "Run AI-driven UI tests with ScreenForge. Generates pytest scripts and Allure reports."
+branding:
+  icon: "monitor"
+  color: "blue"
+
+inputs:
+  platform:
+    description: "Target platform: web, android, or ios"
+    required: false
+    default: "web"
+  workflow:
+    description: "Path to a workflow YAML file to execute"
+    required: false
+  action:
+    description: "Single action to execute (click, input, goto, etc.)"
+    required: false
+  locator-type:
+    description: "Locator strategy: css, text, resourceId, description"
+    required: false
+  locator-value:
+    description: "Locator value for the target element"
+    required: false
+  extra-value:
+    description: "Extra value (URL for goto, text for input, key for press)"
+    required: false
+  python-version:
+    description: "Python version to use"
+    required: false
+    default: "3.11"
+  allure-results:
+    description: "Directory for Allure results output"
+    required: false
+    default: "./report/allure-results"
+  openai-api-key:
+    description: "OpenAI API key (or compatible endpoint key)"
+    required: false
+  openai-base-url:
+    description: "OpenAI-compatible base URL"
+    required: false
+  model-name:
+    description: "LLM model name"
+    required: false
+    default: "gpt-4o"
+
+outputs:
+  exit-code:
+    description: "ScreenForge exit code (0=success, 1=failure)"
+    value: ${{ steps.run.outputs.exit-code }}
+  report-dir:
+    description: "Path to the Allure results directory"
+    value: ${{ inputs.allure-results }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install ScreenForge
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install screenforge
+
+    - name: Install Playwright browsers
+      if: inputs.platform == 'web'
+      shell: bash
+      run: playwright install chromium
+
+    - name: Run ScreenForge
+      id: run
+      shell: bash
+      env:
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        OPENAI_BASE_URL: ${{ inputs.openai-base-url }}
+        MODEL_NAME: ${{ inputs.model-name }}
+      run: |
+        set +e
+        ARGS="--platform ${{ inputs.platform }} --json"
+
+        if [ -n "${{ inputs.workflow }}" ]; then
+          ARGS="$ARGS --workflow ${{ inputs.workflow }}"
+        elif [ -n "${{ inputs.action }}" ]; then
+          ARGS="$ARGS --action ${{ inputs.action }}"
+          if [ -n "${{ inputs.locator-type }}" ]; then
+            ARGS="$ARGS --locator-type ${{ inputs.locator-type }}"
+          fi
+          if [ -n "${{ inputs.locator-value }}" ]; then
+            ARGS="$ARGS --locator-value ${{ inputs.locator-value }}"
+          fi
+          if [ -n "${{ inputs.extra-value }}" ]; then
+            ARGS="$ARGS --extra-value '${{ inputs.extra-value }}'"
+          fi
+        fi
+
+        ARGS="$ARGS --allure-dir ${{ inputs.allure-results }}"
+
+        eval "screenforge $ARGS"
+        EXIT_CODE=$?
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        exit $EXIT_CODE
+
+    - name: Upload Allure results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenforge-allure-results
+        path: ${{ inputs.allure-results }}
+        if-no-files-found: ignore
