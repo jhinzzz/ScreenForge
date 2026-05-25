@@ -113,6 +113,11 @@ def main():
         log.error(f"[E010] Invalid CLI arguments: {e}. Fix: run 'screenforge --help' to see valid options")
         sys.exit(2)
 
+    if getattr(args, "init", False):
+        from cli.modes.init import run_init_mode
+
+        sys.exit(run_init_mode())
+
     if getattr(args, "demo", False):
         from cli.modes.demo import run_demo_mode
 

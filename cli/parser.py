@@ -131,6 +131,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start MCP server (stdio transport) for Agent integration",
     )
     parser.add_argument(
+        "--init",
+        action="store_true",
+        help="Interactive first-time setup wizard",
+    )
+    parser.add_argument(
         "--demo",
         action="store_true",
         help="Run simulated demo (no API key needed)",
@@ -235,7 +240,8 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     if has_action and (has_goal or has_workflow):
         raise ValueError("--action cannot be combined with --goal or --workflow")
     has_demo = bool(getattr(args, "demo", False))
-    if has_demo:
+    has_init = bool(getattr(args, "init", False))
+    if has_demo or has_init:
         return
     if not args.doctor and not has_goal and not has_workflow and not has_action:
         raise ValueError("Must provide --goal, --workflow, or --action (use --doctor for diagnostics)")
@@ -252,7 +258,8 @@ def validate_cli_args(args: argparse.Namespace) -> None:
 
         action = str(args.action).strip()
         if action not in SUPPORTED_ACTIONS:
-            raise ValueError(f"Unsupported action: {action}")
+            valid = ", ".join(sorted(SUPPORTED_ACTIONS))
+            raise ValueError(f"Unsupported action: {action}. Valid actions: {valid}")
         if action not in GLOBAL_ACTIONS:
             if not str(getattr(args, "locator_type", "")).strip() or not str(
                 getattr(args, "locator_value", "")

@@ -102,10 +102,8 @@ def _classify_doctor_check(check: dict) -> dict:
 
 
 def _doctor_fix_doc_reference(doc_name: str, section: str) -> dict:
-    project_root = Path(__file__).resolve().parent.parent
-    doc_path = project_root / doc_name
     return {
-        "fix_doc": str(doc_path),
+        "fix_doc": doc_name,
         "fix_doc_section": section,
     }
 

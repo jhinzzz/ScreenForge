@@ -1,0 +1,33 @@
+version: 1
+name: web_login
+platform: web
+vars:
+  url: "https://example.com/login"
+  email: "user@example.com"
+  password: "password123"
+steps:
+  - name: Navigate to login page
+    action: goto
+    extra_value: "{{ url }}"
+
+  - name: Enter email
+    action: input
+    locator_type: css
+    locator_value: "#email"
+    extra_value: "{{ email }}"
+
+  - name: Enter password
+    action: input
+    locator_type: css
+    locator_value: "#password"
+    extra_value: "{{ password }}"
+
+  - name: Click sign in button
+    action: click
+    locator_type: text
+    locator_value: "Sign In"
+
+  - name: Verify dashboard loaded
+    action: assert_exist
+    locator_type: css
+    locator_value: ".dashboard"

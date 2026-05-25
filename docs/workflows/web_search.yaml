@@ -1,0 +1,25 @@
+version: 1
+name: web_search
+platform: web
+vars:
+  url: "https://example.com"
+  query: "screenforge documentation"
+steps:
+  - name: Navigate to homepage
+    action: goto
+    extra_value: "{{ url }}"
+
+  - name: Enter search query
+    action: input
+    locator_type: css
+    locator_value: "input[type=search], input[name=q], #search"
+    extra_value: "{{ query }}"
+
+  - name: Submit search
+    action: press
+    extra_value: "Enter"
+
+  - name: Verify results appear
+    action: assert_exist
+    locator_type: css
+    locator_value: ".search-results, [data-testid=results]"

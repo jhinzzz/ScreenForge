@@ -1,0 +1,40 @@
+version: 1
+name: web_form_submit
+platform: web
+vars:
+  url: "https://example.com/contact"
+  name: "Jane Doe"
+  email: "jane@example.com"
+  message: "Hello, I have a question about your product."
+steps:
+  - name: Navigate to contact form
+    action: goto
+    extra_value: "{{ url }}"
+
+  - name: Fill in name
+    action: input
+    locator_type: css
+    locator_value: "#name, input[name=name]"
+    extra_value: "{{ name }}"
+
+  - name: Fill in email
+    action: input
+    locator_type: css
+    locator_value: "#email, input[name=email]"
+    extra_value: "{{ email }}"
+
+  - name: Fill in message
+    action: input
+    locator_type: css
+    locator_value: "textarea, #message"
+    extra_value: "{{ message }}"
+
+  - name: Submit form
+    action: click
+    locator_type: text
+    locator_value: "Submit"
+
+  - name: Verify success message
+    action: assert_exist
+    locator_type: text
+    locator_value: "Thank you"
