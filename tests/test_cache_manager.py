@@ -1,8 +1,5 @@
 """Tests for common/cache/cache_manager.py — cache hit/miss/write logic."""
 
-import json
-import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
