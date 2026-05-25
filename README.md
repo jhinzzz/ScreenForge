@@ -10,8 +10,7 @@
 
 ScreenForge is an AI-driven UI automation engine that turns natural language into executable test scripts. Unlike record-and-replay tools, you don't perform the actions yourself — the AI does it for you.
 
-<!-- TODO: Replace with actual 30s demo GIF -->
-<!-- ![ScreenForge Demo](docs/assets/demo.gif) -->
+![ScreenForge Demo](docs/assets/demo.gif)
 
 ## Why ScreenForge?
 
@@ -128,6 +127,16 @@ export MODEL_NAME=gpt-4o
 ```
 
 Or create a `.env` file (copy from `.env_template`).
+
+## Badge
+
+If ScreenForge generates tests for your project, add this badge to your README:
+
+```markdown
+[![Tests by ScreenForge](https://img.shields.io/badge/tests%20by-ScreenForge-blue?logo=pytest)](https://github.com/jhinzzz/ScreenForge)
+```
+
+[![Tests by ScreenForge](https://img.shields.io/badge/tests%20by-ScreenForge-blue?logo=pytest)](https://github.com/jhinzzz/ScreenForge)
 
 ## Learn More
 

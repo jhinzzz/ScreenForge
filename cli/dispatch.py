@@ -119,6 +119,8 @@ def main():
         sys.exit(run_demo_mode())
 
     if args.tool_stdin:
+        from common.progress import set_tool_mode
+        set_tool_mode(True)
         if sys.stdin.isatty():
             import io
             import json as _json
@@ -126,9 +128,13 @@ def main():
         sys.exit(run_tool_stdin_mode(args))
 
     if args.mcp_server:
+        from common.progress import set_tool_mode
+        set_tool_mode(True)
         sys.exit(run_mcp_server_mode(args))
 
     if args.tool_request:
+        from common.progress import set_tool_mode
+        set_tool_mode(True)
         sys.exit(run_tool_request_mode(args))
 
     if args.capabilities:

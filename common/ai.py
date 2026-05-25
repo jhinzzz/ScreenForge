@@ -6,6 +6,7 @@ from openai import OpenAI
 import config.config as config
 from common.cache import CacheManager
 from common.logs import log
+from common.progress import ai_status
 
 
 class AIBrain:
@@ -240,14 +241,15 @@ class AIBrain:
         封装底层的 LLM 网络调用
         """
         try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message_content},
-                ],
-                temperature=0.1,
-            )
+            with ai_status(f"Thinking ({model_name})..."):
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message_content},
+                    ],
+                    temperature=0.1,
+                )
 
             result_text = response.choices[0].message.content.strip()
 

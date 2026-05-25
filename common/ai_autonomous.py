@@ -3,6 +3,7 @@ import json
 import config.config as config
 from common.ai import AIBrain
 from common.logs import log
+from common.progress import ai_status
 
 
 class AutonomousBrain(AIBrain):
@@ -82,14 +83,15 @@ class AutonomousBrain(AIBrain):
 
         result_text = ""
         try:
-            response = active_client.chat.completions.create(
-                model=active_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message_content},
-                ],
-                temperature=0.1,
-            )
+            with ai_status("Planning execution steps..."):
+                response = active_client.chat.completions.create(
+                    model=active_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message_content},
+                    ],
+                    temperature=0.1,
+                )
             result_text = response.choices[0].message.content.strip()
 
             if "```json" in result_text:
@@ -223,14 +225,15 @@ class AutonomousBrain(AIBrain):
 
         result_text = ""
         try:
-            response = active_client.chat.completions.create(
-                model=active_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message_content},
-                ],
-                temperature=0.1,
-            )
+            with ai_status("Reasoning about next action..."):
+                response = active_client.chat.completions.create(
+                    model=active_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message_content},
+                    ],
+                    temperature=0.1,
+                )
 
             result_text = response.choices[0].message.content.strip()
 

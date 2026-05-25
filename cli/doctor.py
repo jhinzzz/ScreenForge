@@ -16,6 +16,46 @@ from common.capabilities import get_capabilities_payload
 from common.runtime_modes import MODE_DOCTOR
 
 
+def _render_rich_doctor_table(checks: list[dict]) -> None:
+    """Display doctor results as a Rich table when running interactively."""
+    if not sys.stderr.isatty():
+        return
+    try:
+        from rich.console import Console
+        from rich.table import Table
+    except ImportError:
+        return
+
+    console = Console(stderr=True)
+    table = Table(title="ScreenForge Doctor", show_lines=True)
+    table.add_column("Check", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Details")
+
+    for check in checks:
+        name = check.get("name", "unknown")
+        ok = check.get("ok", False)
+        status = "[green]PASS[/]" if ok else "[red]FAIL[/]"
+        details = ""
+        if not ok:
+            issues = check.get("issues", []) or []
+            errors = check.get("errors", []) or []
+            error = check.get("error", "")
+            hint = check.get("hint", "")
+            parts = [str(i).strip() for i in issues + errors if str(i).strip()]
+            if error and str(error).strip():
+                parts.append(str(error).strip())
+            if hint and str(hint).strip():
+                parts.append(f"[dim]{hint}[/dim]")
+            details = "\n".join(parts[:3])
+        else:
+            if check.get("path"):
+                details = f"[dim]{check['path']}[/dim]"
+        table.add_row(name, status, details)
+
+    console.print(table)
+
+
 def _normalize_doctor_message(message: str) -> str:
     lines = [line.strip() for line in str(message).splitlines() if line.strip()]
     return lines[0] if lines else ""
@@ -352,6 +392,8 @@ def run_doctor_mode(args, output_script_path: str) -> int:
             groups=doctor_summary.get("groups", []),
             recommended_actions=doctor_summary.get("recommended_actions", []),
         )
+
+        _render_rich_doctor_table(result.get("checks", []))
 
         if result.get("ok"):
             log.info("🩺 [Doctor] Environment check passed.")
