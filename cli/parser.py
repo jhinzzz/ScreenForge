@@ -138,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def validate_cli_args(args) -> None:
+def validate_cli_args(args: argparse.Namespace) -> None:
     resolve_execution_mode(
         doctor=args.doctor,
         plan_only=args.plan_only,

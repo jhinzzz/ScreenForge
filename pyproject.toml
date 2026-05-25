@@ -48,6 +48,52 @@ known-first-party = ["common", "cli", "config", "utils"]
 [tool.setuptools.packages.find]
 include = ["cli*", "common*", "config*", "utils*"]
 
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+no_implicit_optional = false
+exclude = ["test_cases/", "scripts/", "\\.worktrees/"]
+
+[[tool.mypy.overrides]]
+module = [
+    "common.runtime_modes",
+    "common.capabilities",
+    "common.run_reporter",
+    "common.run_resume",
+    "cli.shorthand",
+    "cli.parser",
+    "cli._version",
+]
+disallow_untyped_defs = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cli.modes.*",
+    "cli.shared",
+    "cli.doctor",
+    "cli.reporter",
+    "cli.tool_protocol_handlers",
+    "common.ai",
+    "common.ai_autonomous",
+    "common.ai_heal",
+    "common.executor",
+    "common.visual_fallback",
+    "common.cache.*",
+    "common.logs",
+    "common.mcp_server",
+    "common.tool_protocol",
+    "common.workflow_schema",
+    "common.adapters.*",
+    "config.*",
+    "utils.*",
+    "main",
+]
+disable_error_code = ["misc", "no-any-return", "attr-defined", "union-attr", "arg-type", "var-annotated", "assignment", "index", "call-overload", "dict-item", "return-value", "empty-body"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

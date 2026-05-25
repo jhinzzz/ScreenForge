@@ -7,16 +7,18 @@ class RunContextLoadError(Exception):
     pass
 
 
-def _read_summary(summary_file: Path) -> Dict[str, object]:
+def _read_summary(summary_file: Path) -> Dict[str, Any]:
     if not summary_file.exists():
         raise RunContextLoadError(f"No recoverable run record found: {summary_file.parent}")
-    return json.loads(summary_file.read_text(encoding="utf-8"))
+    data: Dict[str, Any] = json.loads(summary_file.read_text(encoding="utf-8"))
+    return data
 
 
 def _read_optional_json(file_path: Path) -> Dict[str, Any]:
     if not file_path.exists():
         return {}
-    return json.loads(file_path.read_text(encoding="utf-8"))
+    data: Dict[str, Any] = json.loads(file_path.read_text(encoding="utf-8"))
+    return data
 
 
 def _read_steps(steps_file: Path) -> List[Dict[str, object]]:
@@ -66,7 +68,7 @@ def _build_recommended_next_step(
     }
 
 
-def load_run_context(run_dir: Path) -> Dict[str, object]:
+def load_run_context(run_dir: Path) -> Dict[str, Any]:
     run_dir = Path(run_dir)
     try:
         summary = _read_summary(run_dir / "summary.json")
@@ -84,10 +86,10 @@ def load_run_context(run_dir: Path) -> Dict[str, object]:
         and item.get("action_description")
     ]
 
-    latest_screenshot_path = ""
+    latest_screenshot_path: str = ""
     for item in steps:
         if item.get("event") == "artifact_saved" and item.get("artifact_type") == "screenshot":
-            latest_screenshot_path = item.get("path", "") or latest_screenshot_path
+            latest_screenshot_path = str(item.get("path", "") or latest_screenshot_path)
 
     return {
         "run_id": summary.get("run_id", ""),
@@ -104,7 +106,7 @@ def load_run_context(run_dir: Path) -> Dict[str, object]:
     }
 
 
-def load_run_bundle(run_dir: Path) -> Dict[str, object]:
+def load_run_bundle(run_dir: Path) -> Dict[str, Any]:
     run_dir = Path(run_dir)
     summary_file = run_dir / "summary.json"
     artifacts_file = run_dir / "artifacts.json"
@@ -115,13 +117,13 @@ def load_run_bundle(run_dir: Path) -> Dict[str, object]:
     pytest_replay = _read_optional_json(pytest_replay_file)
     resume_context = load_run_context(run_dir)
 
-    pytest_asset = summary.get("pytest_asset", {}) or {}
-    failure_analysis = summary.get("failure_analysis", None)
-    resume_commands = {
+    pytest_asset: Dict[str, Any] = summary.get("pytest_asset", {}) or {}
+    failure_analysis: Dict[str, Any] | None = summary.get("failure_analysis", None)
+    resume_commands: Dict[str, Any] = {
         **(pytest_asset.get("resume_commands", {}) or {}),
         **(pytest_replay.get("resume_commands", {}) or {}),
     }
-    run_assets = {
+    run_assets: Dict[str, Any] = {
         "summary_path": str(summary_file),
         "artifacts_path": str(artifacts_file) if artifacts_file.exists() else "",
         "pytest_replay_path": str(pytest_replay_file)
