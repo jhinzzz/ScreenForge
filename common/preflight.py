@@ -171,7 +171,7 @@ def check_command_available(command_name: str) -> Dict[str, object]:
         "name": command_name,
         "ok": bool(command_path),
         "path": command_path or "",
-        "hint": f"请确认 {command_name} 已安装并已加入 PATH。",
+        "hint": f"Ensure {command_name} is installed and available on PATH.",
     }
 
 
@@ -196,8 +196,8 @@ def check_tcp_endpoint(url: str, timeout_seconds: float = 1.0) -> Dict[str, obje
         return {
             "name": url,
             "ok": False,
-            "error": "无法从 URL 中解析 host 或 port",
-            "hint": "请检查 URL 格式是否包含合法的 host 与 port。",
+            "error": "Cannot parse host or port from URL",
+            "hint": "Check that the URL contains a valid host and port.",
         }
 
     try:
@@ -209,19 +209,19 @@ def check_tcp_endpoint(url: str, timeout_seconds: float = 1.0) -> Dict[str, obje
             return {
                 "name": url,
                 "ok": False,
-                "error": "当前运行环境限制了本地 TCP 连接检查",
+                "error": "Current environment restricts local TCP connection checks",
                 "raw_error": raw_error,
                 "environment_restricted": True,
                 "hint": (
-                    f"请在宿主终端直接检查 {url}/json/version，"
-                    "或在放宽本地网络权限后重试。"
+                    f"Try checking {url}/json/version directly from a host terminal, "
+                    "or retry after relaxing local network permissions."
                 ),
             }
         return {
             "name": url,
             "ok": False,
             "error": raw_error,
-            "hint": f"请确认 {url} 对应的本地服务已经启动。",
+            "hint": f"Ensure the local service at {url} is running.",
         }
 
 
@@ -241,21 +241,21 @@ def check_android_device_connected() -> Dict[str, object]:
             "devices": [],
             "blocked_devices": [],
             "error": str(exc),
-            "hint": "请确认 adb 可执行，并且终端可以直接运行 `adb devices`。",
+            "hint": "Ensure adb is executable and `adb devices` runs successfully.",
         }
 
     if result.returncode != 0:
-        raw_error = result.stderr.strip() or result.stdout.strip() or "adb devices 执行失败"
+        raw_error = result.stderr.strip() or result.stdout.strip() or "adb devices execution failed"
         if _is_environment_restricted_error(raw_error):
             return {
                 "name": "adb_devices",
                 "ok": False,
                 "devices": [],
                 "blocked_devices": [],
-                "error": "当前运行环境限制了 adb daemon 的本地端口监听",
+                "error": "Current environment restricts local port access for adb daemon",
                 "raw_error": raw_error,
                 "environment_restricted": True,
-                "hint": "请在宿主终端直接执行 `adb devices`，或在放宽本地网络权限后重试。",
+                "hint": "Run `adb devices` directly from a host terminal, or retry after relaxing local network permissions.",
             }
         return {
             "name": "adb_devices",
@@ -263,7 +263,7 @@ def check_android_device_connected() -> Dict[str, object]:
             "devices": [],
             "blocked_devices": [],
             "error": raw_error,
-            "hint": "请确认 adb 服务正常，并重新执行 `adb devices` 检查。",
+            "hint": "Ensure the adb service is running, then re-run `adb devices`.",
         }
 
     devices = []
@@ -294,9 +294,9 @@ def check_android_device_connected() -> Dict[str, object]:
         blocked_desc = ", ".join(
             f"{item['serial']}({item['status']})" for item in blocked_devices
         )
-        error = f"检测到 Android 设备但状态不可用: {blocked_desc}"
+        error = f"Android device(s) detected but unavailable: {blocked_desc}"
     else:
-        error = "未检测到可用 Android 设备"
+        error = "No usable Android device detected"
 
     return {
         "name": "adb_devices",
@@ -304,7 +304,7 @@ def check_android_device_connected() -> Dict[str, object]:
         "devices": [],
         "blocked_devices": blocked_devices,
         "error": error,
-        "hint": "请连接设备、开启 USB 调试，并在手机上确认调试授权后重试。",
+        "hint": "Connect a device, enable USB debugging, and accept the debug authorization prompt on the phone.",
     }
 
 
@@ -322,12 +322,12 @@ def check_cdp_debug_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[str
                 "ok": False,
                 "browser": "",
                 "websocket_url": "",
-                "error": "当前运行环境限制了本地 HTTP 调试端点检查",
+                "error": "Current environment restricts local HTTP debug endpoint checks",
                 "raw_error": raw_error,
                 "environment_restricted": True,
                 "hint": (
-                    f"请在宿主终端直接检查 {version_url}，"
-                    "或在放宽本地网络权限后重试。"
+                    f"Try checking {version_url} directly from a host terminal, "
+                    "or retry after relaxing local network permissions."
                 ),
             }
         return {
@@ -336,7 +336,7 @@ def check_cdp_debug_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[str
             "browser": "",
             "websocket_url": "",
             "error": raw_error,
-            "hint": "请以 `--remote-debugging-port=9222` 启动 Chrome，并确认 CDP 地址可访问。",
+            "hint": "Launch Chrome with `--remote-debugging-port=9222` and ensure the CDP address is reachable.",
         }
 
     websocket_url = payload.get("webSocketDebuggerUrl", "")
@@ -346,8 +346,8 @@ def check_cdp_debug_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[str
             "ok": False,
             "browser": payload.get("Browser", ""),
             "websocket_url": "",
-            "error": "CDP 元数据缺少 webSocketDebuggerUrl",
-            "hint": "请确认当前端口暴露的是 Chrome DevTools Protocol，而不是普通 HTTP 服务。",
+            "error": "CDP metadata missing webSocketDebuggerUrl",
+            "hint": "Ensure the port exposes Chrome DevTools Protocol, not a regular HTTP service.",
         }
 
     return {
@@ -373,7 +373,7 @@ def check_wda_status_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[st
             "platform_version": "",
             "message": "",
             "error": str(exc),
-            "hint": "请确认 WebDriverAgent 已在 iPhone 上启动，并且 8100 端口映射可用。",
+            "hint": "Ensure WebDriverAgent is running on the iPhone and port 8100 is mapped.",
         }
 
     value = payload.get("value")
@@ -384,8 +384,8 @@ def check_wda_status_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[st
             "platform_name": "",
             "platform_version": "",
             "message": "",
-            "error": "WDA status 响应缺少 value 字段",
-            "hint": "请确认当前 8100 端口暴露的是有效的 WebDriverAgent status 接口。",
+            "error": "WDA status response missing 'value' field",
+            "hint": "Ensure port 8100 exposes a valid WebDriverAgent status endpoint.",
         }
 
     state = str(value.get("state", "")).strip()
@@ -396,8 +396,8 @@ def check_wda_status_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[st
             "platform_name": "",
             "platform_version": "",
             "message": str(value.get("message", "")).strip(),
-            "error": f"WDA 当前状态异常: {state or 'unknown'}",
-            "hint": "请检查 WebDriverAgent 是否成功安装、签名，并确认真机已信任开发者证书。",
+            "error": f"WDA state is abnormal: {state or 'unknown'}",
+            "hint": "Check that WebDriverAgent is properly installed and signed, and the device trusts the developer certificate.",
         }
 
     os_info = value.get("os", {}) if isinstance(value.get("os"), dict) else {}

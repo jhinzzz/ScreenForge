@@ -28,6 +28,11 @@ ios = ["facebook-wda>=1.0"]
 ml = ["torch>=2.0", "sentence-transformers>=5.0", "scikit-learn>=1.8"]
 all = ["screenforge[android,ios,ml]"]
 
+[project.urls]
+Homepage = "https://github.com/jhinzzz/ScreenForge"
+Repository = "https://github.com/jhinzzz/ScreenForge"
+Issues = "https://github.com/jhinzzz/ScreenForge/issues"
+
 [project.scripts]
 screenforge = "cli.dispatch:main"
 

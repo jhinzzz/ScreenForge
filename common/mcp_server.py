@@ -222,37 +222,37 @@ def build_mcp_tools() -> list[dict]:
         {
             "name": MCP_TOOL_CAPABILITIES,
             "title": "ScreenForge Capabilities",
-            "description": "返回当前 ScreenForge 已落地的平台、模式、控制面与动作能力快照。",
+            "description": "Returns a capability snapshot of supported platforms, modes, control planes, and actions.",
             "inputSchema": _build_capabilities_tool_schema(),
         },
         {
             "name": MCP_TOOL_EXECUTE,
             "title": "ScreenForge Execute",
             "description": (
-                "执行或预演 ScreenForge 请求。Agent 入口仅支持 workflow、action、doctor 三类控制面；"
-                f"支持的执行模式为 {', '.join(EXECUTION_MODES)}；"
-                f"支持的平台为 {', '.join(SUPPORTED_PLATFORMS)}；"
-                f"支持的控制面为 {', '.join(CONTROL_PLANES)}；"
-                f"需要 extra_value 的动作为 {', '.join(sorted(ACTIONS_REQUIRING_EXTRA_VALUE))}。"
+                "Execute or dry-run a ScreenForge request. Agent entry supports workflow, action, and doctor control planes. "
+                f"Execution modes: {', '.join(EXECUTION_MODES)}. "
+                f"Platforms: {', '.join(SUPPORTED_PLATFORMS)}. "
+                f"Control planes: {', '.join(CONTROL_PLANES)}. "
+                f"Actions requiring extra_value: {', '.join(sorted(ACTIONS_REQUIRING_EXTRA_VALUE))}."
             ),
             "inputSchema": _build_execute_tool_schema(),
         },
         {
             "name": MCP_TOOL_INSPECT_UI,
             "title": "ScreenForge Inspect UI",
-            "description": "连接目标平台，返回清洗后的 XML/DOM 树，供上层 Agent 自主分析与定位。",
+            "description": "Connect to the target platform and return a cleaned XML/DOM tree for the Agent to analyze and locate elements.",
             "inputSchema": _build_inspect_ui_tool_schema(),
         },
         {
             "name": MCP_TOOL_LOAD_CASE_MEMORY,
             "title": "ScreenForge Load Case Memory",
-            "description": "读取 ScreenForge 的跨运行测试记忆，供上层 Agent 复用成功动作、定位经验与 pytest 资产。",
+            "description": "Load cross-run test memory for the Agent to reuse successful actions, locator strategies, and pytest assets.",
             "inputSchema": _build_load_case_memory_tool_schema(),
         },
         {
             "name": MCP_TOOL_LOAD_RUN,
             "title": "ScreenForge Load Run",
-            "description": "按 run_id 读取历史运行的 summary、resume_context 和回放资产。",
+            "description": "Load a historical run by run_id, returning its summary, resume_context, and replay assets.",
             "inputSchema": _build_load_run_tool_schema(),
         },
     ]
@@ -321,14 +321,14 @@ class McpServerSession:
                 "ok": False,
                 "operation": "load_case_memory",
                 "exit_code": 2,
-                "error": "未配置 load_case_memory 处理器",
+                "error": "load_case_memory handler not configured",
             }
         )
         self._initialized = False
 
     def handle_message(self, message: dict) -> dict | None:
         if not isinstance(message, dict):
-            return _jsonrpc_error(None, -32600, "无效的 JSON-RPC 请求")
+            return _jsonrpc_error(None, -32600, "Invalid JSON-RPC request")
 
         method = str(message.get("method", "")).strip()
         request_id = message.get("id")
@@ -450,10 +450,10 @@ def run_stdio_mcp_server(
         try:
             message = json.loads(line)
         except json.JSONDecodeError as exc:
-            response = _jsonrpc_error(None, -32700, "JSON 解析失败", str(exc))
+            response = _jsonrpc_error(None, -32700, "JSON parse error", str(exc))
         else:
             if isinstance(message, list):
-                response = _jsonrpc_error(None, -32600, "暂不支持 batch 请求")
+                response = _jsonrpc_error(None, -32600, "Batch requests are not supported")
             else:
                 response = session.handle_message(message)
 

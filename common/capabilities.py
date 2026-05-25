@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from common.runtime_modes import MODE_DOCTOR, MODE_DRY_RUN, MODE_PLAN_ONLY, MODE_RUN
 
 SUPPORTED_PLATFORMS = ("android", "ios", "web")
@@ -21,7 +19,6 @@ EXECUTION_MODES = (MODE_RUN, MODE_DOCTOR, MODE_PLAN_ONLY, MODE_DRY_RUN)
 
 
 def get_capabilities_payload() -> dict:
-    project_root = Path(__file__).resolve().parent.parent
     return {
         "platforms": list(SUPPORTED_PLATFORMS),
         "execution_modes": list(EXECUTION_MODES),
@@ -46,7 +43,7 @@ def get_capabilities_payload() -> dict:
             "goal_cli_human_mode_only": True,
         },
         "docs": {
-            "capability_matrix": str(project_root / "docs" / "capability-matrix.md"),
-            "agent_guide": str(project_root / "docs" / "agent_guide.md"),
+            "capability_matrix": "docs/capability-matrix.md",
+            "agent_guide": "docs/agent_guide.md",
         },
     }
