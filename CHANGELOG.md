@@ -2,7 +2,7 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
-## [Unreleased]
+## [0.1.1] - 2026-05-25
 
 ### Security
 - **Code-generation injection hardening**: `_escape_locator_value` now escapes `\n`, `\r`, `\t`, `\0` in addition to quotes/backslashes — prevents injecting arbitrary Python through crafted locator values
