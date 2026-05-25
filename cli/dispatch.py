@@ -124,8 +124,10 @@ def main():
         except ImportError:
             log.error("[E013] Playground requires extra dependencies. Fix: pip install screenforge[playground]")
             sys.exit(1)
+        cdp_url = "http://127.0.0.1:9333"
         log.info(f"Starting Playground on http://127.0.0.1:{args.playground_port}")
-        run_server(port=args.playground_port)
+        log.info(f"CDP screencast target: {cdp_url}")
+        run_server(port=args.playground_port, cdp_url=cdp_url)
         sys.exit(0)
 
     if args.tool_stdin:

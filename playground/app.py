@@ -2,13 +2,20 @@
 
 import asyncio
 import json
+import logging
 import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
+from playground.cdp_screencast import DEFAULT_CDP_HTTP, run_screencast_safe
+
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="ScreenForge Playground")
+_cdp_url: str = DEFAULT_CDP_HTTP
+_screencast_task: asyncio.Task | None = None
 
 _action_log: list[dict] = []
 _screenshot_b64: str = ""
@@ -81,7 +88,31 @@ async def sse_events():
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def run_server(host: str = "127.0.0.1", port: int = 7860):
+@app.on_event("startup")
+async def _start_screencast():
+    global _screencast_task
+
+    async def _on_frame(b64_data: str, metadata: dict):
+        update_screenshot(b64_data)
+
+    _screencast_task = asyncio.create_task(
+        run_screencast_safe(_on_frame, cdp_http_url=_cdp_url)
+    )
+    logger.info(f"CDP screencast started (target: {_cdp_url})")
+
+
+@app.on_event("shutdown")
+async def _stop_screencast():
+    global _screencast_task
+    if _screencast_task:
+        _screencast_task.cancel()
+        _screencast_task = None
+
+
+def run_server(host: str = "127.0.0.1", port: int = 7860, cdp_url: str = DEFAULT_CDP_HTTP):
+    global _cdp_url
+    _cdp_url = cdp_url
+
     import uvicorn
     uvicorn.run(app, host=host, port=port)
 
