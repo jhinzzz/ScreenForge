@@ -2,6 +2,16 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Unit tests for CLI core paths: runtime_modes, capabilities, shorthand, parser, run_resume, run_reporter, dispatch (32 → 154 tests)
+- Type-safe `SimpleNamespace` fixtures in dispatch tests (replaces MagicMock)
+
+### Changed
+- Complete English-first translation: all developer-facing logs in ai.py, ai_autonomous.py, cache/, case_memory.py, visual_fallback.py, utils/
+- Narrowed failure classification tokens to prevent false-positive categorization
+
 ## [0.1.0] - 2026-05-22
 
 ### Added
