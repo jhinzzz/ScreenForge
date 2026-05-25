@@ -13,6 +13,13 @@ Set Padding 20
 Set Theme "Dracula"
 Set TypingSpeed 50ms
 
+# Activate venv so screenforge is on PATH
+Hide
+Type "source .venv/bin/activate"
+Enter
+Sleep 0.5s
+Show
+
 # Title
 Type "# ScreenForge: Describe what to test. Watch it happen. Get a pytest script."
 Enter
