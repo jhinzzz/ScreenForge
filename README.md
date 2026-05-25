@@ -156,6 +156,7 @@ If ScreenForge generates tests for your project, add this badge to your README:
 
 | Resource | Description |
 |----------|-------------|
+| [Mobile Setup](docs/mobile-setup.md) | Android & iOS device connection guide |
 | [MCP Setup (3 min)](docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
 | [Agent Guide](docs/agent_guide.md) | Integration protocol for AI Agents |
 | [Capability Matrix](docs/capability-matrix.md) | Supported platforms, actions, and locators |

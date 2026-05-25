@@ -77,8 +77,19 @@ CACHE_EXACT_MATCH_THRESHOLD = float(os.getenv("CACHE_EXACT_MATCH_THRESHOLD", "0.
 # ==========================================
 # 8. Web CDP 连接配置
 # ==========================================
-# Web CDP 连接地址（用于连接已运行的系统 Chrome）
 WEB_CDP_URL = os.getenv("WEB_CDP_URL", "http://localhost:9222")
+
+# ==========================================
+# 8a. Android 设备连接配置
+# ==========================================
+ANDROID_SERIAL = os.getenv("ANDROID_SERIAL", "")
+ANDROID_CONNECT_TIMEOUT = float(os.getenv("ANDROID_CONNECT_TIMEOUT", "10.0"))
+
+# ==========================================
+# 8b. iOS 设备连接配置
+# ==========================================
+WDA_URL = os.getenv("WDA_URL", "http://localhost:8100")
+IOS_DEVICE_UDID = os.getenv("IOS_DEVICE_UDID", "")
 
 # ==========================================
 # 9. Agent 运行产物目录

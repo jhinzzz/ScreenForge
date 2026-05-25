@@ -1,6 +1,8 @@
 """Single-action execution mode."""
 
+import json
 import os
+import sys
 
 import cli.shared as _shared
 from cli.reporter import (
@@ -11,9 +13,11 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
+    _capture_ui_state,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_history_manager,
+    _ensure_ui_compressors,
     _SharedAdapterManager,
     get_initial_header,
     log,
@@ -30,7 +34,8 @@ def run_action_default_mode(
 ) -> int:
     adapter = None
     owns_adapter = False
-    reporter = _build_reporter(args, output_script_path, MODE_RUN)
+    json_mode = args.json
+    reporter = _build_reporter(args, output_script_path, MODE_RUN, json_output=False)
     exit_code = 1
     final_status = "failed"
     final_error = ""
@@ -101,6 +106,15 @@ def run_action_default_mode(
                 action_description=action_data["name"],
             )
             log.error(f"❌ [Action] Failed: {action_data['name']}")
+            if json_mode:
+                json.dump({
+                    "ok": False,
+                    "action": action_data["name"],
+                    "platform": args.platform,
+                    "error": final_error,
+                }, sys.stdout, ensure_ascii=False)
+                sys.stdout.write("\n")
+                sys.stdout.flush()
             return 1
 
         history_manager.add_step(result["code_lines"], result["action_description"])
@@ -120,6 +134,25 @@ def run_action_default_mode(
         reporter.update_control_summary(executed_steps=steps_executed)
         final_status = "success"
         exit_code = 0
+
+        if json_mode:
+            _ensure_ui_compressors()
+            ui_json, _ = _capture_ui_state(args, adapter, reporter, 1)
+            try:
+                ui_tree = json.loads(ui_json)
+            except (json.JSONDecodeError, TypeError):
+                ui_tree = {}
+            json.dump({
+                "ok": True,
+                "action": action_data["name"],
+                "platform": args.platform,
+                "ui_tree": ui_tree,
+                "element_count": len(ui_tree.get("ui_elements", [])),
+                "output_script": output_script_path,
+            }, sys.stdout, ensure_ascii=False)
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
         return 0
     except Exception as e:
         final_error = str(e)

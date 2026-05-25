@@ -151,6 +151,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=7860,
         help="Playground server port (default: 7860)",
     )
+    parser.add_argument(
+        "--device-url",
+        type=str,
+        default="",
+        help="Device connection URL (overrides WDA_URL for iOS, ignored for Android)",
+    )
+    parser.add_argument(
+        "--device-serial",
+        type=str,
+        default="",
+        help="Device serial number (overrides ANDROID_SERIAL for Android, IOS_DEVICE_UDID for iOS)",
+    )
+    parser.add_argument(
+        "--session-id",
+        type=str,
+        default="",
+        help="Session ID for multi-step recording (actions with same ID share one test file and recording)",
+    )
+    parser.add_argument(
+        "--session-end",
+        type=str,
+        default="",
+        help="End a session by ID (stops recording, outputs final test file path)",
+    )
     return parser
 
 
@@ -242,6 +266,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     has_demo = bool(getattr(args, "demo", False))
     has_init = bool(getattr(args, "init", False))
     if has_demo or has_init:
+        return
+    has_session_end = bool(str(getattr(args, "session_end", "")).strip())
+    if has_session_end:
         return
     if not args.doctor and not has_goal and not has_workflow and not has_action:
         raise ValueError("Must provide --goal, --workflow, or --action (use --doctor for diagnostics)")

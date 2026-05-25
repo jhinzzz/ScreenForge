@@ -160,7 +160,7 @@ def _load_context_content(args):
     return context_content, resume_context
 
 
-def _build_reporter(args, output_script_path: str, execution_mode: str):
+def _build_reporter(args, output_script_path: str, execution_mode: str, *, json_output: bool | None = None):
     _ensure_reporter_class()
     control_identity = _resolve_control_identity(args, execution_mode)
     goal_label = control_identity["control_label"] or f"{args.platform} {execution_mode}"
@@ -169,7 +169,7 @@ def _build_reporter(args, output_script_path: str, execution_mode: str):
         platform=args.platform,
         env_name=args.env,
         output_script_path=output_script_path,
-        json_output=args.json,
+        json_output=args.json if json_output is None else json_output,
         vision_enabled=args.vision,
         max_steps=args.max_steps,
         execution_mode=execution_mode,

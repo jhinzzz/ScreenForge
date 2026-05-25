@@ -81,6 +81,15 @@ class LocatorBuilder:
                 return d.locator(f"[aria-label='{l_value}']").first
             else:
                 return d.locator(l_value).first
+        elif platform == "ios":
+            ios_key_map = {
+                "description": "label",
+                "resourceId": "name",
+                "text": "label",
+                "css": "classChain",
+            }
+            mapped_key = ios_key_map.get(u2_key, u2_key)
+            return d(**{mapped_key: l_value})
         else:
             return d(**{u2_key: l_value})
 
@@ -291,11 +300,35 @@ class SwipeHandler(ActionHandler):
 
 
 class PressHandler(ActionHandler):
+    _IOS_KEY_MAP = {
+        "enter": ["前往", "Go", "go", "Search", "搜索", "return", "Return"],
+        "return": ["前往", "Go", "go", "Search", "搜索", "return", "Return"],
+        "search": ["搜索", "Search", "前往", "Go"],
+        "done": ["完成", "Done"],
+        "next": ["下一个", "Next"],
+        "send": ["发送", "Send"],
+    }
+
     def execute(self, d, element, platform: str, extra_value: str) -> bool:
         key = extra_value if extra_value else "Enter"
         if platform == "web":
             d.keyboard.press(key)
             d.wait_for_timeout(500)
+        elif platform == "ios":
+            key_lower = key.lower()
+            if key_lower in ("home", "volumeup", "volumedown"):
+                d.press(key_lower)
+            else:
+                candidates = self._IOS_KEY_MAP.get(key_lower, [key])
+                for label in candidates:
+                    try:
+                        btn = d(label=label)
+                        if btn.exists:
+                            btn.click()
+                            return True
+                    except Exception:
+                        continue
+                d.press_key(0x28)
         else:
             d.press(key.lower())
         return True
@@ -311,6 +344,21 @@ class PressHandler(ActionHandler):
                 f"        log.info('Action: press key [{safe_key}]')\n",
                 f"        d.keyboard.press('{safe_key}')\n",
                 "        d.wait_for_timeout(500)\n",
+            ]
+        elif platform == "ios":
+            key_lower = key.lower()
+            if key_lower in ("home", "volumeup", "volumedown"):
+                return [
+                    f"    with allure.step('Press key: [{safe_key}]'):\n",
+                    f"        log.info('Action: press key [{safe_key}]')\n",
+                    f"        d.press('{safe_key.lower()}')\n",
+                ]
+            candidates = self._IOS_KEY_MAP.get(key_lower, [key])
+            first_label = _escape_python_string(candidates[0])
+            return [
+                f"    with allure.step('Press key: [{safe_key}]'):\n",
+                f"        log.info('Action: press key [{safe_key}]')\n",
+                f"        d(label='{first_label}').click()\n",
             ]
         else:
             return [

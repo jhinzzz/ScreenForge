@@ -99,6 +99,28 @@ def _dispatch_execution(
     )
 
 
+def _run_session_end(args) -> int:
+    from cli.session import delete_session, load_session, stop_session_recording
+
+    session_id = args.session_end
+    session = load_session(session_id)
+    if not session:
+        log.error(f"❌ Session not found: {session_id}")
+        return 1
+
+    output_path = session["output_path"]
+
+    video_path = stop_session_recording(session_id)
+    if video_path:
+        log.info(f"🎬 [Session] Recording saved: {video_path}")
+
+    delete_session(session_id)
+    log.info(f"✅ [Session] Ended session '{session_id}'")
+    log.info(f"📄 [Session] Test script: {output_path}")
+    log.info(f"📊 [Session] Total steps: {session.get('steps', 0)}")
+    return 0
+
+
 def main():
     from cli.shorthand import preprocess_argv
 
@@ -106,6 +128,9 @@ def main():
 
     parser = build_parser()
     args = parser.parse_args(processed_argv[1:])
+
+    if getattr(args, "session_end", ""):
+        sys.exit(_run_session_end(args))
 
     try:
         validate_cli_args(args)
@@ -162,7 +187,30 @@ def main():
         plan_only=args.plan_only,
         dry_run=args.dry_run,
     )
-    output_script_path = _resolve_output_script_path(args)
+
+    session_id = getattr(args, "session_id", "")
+    shared_adapter_mgr = None
+    if session_id and args.action:
+        from cli.session import (
+            create_session,
+            load_session,
+            resolve_session_output_path,
+            update_session,
+        )
+
+        session = load_session(session_id)
+        if session:
+            output_script_path = session["output_path"]
+            shared_adapter_mgr = _SharedAdapterManager()
+        else:
+            from cli.session import start_session_recording
+
+            output_script_path = resolve_session_output_path(session_id, args.platform)
+            session = create_session(session_id, args.platform, output_script_path)
+            shared_adapter_mgr = _SharedAdapterManager()
+            start_session_recording(session_id, args.platform)
+    else:
+        output_script_path = _resolve_output_script_path(args)
 
     log.info("=" * 60)
     log.info("Starting ScreenForge UI automation engine")
@@ -192,12 +240,20 @@ def main():
         log.error("[E012] Configuration validation failed. See errors above for details and fix instructions")
         sys.exit(1)
 
-    sys.exit(
-        _dispatch_execution(
-            args,
-            execution_mode,
-            output_script_path,
-            context_content,
-            resume_context,
-        )
+    exit_code = _dispatch_execution(
+        args,
+        execution_mode,
+        output_script_path,
+        context_content,
+        resume_context,
+        shared_adapter_manager=shared_adapter_mgr,
     )
+
+    if session_id and args.action:
+        from cli.session import load_session, update_session
+
+        session = load_session(session_id)
+        if session and exit_code == 0:
+            update_session(session_id, steps=session.get("steps", 0) + 1)
+
+    sys.exit(exit_code)
