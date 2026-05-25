@@ -1,4 +1,4 @@
-"""视觉 Fallback: 当 DOM 定位失败时, 通过 VLM 截图定位元素坐标。"""
+"""Visual fallback: locate elements via VLM screenshot when DOM lookup fails."""
 
 import json
 import re
@@ -7,15 +7,6 @@ from common.logs import log
 
 
 def visual_locate(screenshot_bytes: bytes, description: str) -> tuple[int, int] | None:
-    """通过 VLM 在截图中定位元素, 返回 (x, y) 中心坐标。
-
-    Args:
-        screenshot_bytes: 当前页面截图 PNG 字节
-        description: 元素描述 (如 "text=合约", "css=#login-btn")
-
-    Returns:
-        (x, y) 像素坐标, 或 None (定位失败)
-    """
     import base64
 
     import config.config as config
@@ -23,7 +14,7 @@ def visual_locate(screenshot_bytes: bytes, description: str) -> tuple[int, int] 
     try:
         from openai import OpenAI
     except ImportError:
-        log.error("❌ [Visual Fallback] 缺少 openai 库")
+        log.error("[Visual Fallback] openai package not installed")
         return None
 
     screenshot_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
@@ -59,10 +50,9 @@ def visual_locate(screenshot_bytes: bytes, description: str) -> tuple[int, int] 
         )
 
         raw = response.choices[0].message.content.strip()
-        # 提取 JSON (可能包裹在 markdown 代码块中)
         json_match = re.search(r"\{[^}]+\}", raw)
         if not json_match:
-            log.warning(f"⚠️ [Visual Fallback] VLM 返回无法解析: {raw[:200]}")
+            log.warning(f"[Visual Fallback] VLM response not parseable: {raw[:200]}")
             return None
 
         coords = json.loads(json_match.group())
@@ -70,12 +60,12 @@ def visual_locate(screenshot_bytes: bytes, description: str) -> tuple[int, int] 
         y = int(coords.get("y", -1))
 
         if x < 0 or y < 0:
-            log.warning("⚠️ [Visual Fallback] VLM 未找到目标元素")
+            log.warning("[Visual Fallback] VLM could not locate target element")
             return None
 
-        log.info(f"👁️ [Visual Fallback] VLM 定位成功: ({x}, {y})")
+        log.info(f"[Visual Fallback] VLM located element at ({x}, {y})")
         return (x, y)
 
     except Exception as e:
-        log.error(f"❌ [Visual Fallback] VLM 调用失败: {e}")
+        log.error(f"[Visual Fallback] VLM call failed: {e}")
         return None

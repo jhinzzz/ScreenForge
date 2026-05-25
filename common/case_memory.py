@@ -176,7 +176,7 @@ class CaseMemoryStore:
             payload = json.loads(self._file_path.read_text(encoding="utf-8"))
             return CaseMemoryDocument.model_validate(payload)
         except Exception as e:
-            log.warning(f"⚠️ [Warning] 读取 case memory 失败，已降级为空文档: {e}")
+            log.warning(f"[Warning] Failed to read case memory, falling back to empty store: {e}")
             return CaseMemoryDocument(updated_at=_now_iso())
 
     def save_document(self, document: CaseMemoryDocument) -> None:

@@ -76,21 +76,21 @@ class AIBrain:
         if not skip_cache:
             cached_l1 = self.cache_manager.get(instruction, ui_dict, platform)
             if cached_l1 is not None:
-                log.info("🎯 [Cache] 命中页面级精准缓存 (L1-Action)")
+                log.info("[Cache] L1 exact hit (page-level action cache)")
                 return cached_l1
 
             if hasattr(self.cache_manager, "get_chat_simple"):
                 cached_l2 = self.cache_manager.get_chat_simple(instruction, platform)
                 if cached_l2 is not None:
                     if self._verify_locator_in_ui(cached_l2, ui_dict):
-                        log.info("🎯 [Cache] 命中全局语义缓存 (L2-Semantic)")
+                        log.info("[Cache] L2 semantic hit (global semantic cache)")
                         return cached_l2
                     else:
-                        log.warning("⚠️ [Cache] 语义缓存虽命中，但目标元素在当前页面不存在，已丢弃该缓存...")
+                        log.warning("[Cache] Semantic hit discarded — target element not present on current page")
 
-            log.info("🐌 [Cache Miss] 缓存未命中，准备请求大模型 API...")
+            log.info("[Cache Miss] No cache hit, calling LLM API...")
         else:
-            log.info("🚫 [System] 已强制跳过缓存，请求大模型进行深度重思考...")
+            log.info("[System] Cache bypassed, forcing LLM re-evaluation...")
         # ==========================================
         # 2. 处理上下文历史 (触发大模型 Prompt Caching)
         # ==========================================
@@ -206,7 +206,7 @@ class AIBrain:
         if screenshot_base64:
             active_client = self.vision_client
             active_model = config.VISION_MODEL_NAME
-            log.info(f"👁️ 调用多模态视觉模型: {active_model}")
+            log.info(f"[AI] Using multimodal vision model: {active_model}")
         else:
             active_client = self.text_client
             active_model = config.MODEL_NAME
@@ -214,7 +214,7 @@ class AIBrain:
         start_time = time.time()
         decision = self._call_llm(active_client, active_model, system_prompt, user_message_content)
         llm_latency = time.time() - start_time
-        log.info(f"⏱️ [AI] AI 思考完毕，网络请求耗时: {llm_latency:.2f} 秒")
+        log.info(f"[AI] LLM response received in {llm_latency:.2f}s")
 
         # ==========================================
         # 4. 缓存全量回写阶段
@@ -260,5 +260,5 @@ class AIBrain:
             return parsed_json.get("result", {})
 
         except Exception as e:
-            log.error(f"[Error] 模型({model_name})请求或解析失败: {e}")
+            log.error(f"[Error] Model ({model_name}) request or parse failed: {e}")
             return {}

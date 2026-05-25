@@ -92,9 +92,9 @@ class EmbeddingModelLoader:
 
         import shutil
 
-        log.warning("⚠️ [System] 检测到模型缓存损坏，正在清理...")
+        log.warning("[System] Corrupted model cache detected, cleaning up...")
         shutil.rmtree(self.hf_cache_dir)
-        log.info("🧹 [System] 已清理损坏的缓存")
+        log.info("[System] Corrupted cache cleaned")
         return True
 
     def _should_cleanup_cache(self, error_msg: str) -> bool:
@@ -107,15 +107,12 @@ class EmbeddingModelLoader:
         if self._model is not None:
             return self._model
 
-        log.info("⏳ [System] 正在初始化本地语义缓存引擎...")
+        log.info("[System] Initializing local semantic cache engine...")
 
         if not self.hf_cache_dir.exists():
-            log.warning("⏳ [System] 首次运行将自动下载模型 (约 100MB)。")
-            log.warning(
-                "⏳ [System] 正在通过国内镜像源加速下载，请耐心等待 1~3 分钟..."
-            )
+            log.warning("[System] First run — downloading embedding model (~100MB)...")
         else:
-            log.info("✅ [System] 检测到本地已有模型缓存，正在极速加载中...")
+            log.info("[System] Loading cached embedding model...")
 
         self._configure_network()
 
@@ -129,7 +126,7 @@ class EmbeddingModelLoader:
                 else:
                     raise e
 
-            log.info("✅ [System] 语义缓存模型加载完毕，准备就绪！")
+            log.info("[System] Semantic cache model loaded and ready")
             return self._model
         finally:
             self._restore_network()

@@ -72,7 +72,7 @@ class AutonomousBrain(AIBrain):
             active_model = config.MODEL_NAME
 
         if not active_client:
-            log.error("❌ [Error] 未找到可用的模型客户端，无法生成执行计划")
+            log.error("[Error] No model client available for plan generation")
             return {
                 "current_state_summary": "模型客户端未初始化",
                 "planned_steps": [],
@@ -104,7 +104,7 @@ class AutonomousBrain(AIBrain):
             parsed_json.setdefault("risks", [])
             return parsed_json
         except Exception as e:
-            log.error(f"[Error] 计划模型请求或解析失败: {e}\n模型返回: {result_text}")
+            log.error(f"[Error] Plan model request or parse failed: {e}\nRaw response: {result_text}")
             return {
                 "current_state_summary": "计划生成失败",
                 "planned_steps": [],
@@ -212,14 +212,14 @@ class AutonomousBrain(AIBrain):
             active_model = config.MODEL_NAME
 
         if not active_client:
-            log.error("❌ [Error] 未找到可用的模型客户端，无法继续自主决策")
+            log.error("[Error] No model client available for autonomous decision")
             return {
                 "status": "failed",
                 "thought": "模型客户端未初始化",
                 "result": {},
             }
 
-        log.info(f"🤖 [Autonomous] 正在使用模型 [{active_model}] 深度思考策略...")
+        log.info(f"[Autonomous] Reasoning with model [{active_model}]...")
 
         result_text = ""
         try:
@@ -243,13 +243,13 @@ class AutonomousBrain(AIBrain):
 
             thought = parsed_json.get("thought", "无")
             status = parsed_json.get("status", "failed")
-            log.info(f"🧠 [Agent 思考]: {thought}")
-            log.info(f"🚩 [Agent 状态判定]: {status}")
+            log.info(f"[Agent] Thought: {thought}")
+            log.info(f"[Agent] Status: {status}")
 
             return parsed_json
 
         except Exception as e:
-            log.error(f"[Error] 自主模型请求或解析失败: {e}\n模型返回: {result_text}")
+            log.error(f"[Error] Autonomous model request or parse failed: {e}\nRaw response: {result_text}")
             return {
                 "status": "failed",
                 "thought": "模型返回格式异常或请求失败",

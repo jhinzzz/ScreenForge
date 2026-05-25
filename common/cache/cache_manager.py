@@ -100,9 +100,9 @@ class CacheManager:
                 matched_entry = entries[exact_key]
                 if matched_entry.get("platform") == platform:
                     saved_time = matched_entry.get("metadata", {}).get("llm_latency", 0.0)
-                    log.info(f"🎯 [Exact Cache Hit] {cache_type} 精确命中 ({platform})")
+                    log.info(f"[Exact Cache Hit] {cache_type} matched ({platform})")
                     if saved_time > 0:
-                        log.info(f"⚡ 极速返回！为您节省了 {saved_time:.2f} 秒的 AI 思考时间")
+                        log.info(f"[Cache] Saved {saved_time:.2f}s of LLM inference time")
                     matched_entry["metadata"]["last_accessed"] = datetime.now(timezone.utc).isoformat()
                     matched_entry["metadata"]["access_count"] = matched_entry["metadata"].get("access_count", 0) + 1
                     save_cache(self._cache_dir, cache_data)
@@ -125,12 +125,12 @@ class CacheManager:
                 candidate_entries.append(entry)
                 candidate_vectors.append(past_vector)
             if not candidate_vectors:
-                log.debug("🐌 [Cache Miss] 无候选向量可供匹配")
+                log.debug("[Cache Miss] No candidate vectors to compare")
                 self._stats.increment_miss()
                 return None
             scores = self._cosine_similarity_batch(current_vector, candidate_vectors)
             if not scores:
-                log.debug("🐌 [Cache Miss] 无相似度得分")
+                log.debug("[Cache Miss] No similarity scores computed")
                 self._stats.increment_miss()
                 return None
             best_idx, best_score = max(scores, key=lambda s: s[1])
@@ -138,20 +138,20 @@ class CacheManager:
                 matched_entry = candidate_entries[best_idx]
                 past_inst = matched_entry.get("instruction")
                 saved_time = matched_entry.get("metadata", {}).get("llm_latency", 0.0)
-                log.info(f"🎯 [Semantic Cache Hit] {cache_type} 语义命中! 相似度: {best_score:.2%} ({platform})")
-                log.info(f"💬 新指令: '{instruction}' | 🧠 匹配旧历史: '{past_inst}'")
+                log.info(f"[Semantic Cache Hit] {cache_type} matched, similarity: {best_score:.2%} ({platform})")
+                log.info(f"[Cache] Query: '{instruction}' | Matched: '{past_inst}'")
                 if saved_time > 0:
-                    log.info(f"⚡ 极速返回！为您节省了 {saved_time:.2f} 秒的 AI 思考时间")
+                    log.info(f"[Cache] Saved {saved_time:.2f}s of LLM inference time")
                 matched_entry["metadata"]["last_accessed"] = datetime.now(timezone.utc).isoformat()
                 matched_entry["metadata"]["access_count"] = matched_entry["metadata"].get("access_count", 0) + 1
                 save_cache(self._cache_dir, cache_data)
                 self._stats.increment_hit()
                 return matched_entry.get("decision")
-            log.debug(f"🐌 [Cache Miss] 未精确命中，且最高语义相似度 {best_score:.2%} 未达阈值 {threshold:.2%}")
+            log.debug(f"[Cache Miss] Best similarity {best_score:.2%} below threshold {threshold:.2%}")
             self._stats.increment_miss()
             return None
         except Exception as e:
-            log.error(f"[Cache Error] 检索出错: {e}")
+            log.error(f"[Cache Error] Retrieval failed: {e}")
             return None
 
     def _set_hybrid(
@@ -212,7 +212,7 @@ class CacheManager:
             save_cache(self._cache_dir, cache_data)
             return True
         except Exception as e:
-            log.error(f"[Cache Error] 写入出错: {e}")
+            log.error(f"[Cache Error] Write failed: {e}")
             return False
 
     def get(self, instruction: str, ui_json: Dict[str, Any], platform: str) -> Optional[Dict[str, Any]]:
@@ -224,7 +224,7 @@ class CacheManager:
                 instruction, ui_hash, "L1-Action", platform, CACHE_SIMILARITY_THRESHOLD, exact_key
             )
         except Exception as e:
-            log.error(f"[Cache Error] get 方法出错: {e}")
+            log.error(f"[Cache Error] get() failed: {e}")
             return None
 
     def set(
@@ -243,7 +243,7 @@ class CacheManager:
                 instruction, decision, ui_hash, "L1-Action", platform, exact_key, llm_latency
             )
         except Exception as e:
-            log.error(f"[Cache Error] set 方法出错: {e}")
+            log.error(f"[Cache Error] set() failed: {e}")
             return False
 
     def get_chat_simple(self, instruction: str, platform: str) -> Optional[Dict[str, Any]]:
@@ -254,7 +254,7 @@ class CacheManager:
                 instruction, None, "L2-SimpleQA", platform, 0.88, exact_key
             )
         except Exception as e:
-            log.error(f"[Cache Error] get_chat_simple 方法出错: {e}")
+            log.error(f"[Cache Error] get_chat_simple() failed: {e}")
             return None
 
     def set_chat_simple(
@@ -271,7 +271,7 @@ class CacheManager:
                 instruction, decision, None, "L2-SimpleQA", platform, exact_key, llm_latency
             )
         except Exception as e:
-            log.error(f"[Cache Error] set_chat_simple 方法出错: {e}")
+            log.error(f"[Cache Error] set_chat_simple() failed: {e}")
             return False
 
     def clear(self) -> bool:
@@ -279,12 +279,12 @@ class CacheManager:
             save_cache(self._cache_dir, {"version": "1.2", "entries": {}})
             return True
         except Exception as e:
-            log.error(f"[Cache Error] clear 方法出错: {e}")
+            log.error(f"[Cache Error] clear() failed: {e}")
             return False
 
     def get_stats(self) -> Dict[str, Any]:
         try:
             return self._stats.to_dict()
         except Exception as e:
-            log.error(f"[Cache Error] get_stats 方法出错: {e}")
+            log.error(f"[Cache Error] get_stats() failed: {e}")
             return {}
