@@ -139,5 +139,5 @@ def compress_web_dom(page) -> str:
         ui_json_str = page.evaluate(js_script)
         return ui_json_str
     except Exception as e:
-        print(f"[Warning] 提取 Web DOM 失败: {e}")
+        print(f"[Warning] Failed to extract Web DOM: {e}")
         return '{"ui_elements": []}'

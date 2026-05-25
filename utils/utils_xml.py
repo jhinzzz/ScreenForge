@@ -39,7 +39,7 @@ def compress_android_xml(raw_xml: str) -> str:
         root = ET.fromstring(raw_xml)
     except ET.ParseError as e:
         raw_preview = raw_xml[:200] if raw_xml else "(empty)"
-        print(f"[Warning] XML 解析失败: {e}, 原始内容前200字符: {raw_preview}")
+        print(f"[Warning] XML parse failed: {e}, first 200 chars: {raw_preview}")
         return '{"ui_elements": []}'
 
     elements = []
