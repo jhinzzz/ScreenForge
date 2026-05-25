@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from pydantic import ValidationError
 
+from cli._version import __version__
 from common.capabilities import (
     ACTIONS_REQUIRING_EXTRA_VALUE,
     CONTROL_PLANES,
@@ -15,7 +16,7 @@ from common.tool_protocol import ToolRequest
 
 JSONRPC_VERSION = "2.0"
 MCP_SERVER_NAME = "screenforge"
-MCP_SERVER_VERSION = "0.1.0"
+MCP_SERVER_VERSION = __version__
 MCP_TOOL_CAPABILITIES = "ui_agent_capabilities"
 MCP_TOOL_EXECUTE = "ui_agent_execute"
 MCP_TOOL_LOAD_RUN = "ui_agent_load_run"

@@ -19,11 +19,18 @@ def _resolve_ref(ref_value: str) -> dict | None:
 
 
 def _escape_locator_value(value: str) -> str:
-    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+    s = str(value)
+    s = s.replace("\\", "\\\\")
+    s = s.replace("'", "\\'")
+    s = s.replace("\n", "\\n")
+    s = s.replace("\r", "\\r")
+    s = s.replace("\t", "\\t")
+    s = s.replace("\0", "\\x00")
+    return s
 
 
 def _escape_python_string(value: str) -> str:
-    return str(value).replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    return _escape_locator_value(value)
 
 
 class LocatorBuilder:

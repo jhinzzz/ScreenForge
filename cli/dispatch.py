@@ -121,7 +121,8 @@ def main():
     if args.tool_stdin:
         if sys.stdin.isatty():
             import io
-            sys.stdin = io.StringIO(f'{{"operation":"inspect_ui","platform":"{args.platform}"}}')
+            import json as _json
+            sys.stdin = io.StringIO(_json.dumps({"operation": "inspect_ui", "platform": args.platform}))
         sys.exit(run_tool_stdin_mode(args))
 
     if args.mcp_server:

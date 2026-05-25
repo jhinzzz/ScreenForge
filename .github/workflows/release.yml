@@ -19,11 +19,26 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Verify tag matches package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(python -c "exec(open('cli/_version.py').read()); print(__version__)")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version $PKG_VERSION"
+            exit 1
+          fi
+
       - name: Install build tools
         run: pip install build
 
       - name: Build package
         run: python -m build
 
+      - name: Run tests
+        run: |
+          pip install -e .
+          pip install pytest
+          pytest tests/ -q
+
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@fb13cb306901256ace3dab689990e13a5550ffaa  # v1.11.0

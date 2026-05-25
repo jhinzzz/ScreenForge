@@ -88,9 +88,3 @@ def preprocess_argv(argv: list[str]) -> list[str]:
         expanded += ["--platform", "web"]
 
     return expanded
-
-
-def inject_inspect_stdin() -> bool:
-    """For 'screenforge inspect', we need to feed JSON to stdin.
-    Returns True if stdin was injected (caller should handle)."""
-    return False  # handled via dispatch, not actual stdin injection
