@@ -12,19 +12,29 @@ When a user asks you to interact with UI (open pages, click buttons, fill forms,
 3. **Analyze** the UI tree yourself, locate target elements
 4. **Issue `action` commands step by step** for ScreenForge to execute
 
-### Standard Workflow
+### Standard Workflow (Recommended: `--json` mode)
 
 ```bash
 # 1. Get current page UI tree (YOU analyze it, not another LLM)
 echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
 
-# 2. After analyzing the UI tree, issue precise single-step actions
-python agent_cli.py --action goto --platform web --extra-value "https://example.com"
-python agent_cli.py --action click --platform web --locator-type text --locator-value "Login"
-python agent_cli.py --action input --platform web --locator-type css --locator-value "#username" --extra-value "admin"
-python agent_cli.py --action press --platform web --extra-value "Enter"
+# 2. Execute action AND get post-action UI tree in one call (--json)
+python agent_cli.py --action goto --platform web --extra-value "https://example.com" --json 2>/dev/null
+python agent_cli.py --action click --platform web --locator-type text --locator-value "Login" --json 2>/dev/null
+python agent_cli.py --action input --platform web --locator-type css --locator-value "#username" --extra-value "admin" --json 2>/dev/null
+python agent_cli.py --action press --platform web --extra-value "Enter" --json 2>/dev/null
 
-# 3. After each action, inspect_ui again to confirm page state, then decide next step
+# --json returns: {"ok": true, "action": "...", "ui_tree": {...}, "element_count": N}
+# Analyze ui_tree from the response to decide next step — no separate inspect needed
+```
+
+### Multi-Step Sessions
+
+```bash
+# Group actions into one test file + continuous recording
+python agent_cli.py --action click --platform ios --locator-type text --locator-value "Login" --session-id s1 --json 2>/dev/null
+python agent_cli.py --action input --platform ios --locator-type text --locator-value "Email" --extra-value "user@test.com" --session-id s1 --json 2>/dev/null
+python agent_cli.py --session-end s1
 ```
 
 ### Supported Actions

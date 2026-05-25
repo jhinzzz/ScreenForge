@@ -48,6 +48,43 @@ echo '{"operation":"inspect_ui","platform":"web"}' | screenforge --tool-stdin
 
 Observe whether the page changed, then decide the next step. On failure, analyze exit code and logs to adjust strategy.
 
+### Optimized: Action + Inspect in One Call (`--json`)
+
+Instead of separate action + inspect calls, combine them with `--json`:
+
+```bash
+screenforge --action click --platform ios --locator-type text --locator-value "Login" --json 2>/dev/null
+```
+
+Returns a single JSON line on stdout:
+```json
+{"ok": true, "action": "click:Login", "platform": "ios", "ui_tree": {"ui_elements": [...]}, "element_count": 49, "output_script": "test_cases/ios/test_auto_agent_xxx.py"}
+```
+
+On failure:
+```json
+{"ok": false, "action": "click:Login", "platform": "ios", "error": "Action failed: click:Login"}
+```
+
+This halves the round-trips needed per step — execute and observe in one call.
+
+### Multi-Step Sessions (`--session-id`)
+
+Group multiple actions into one test file and one recording:
+
+```bash
+# First action — creates session, starts recording (iOS only)
+screenforge --action click --platform ios --locator-type text --locator-value "Login" --session-id my_flow --json 2>/dev/null
+
+# Subsequent actions — appends to same test file
+screenforge --action input --platform ios --locator-type text --locator-value "Username" --extra-value "admin" --session-id my_flow --json 2>/dev/null
+
+# End session — stops recording, outputs summary
+screenforge --session-end my_flow
+```
+
+All steps share one output script (`test_cases/<platform>/test_session_<id>.py`). On iOS, screen recording runs continuously across all steps.
+
 ### 4. Verify the generated script
 
 ```bash

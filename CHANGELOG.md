@@ -2,6 +2,24 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
+## [0.2.1] - 2026-05-25
+
+### Added
+- **iOS adapter rewrite**: WDA health checks, session reconnect, `xcrun simctl` screen recording, auto-detect booted simulator UDID
+- **Android adapter rewrite**: session persistence across CLI calls, auto-reconnect on disconnect, structured error codes (E050–E055)
+- **Session mode** (`--session-id` / `--session-end`): group multiple `--action` calls into one test file and one recording; PID-based cross-process recording lifecycle
+- **`--json` action output**: single-line JSON on stdout with `ok`, `action`, `ui_tree`, `element_count` — enables action + inspect in one call
+- **iOS UI tree compressor** (`utils/utils_ios.py`): filters keyboard keys, single-digit noise, scroll bars, deduplicates; reduces 123 elements to ~49
+- **iOS executor support**: locator mapping (text→label, resourceId→name) and press key handling with keyboard button fallback
+- **Device targeting flags**: `--device-url` (WDA URL override), `--device-serial` (Android serial / iOS UDID override)
+- **Mobile setup guide** (`docs/mobile-setup.md`): Android & iOS device connection instructions
+
+### Fixed
+- Infinite recursion in `take_screenshot()` reconnect (both adapters) — now guards with `_retry` flag
+- Reporter event noise in `--json` mode — action mode suppresses reporter stdout via `json_output=False` kwarg
+- iOS scroll bar filter now handles both Chinese ("滚动条") and English ("scroll bar") locales
+- `cli/shared.py` no longer imports from `main.py` — inlined `get_initial_header`, `save_to_disk`, `launch_app`
+
 ## [0.2.0] - 2026-05-25
 
 ### Added
