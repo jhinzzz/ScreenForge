@@ -1,57 +1,55 @@
 # CLAUDE.md
 
-**[中文版](./CLAUDE_CN.md)** | English
+## ⚠️ Agent 协作协议（必读）
 
-## Agent Collaboration Protocol (Required Reading)
+**你是大脑，ScreenForge 是手脚。**
 
-**You are the brain. ScreenForge is the hands.**
+当用户要求你操作 UI（打开网页、点击按钮、填写表单、执行测试等），你必须：
+1. **自己理解**用户的 PRD / 自然语言意图
+2. **调用 `inspect_ui`** 获取当前真实 UI 树（DOM/XML）
+3. **自己分析** UI 树，定位目标元素
+4. **逐步下发 `action` 指令**让 ScreenForge 执行
 
-When a user asks you to interact with UI (open pages, click buttons, fill forms, run tests), you must:
-1. **Understand** the user's PRD / natural language intent yourself
-2. **Call `inspect_ui`** to get the real UI tree (DOM/XML)
-3. **Analyze** the UI tree yourself, locate target elements
-4. **Issue `action` commands step by step** for ScreenForge to execute
-
-### Standard Workflow
+### 标准工作流
 
 ```bash
-# 1. Get current page UI tree (YOU analyze it, not another LLM)
+# 1. 获取当前页面 UI 树（你来分析，不是让别的 LLM 分析）
 echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
 
-# 2. After analyzing the UI tree, issue precise single-step actions
+# 2. 你分析完 UI 树后，下发精确的单步动作
 python agent_cli.py --action goto --platform web --extra-value "https://example.com"
-python agent_cli.py --action click --platform web --locator-type text --locator-value "Login"
+python agent_cli.py --action click --platform web --locator-type text --locator-value "登录"
 python agent_cli.py --action input --platform web --locator-type css --locator-value "#username" --extra-value "admin"
 python agent_cli.py --action press --platform web --extra-value "Enter"
 
-# 3. After each action, inspect_ui again to confirm page state, then decide next step
+# 3. 每步执行后再次 inspect_ui，确认页面状态，决定下一步
 ```
 
-### Supported Actions
+### 支持的 action 类型
 
-| action | Description | Needs locator | Needs extra_value |
-|--------|-------------|:---:|:---:|
-| `goto` | Navigate to URL (Web only) | No | URL |
-| `click` | Click element | Yes | No |
-| `long_click` | Long-press element | Yes | No |
-| `hover` | Hover element (Web) | Yes | No |
-| `input` | Type text | Yes | Input content |
-| `swipe` | Swipe screen | No | up/down/left/right |
-| `press` | Simulate key press | No | Key name (Enter/Back) |
-| `assert_exist` | Assert element exists | Yes | No |
-| `assert_text_equals` | Assert text matches | Yes | Expected text |
+| action | 说明 | 需要 locator | 需要 extra_value |
+|--------|------|:---:|:---:|
+| `goto` | 导航到 URL（仅 Web） | 否 | URL |
+| `click` | 点击元素 | 是 | 否 |
+| `long_click` | 长按元素 | 是 | 否 |
+| `hover` | 悬停元素（Web 端） | 是 | 否 |
+| `input` | 输入文本 | 是 | 输入内容 |
+| `swipe` | 滑动屏幕 | 否 | up/down/left/right |
+| `press` | 模拟按键 | 否 | 按键名(Enter/Back) |
+| `assert_exist` | 断言元素存在 | 是 | 否 |
+| `assert_text_equals` | 断言文本一致 | 是 | 期望文本 |
 
-locator_type priority: `css` > `resourceId` > `text` > `description`
+locator_type 优先级：`css` > `resourceId` > `text` > `description`
 
-### Prohibited
+### 🚫 禁止事项
 
-- **Never use `--goal`**: It calls a third-party LLM to think for you — wastes tokens, poor results. Human manual experiments only.
-- **Never write UI code without inspecting first**: You cannot see the screen. Always `inspect_ui` to get the DOM tree before locating elements.
-- **Never pass natural language directly**: You are responsible for understanding requirements. ScreenForge only executes actions.
+- **禁止使用 `--goal`**：该入口会调第三方 LLM 替你思考，浪费 token 且效果差。它仅用于人类手动实验。
+- **禁止凭空编写 UI 代码**：你看不到真实画面，必须先 `inspect_ui` 拿到 DOM 树再定位。
+- **禁止把自然语言原样透传**：你负责理解需求，ScreenForge 只负责执行动作。
 
-See `docs/agent_guide.md` for the full integration protocol.
+详细集成文档见 `docs/agent_guide.md`。
 
-## Build & Run
+## Build & run
 
 ```bash
 # Activate virtual environment
@@ -89,7 +87,7 @@ allure serve ./report/allure-results
 
 Exit codes: `0` = success, `1` = failure or circuit breaker triggered (agent_cli.py).
 
-## Code Style
+## Code style
 
 - Use `loguru` for all logging — never use `print` or the standard `logging` module.
 - Use `pydantic` for data validation and models.
@@ -97,7 +95,7 @@ Exit codes: `0` = success, `1` = failure or circuit breaker triggered (agent_cli
 - All new platform adapters must subclass `base_adapter.py` abstract base class in `common/adapters/`.
 - All configuration must be driven by `.env` / environment variables via `config/config.py` — no hardcoded values.
 
-## Project Structure
+## Project structure
 
 ```
 agent_cli.py              # Compatibility entry (6-line shim, delegates to cli/dispatch.py)
@@ -121,68 +119,68 @@ common/adapters/          # Platform adapters (android / ios / web)
 utils/utils_xml.py        # Android XML cleaning and dimensionality reduction
 utils/utils_web.py        # Web DOM compression and URL handling
 utils/screenshot_annotator.py  # Screenshot annotation (ref numbers on screenshots)
-tests/                    # Framework unit tests (180 test cases)
+tests/                    # Framework unit tests (32 test cases)
 test_cases/               # Auto-generated test scripts (android / ios / web)
 docs/                     # Agent integration guide and capability matrix
 ```
 
-## Other Conventions
+## Other conventions
 
 - Dependency file is `requirement.txt` (not `requirements.txt`).
 - Auto-generated test files follow the naming pattern `test_auto_<YYYYMMDD_HHMMSS>.py` and are placed under `test_cases/<platform>/`.
 - Do not commit `.env` files; use `.env_template` as the reference.
 - `conftest.py` at project root handles cross-platform fixture dispatch and attaches video/screenshot artifacts to Allure reports.
 
-## First Principles
+## 第一性原则
 
-Start from the essence of the problem, not from convention or templates.
+从需求和问题本质出发，不从惯例或模板出发。
 
-1. Don't assume I know what I want. If motivation or goal is unclear, stop and discuss.
-2. If the goal is clear but the path isn't shortest, tell me directly and suggest a better approach.
-3. Chase root causes, not patches. Every decision must answer "why."
-4. Say what matters, cut everything that doesn't change the decision.
+1. 不要假设我清楚自己想要什么。动机或目标不清晰就停下来讨论。
+2. 目标清晰但路径不是最短的，直接告诉我并建议更好的办法。
+3. 遇到问题追根因，不打补丁。每个决策都要能回答"为什么"。
+4. 输出说重点，砍掉一切不改变决策的信息。
 
 ## Documentation Conventions
 
 ### specs/
 
-Documents for each iteration, one folder per iteration:
+历次迭代的文档，每次迭代一个文件夹，包含：
 
-- 1-requirements.md — Requirements document
-- 2-research.md — Research document (optional for simple changes)
-- 3-tech-design.md — Technical design document
-- 4-test-case.md — Test cases (unit tests, white-box tests, integration tests)
-- 5-test-task.md — Test tasks (execution order, failure handling, unified reporting)
-- 6-tasks.md — Task checklist
-- 7-review.md — Iteration retrospective (written after iteration completes)
+- 1-requirements.md - 需求文档
+- 2-research.md - 调研文档（简单变更可省略）
+- 3-tech-design.md - 技术设计文档
+- 4-test-case.md - 测试用例文档（统一管理单元测试、白盒测试、集成测试）
+- 5-test-task.md - 测试任务文档（定义执行顺序、失败处理、统一报告）
+- 6-tasks.md - 任务清单
+- 7-review.md - 迭代复盘（迭代完成后编写）
 
 ### docs/
 
-Project summary documents, maintained per iteration, always reflecting current state:
+项目汇总文档，根据每次迭代整理，始终反映最新状态：
 
-- requirements-overview.md — Requirements overview
-- tech-arch-overview.md — Technical architecture overview
-- tech-design-overview.md — Technical design overview
-- tech-api-overview.yaml — API overview (OAS 3.1)
-- tech-memory-overview.md — Technical memory and knowledge
-- tech-rule-overview.md — Technical standards
+- requirements-overview.md - 需求概览
+- tech-arch-overview.md - 技术架构概览
+- tech-design-overview.md - 技术设计概览
+- tech-api-overview.yaml - API 接口概览（OAS 3.1）
+- tech-memory-overview.md - 技术记忆与知识
+- tech-rule-overview.md - 技术规范
 
 ## API Documentation (OAS 3.1)
 
-docs/tech-api-overview.yaml follows OpenAPI 3.1 standard. When maintaining:
+docs/tech-api-overview.yaml 采用 OpenAPI 3.1 标准，维护时须遵守：
 
-### Data Sources
-- HTTP API: scan from project route registrations (gin/echo/chi/FastAPI etc.), trace handler return structs/classes and recursively expand all fields (including JSON tags, validate tags)
-- gRPC: scan from .proto files, place in x-grpc-services extension
-- Deployment info: scan domains, auth, gRPC ports from charts/ subdirectories
+### 数据来源
+- HTTP API：从项目路由注册（gin/echo/chi/FastAPI 等）扫描，追踪 handler 返回的 struct/class 递归展开所有字段（含 JSON tag、validate tag）
+- gRPC：从 .proto 文件扫描，放入 x-grpc-services 扩展字段
+- 部署信息：从 charts/ 下所有环境子目录扫描域名、认证、gRPC 端口
 
-### Schema Rules (Mandatory)
-1. All `type: object` must include `properties` — no empty object placeholders
-2. All `type: array` items must have `properties` or `$ref` — no empty objects
-3. All `$ref` references must exist in `components/schemas` and be fully expanded
-4. External types (protobuf/external package structs) must trace source code for fields — never write from memory
+### Schema 规则（强制）
+1. 所有 type: object 必须包含 properties，禁止空 object 占位符
+2. 所有 type: array 的 items 必须有 properties 或 $ref，禁止空 object
+3. 所有 $ref 引用必须在 components/schemas 中存在且完整展开
+4. 外部类型（protobuf/外部包 struct）必须追溯源码获取字段，禁止凭印象编写
 
-## Skill Routing
+## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
 
