@@ -2,6 +2,30 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
+## [0.2.0] - 2026-05-25
+
+### Added
+- **Playground live viewer**: `screenforge --playground` launches a web UI at localhost:7860 showing real-time browser screenshots and action history via SSE
+- **CDP Screencast integration**: Playground auto-connects to Chrome DevTools Protocol and streams live frames — no manual screenshot pushing needed
+- **GitHub Action**: `uses: jhinzzz/ScreenForge@v1` adds ScreenForge to any CI pipeline with auto Playwright install and Allure artifact upload
+- **`screenforge --init` wizard**: interactive first-time setup (platform selection, LLM config, dependency checks)
+- **MCP setup guide** (`docs/mcp-setup.md`): 3-minute configuration for Claude Desktop, Cursor, Cline, and Claude Code
+- **Launch kit** (`docs/launch-kit.md`): ready-to-post templates for Show HN, Reddit, and Twitter
+- **English workflow examples**: `web_login.yaml`, `web_search.yaml`, `web_form_submit.yaml` in `docs/workflows/`
+- **Rich progress spinners**: AI calls and action execution show animated status in terminal (auto-disabled in tool/MCP mode)
+- **Rich doctor table**: `--doctor` displays color-coded pass/fail table in interactive terminals
+- **Demo GIF**: `scripts/demo.tape` generates the README demo via VHS
+- **README badge**: shields.io badge for projects using ScreenForge-generated tests
+- **Optional `[playground]` extra**: `pip install screenforge[playground]` (fastapi + uvicorn + websockets)
+
+### Changed
+- **`.env_template`**: defaults to OpenAI endpoint (`api.openai.com/v1`, `gpt-4o`) instead of vendor-specific Chinese endpoint
+- **Error messages list valid options**: invalid `--action` now shows all supported actions
+- **Doctor uses relative paths**: remediation docs references no longer leak absolute filesystem paths
+
+### Fixed
+- `scripts/demo.tape` activates venv and runs `pip install -e .` to ensure `screenforge` CLI is available
+
 ## [0.1.1] - 2026-05-25
 
 ### Security
