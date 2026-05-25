@@ -118,6 +118,16 @@ def main():
 
         sys.exit(run_demo_mode())
 
+    if getattr(args, "playground", False):
+        try:
+            from playground.app import run_server
+        except ImportError:
+            log.error("[E013] Playground requires extra dependencies. Fix: pip install screenforge[playground]")
+            sys.exit(1)
+        log.info(f"Starting Playground on http://127.0.0.1:{args.playground_port}")
+        run_server(port=args.playground_port)
+        sys.exit(0)
+
     if args.tool_stdin:
         from common.progress import set_tool_mode
         set_tool_mode(True)

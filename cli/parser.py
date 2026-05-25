@@ -135,6 +135,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run simulated demo (no API key needed)",
     )
+    parser.add_argument(
+        "--playground",
+        action="store_true",
+        help="Start Playground web UI (live screenshot viewer + action history)",
+    )
+    parser.add_argument(
+        "--playground-port",
+        type=int,
+        default=7860,
+        help="Playground server port (default: 7860)",
+    )
     return parser
 
 

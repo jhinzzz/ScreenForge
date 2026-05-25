@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScreenForge Playground</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+header { padding: 12px 20px; background: #1a1a2e; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; }
+header h1 { font-size: 18px; font-weight: 600; color: #60a5fa; }
+header .status { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #1e3a5f; color: #93c5fd; }
+.container { flex: 1; display: grid; grid-template-columns: 1fr 380px; overflow: hidden; }
+.screenshot-panel { display: flex; align-items: center; justify-content: center; padding: 20px; background: #111; }
+.screenshot-panel img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
+.screenshot-panel .placeholder { color: #666; font-size: 14px; text-align: center; }
+.actions-panel { border-left: 1px solid #333; display: flex; flex-direction: column; }
+.actions-header { padding: 12px 16px; border-bottom: 1px solid #333; font-size: 13px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+.actions-list { flex: 1; overflow-y: auto; padding: 8px; }
+.action-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; background: #1a1a1a; border: 1px solid #2a2a2a; font-size: 13px; }
+.action-item .action-type { color: #34d399; font-weight: 600; margin-right: 6px; }
+.action-item .action-target { color: #a5b4fc; }
+.action-item .action-time { color: #666; font-size: 11px; float: right; }
+.action-item .action-value { color: #fbbf24; font-size: 12px; margin-top: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ScreenForge Playground</h1>
+  <span class="status" id="status">Connecting...</span>
+</header>
+<div class="container">
+  <div class="screenshot-panel">
+    <img id="screenshot" style="display:none" alt="Live screenshot">
+    <div class="placeholder" id="placeholder">Waiting for screenshot...<br><br>Send a screenshot via POST /api/screenshot<br>or run ScreenForge with --playground</div>
+  </div>
+  <div class="actions-panel">
+    <div class="actions-header">Action History</div>
+    <div class="actions-list" id="actions"></div>
+  </div>
+</div>
+<script>
+const screenshotEl = document.getElementById('screenshot');
+const placeholderEl = document.getElementById('placeholder');
+const actionsEl = document.getElementById('actions');
+const statusEl = document.getElementById('status');
+
+function formatTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString();
+}
+
+function addAction(data) {
+  const div = document.createElement('div');
+  div.className = 'action-item';
+  const type = data.action || data.operation || 'event';
+  const target = data.locator_value || data.target || '';
+  const value = data.extra_value || data.value || '';
+  div.innerHTML = `
+    <span class="action-time">${formatTime(data.ts)}</span>
+    <span class="action-type">${type}</span>
+    <span class="action-target">${target}</span>
+    ${value ? `<div class="action-value">${value}</div>` : ''}
+  `;
+  actionsEl.prepend(div);
+  if (actionsEl.children.length > 100) actionsEl.lastChild.remove();
+}
+
+async function loadInitial() {
+  try {
+    const [ssRes, actRes] = await Promise.all([
+      fetch('/api/screenshot'),
+      fetch('/api/actions')
+    ]);
+    const ssData = await ssRes.json();
+    if (ssData.b64) {
+      screenshotEl.src = 'data:image/png;base64,' + ssData.b64;
+      screenshotEl.style.display = 'block';
+      placeholderEl.style.display = 'none';
+    }
+    const actData = await actRes.json();
+    actData.actions.reverse().forEach(addAction);
+  } catch (e) {}
+}
+
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => { statusEl.textContent = 'Live'; statusEl.style.background = '#1e3a2e'; statusEl.style.color = '#6ee7b7'; };
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'screenshot') {
+      fetch('/api/screenshot').then(r => r.json()).then(d => {
+        if (d.b64) {
+          screenshotEl.src = 'data:image/png;base64,' + d.b64;
+          screenshotEl.style.display = 'block';
+          placeholderEl.style.display = 'none';
+        }
+      });
+    } else if (data.type === 'action') {
+      addAction(data);
+    }
+  };
+  es.onerror = () => { statusEl.textContent = 'Disconnected'; statusEl.style.background = '#3a1e1e'; statusEl.style.color = '#fca5a5'; };
+}
+
+loadInitial();
+connectSSE();
+</script>
+</body>
+</html>
