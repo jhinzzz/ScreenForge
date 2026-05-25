@@ -142,6 +142,7 @@ If ScreenForge generates tests for your project, add this badge to your README:
 
 | Resource | Description |
 |----------|-------------|
+| [MCP Setup (3 min)](docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
 | [Agent Guide](docs/agent_guide.md) | Integration protocol for AI Agents |
 | [Capability Matrix](docs/capability-matrix.md) | Supported platforms, actions, and locators |
 | [Workflow Examples](docs/workflows/) | YAML workflow templates |
