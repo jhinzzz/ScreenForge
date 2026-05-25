@@ -13,11 +13,11 @@ Set Padding 20
 Set Theme "Dracula"
 Set TypingSpeed 50ms
 
-# Activate venv so screenforge is on PATH
+# Activate venv and ensure screenforge entry point is registered
 Hide
-Type "source .venv/bin/activate"
+Type "source .venv/bin/activate && pip install -e . -q"
 Enter
-Sleep 0.5s
+Sleep 5s
 Show
 
 # Title
