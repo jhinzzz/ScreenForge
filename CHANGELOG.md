@@ -4,13 +4,31 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+- **Code-generation injection hardening**: `_escape_locator_value` now escapes `\n`, `\r`, `\t`, `\0` in addition to quotes/backslashes — prevents injecting arbitrary Python through crafted locator values
+- **Release pipeline pinned**: `pypa/gh-action-pypi-publish` pinned to SHA (`fb13cb30...`) instead of floating `release/v1` tag — mitigates supply-chain attacks
+- **Tag-version consistency check**: release workflow now verifies git tag matches `cli/_version.py` before publishing
+
 ### Added
-- Unit tests for CLI core paths: runtime_modes, capabilities, shorthand, parser, run_resume, run_reporter, dispatch (32 → 154 tests)
+- Unit tests for CLI core paths: runtime_modes, capabilities, shorthand, parser, run_resume, run_reporter, dispatch (32 → 180 tests)
 - Type-safe `SimpleNamespace` fixtures in dispatch tests (replaces MagicMock)
+- AI brain and cache manager integration tests
+- Pre-publish test step in release pipeline
+- Pre-commit hooks: ruff (lint+format) + mypy
+- `screenforge --demo` shorthand command
+- `screenforge inspect` / `screenforge click "Login"` shorthand CLI preprocessor
+- `.github/workflows/ci.yml` with automated pytest on push/PR
 
 ### Changed
-- Complete English-first translation: all developer-facing logs in ai.py, ai_autonomous.py, cache/, case_memory.py, visual_fallback.py, utils/
+- Complete English-first translation: all developer-facing logs, CLI output, preflight hints, MCP error messages
 - Narrowed failure classification tokens to prevent false-positive categorization
+- `MCP_SERVER_VERSION` now sourced from `cli/_version.py` (was hardcoded, could drift)
+- `cli/dispatch.py` uses `json.dumps` for JSON construction (was f-string, fragile)
+- Removed dead code `inject_inspect_stdin()` from shorthand module
+
+### Fixed
+- `--doctor` output was still Chinese — all hints translated to English
+- `--capabilities` leaked absolute filesystem paths — now uses relative paths
 
 ## [0.1.0] - 2026-05-22
 
