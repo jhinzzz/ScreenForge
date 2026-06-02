@@ -576,7 +576,14 @@ class UIExecutor:
             }
             u2_key = u2_locator_map.get(l_type, l_type)
 
-            if u2_key == "ref" and not _cached_ui_elements and self.platform == "web":
+            if u2_key == "ref" and self.platform == "web":
+                # Always re-inspect the live page before resolving a web ref.
+                # The ref cache is a process-global; under the long-lived MCP
+                # server it would otherwise serve stale @N from a previous page
+                # or request (the old `not _cached_ui_elements` guard skipped
+                # refresh once anything was cached). compress_web_dom assigns @N
+                # by ordinal, so a fresh inspect keeps @N aligned with the page
+                # the agent is actually looking at.
                 try:
                     import json as _json
 
@@ -584,9 +591,9 @@ class UIExecutor:
                     ui_json = compress_web_dom(self.d)
                     tree = _json.loads(ui_json)
                     set_ui_elements(tree.get("ui_elements", []))
-                    log.info(f"🔍 [Ref] Auto-inspect populated cache: {len(_cached_ui_elements)} elements")
+                    log.info(f"🔍 [Ref] Refreshed ref cache from live page: {len(_cached_ui_elements)} elements")
                 except Exception as e:
-                    log.warning(f"⚠️ [Ref] Auto-inspect failed: {e}")
+                    log.warning(f"⚠️ [Ref] Live re-inspect failed, using existing cache: {e}")
 
             try:
                 element = get_actual_element(self.d, self.platform, u2_key, l_value)
