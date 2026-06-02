@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 android = ["uiautomator2>=3.5", "adbutils>=2.12"]
 ios = ["facebook-wda>=1.0"]
-ml = ["torch>=2.0", "sentence-transformers>=5.0", "scikit-learn>=1.8"]
+ml = ["torch>=2.0", "transformers>=5.0", "sentence-transformers>=5.0", "scikit-learn>=1.8"]
 playground = ["fastapi>=0.115", "uvicorn>=0.34", "websockets>=14.0"]
 all = ["screenforge[android,ios,ml,playground]"]
 

@@ -44,8 +44,13 @@ class CacheManager:
     def _get_model(self):
         return self._model_loader.load()
 
-    def _get_embedding(self, text: str) -> list:
-        return self._get_model().encode(text).tolist()
+    def _get_embedding(self, text: str) -> Optional[list]:
+        # Returns None when the ML stack (sentence_transformers) is unavailable,
+        # so callers can fall back to exact-key-only behavior instead of crashing.
+        model = self._get_model()
+        if model is None:
+            return None
+        return model.encode(text).tolist()
 
     def _cosine_similarity(self, vec1: list, vec2: list) -> float:
         v1, v2 = np.array(vec1), np.array(vec2)
@@ -110,6 +115,11 @@ class CacheManager:
                     return matched_entry.get("decision")
 
             current_vector = self._get_embedding(instruction)
+            if current_vector is None:
+                # ML stack unavailable: exact-key already missed above, and we
+                # can't do semantic similarity without embeddings. Treat as miss.
+                self._stats.increment_miss()
+                return None
             candidate_entries = []
             candidate_vectors = []
             for key, entry in entries.items():
@@ -183,7 +193,7 @@ class CacheManager:
                         keys_to_delete.append(k)
                 elif cache_type == "L2-SimpleQA":
                     past_vector = v.get("instruction_vector")
-                    if past_vector and is_same_decision:
+                    if current_vector is not None and past_vector and is_same_decision:
                         sim = self._cosine_similarity(current_vector, past_vector)
                         if sim > CACHE_EXACT_MATCH_THRESHOLD:
                             v["metadata"]["last_accessed"] = datetime.now(timezone.utc).isoformat()
