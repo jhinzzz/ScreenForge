@@ -21,10 +21,38 @@ All notable changes to ScreenForge will be documented in this file.
   `pip install -r requirement.txt`; the file is `requirements.txt`.
 - **7 failing tests** from the `agent_cli.py` shim refactor — tests now target
   the real modules (`cli.tool_protocol_handlers` / `cli.shared` / `cli.dispatch`).
+- **ML stack made truly optional**: `sentence_transformers` (the ~2GB torch
+  stack) was imported at module load, so a clean core-only install crashed at
+  `import common.ai`. Now imported lazily inside `EmbeddingModelLoader.load()`;
+  the semantic cache degrades gracefully (exact-key cache still works) when the
+  `[ml]` extra isn't installed. torch/transformers/sentence-transformers/
+  scikit-learn moved out of core `requirements.txt`.
+- **MCP web ref cache leak**: the process-global `_cached_ui_elements` could
+  serve stale `@N` from a prior page/request. `inspect_ui` now syncs the cache
+  to the page just inspected, and web ref resolution always re-inspects the live
+  page.
+- **`not_found` no longer trips the circuit breaker**: in `--goal` mode the
+  model's `not_found` signal is intercepted (suggest `--vision`) without counting
+  as a failure.
+- Dead `common/prompts.py` (172 LOC, zero importers, diverged from the live
+  brains) deleted; dead `_find_chromium_path` removed.
+- `config.validate_config` now bounds-checks `AUTO_HEAL_MIN_CONFIDENCE` (0-1) and
+  `AUTO_HEAL_TRIGGER_THRESHOLD` (>= 1).
 
 ### Added
 - `test_public_surface.py` — pins the CLI package's public symbols so future
   refactors that drop a name fail fast at the contract.
+- **Per-platform locator matrix** in `--capabilities` (`locators` / `features`):
+  ref/bbox/screenshot-annotation/visual-fallback are now correctly reported as
+  Web-only (mobile docs previously over-claimed them as universal).
+- `--web-stop` — terminate the persistent Chromium (CDP port 9333) left running
+  by web runs; idempotent.
+
+### Docs
+- Corrected `capability-matrix.md` / `agent_guide.md`: ref/bbox/visual fallback
+  are Web-only; `--capabilities` is the machine-readable source of truth.
+- Documented the `--json` assertion-failure contract and the persistent-browser
+  lifecycle.
 
 ## [0.2.1] - 2026-05-25
 
