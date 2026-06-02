@@ -132,6 +132,13 @@ Combine with `--plan-only` (view plan only) or `--dry-run` (simulate without exe
 
 `locator_type` priority: `css` > `resourceId` > `text` > `description`
 
+> **`not_found` is autonomous-mode-only.** It is an internal signal the `--goal`
+> LLM brain emits when the target is absent from the UI tree — it is NOT a real
+> action and never appears in `--action --json` output. As the agent you don't
+> issue or receive it; the equivalent signal on the `--action` path is an
+> `ok:false` locate failure (`result: "engine_error"`). Re-inspect, scroll, or
+> add `--vision`.
+
 ## Element Location Capabilities
 
 - **Ref system (@N)**: `inspect_ui` assigns ref numbers (@1, @2...) to each interactive element. Use `--locator-type ref --locator-value @3` to locate directly.
