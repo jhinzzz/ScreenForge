@@ -4,9 +4,18 @@ from pathlib import Path
 
 import pytest
 
-import agent_cli
+import cli.dispatch as dispatch
+import config.config as config
+from cli import tool_protocol_handlers as tph
 from common.run_reporter import RunReporter
 from common.tool_protocol import ToolRequest
+
+# NOTE: agent_cli.py is now a 6-line shim (delegates to cli.dispatch.main).
+# The payload builders + their dependencies live in cli.tool_protocol_handlers
+# (tph) / cli.dispatch / config.config. Patch each symbol at its real lookup
+# site — notably _dispatch_execution, which build_tool_response_payload
+# re-imports locally from cli.dispatch at call time, so it must be patched on
+# the dispatch module, not on tph.
 
 
 class _FakeAdapter:
@@ -33,9 +42,9 @@ def test_tool_execute_should_reject_goal_for_agent_surfaces():
 def test_build_inspect_ui_payload_should_return_clean_ui_tree(monkeypatch):
     adapter = _FakeAdapter()
 
-    monkeypatch.setattr(agent_cli, "_connect_adapter", lambda args, reporter: adapter)
+    monkeypatch.setattr(tph, "_connect_adapter", lambda args, reporter: adapter)
     monkeypatch.setattr(
-        agent_cli,
+        tph,
         "_capture_ui_state",
         lambda args, current_adapter, reporter, step_index: (
             '{"ui_elements":[{"text":"登录","id":"login-btn"}]}',
@@ -50,7 +59,7 @@ def test_build_inspect_ui_payload_should_return_clean_ui_tree(monkeypatch):
         }
     )
 
-    payload = agent_cli.build_tool_response_payload(request)
+    payload = tph.build_tool_response_payload(request)
 
     assert payload["ok"] is True
     assert payload["operation"] == "inspect_ui"
@@ -61,7 +70,7 @@ def test_build_inspect_ui_payload_should_return_clean_ui_tree(monkeypatch):
 
 def test_build_load_case_memory_payload_should_return_filtered_entries(monkeypatch, tmp_path):
     memory_path = tmp_path / "case_memory.json"
-    monkeypatch.setattr(agent_cli.config, "CASE_MEMORY_PATH", memory_path)
+    monkeypatch.setattr(config, "CASE_MEMORY_PATH", memory_path)
 
     memory_doc = {
         "version": 1,
@@ -103,7 +112,7 @@ def test_build_load_case_memory_payload_should_return_filtered_entries(monkeypat
     }
     memory_path.write_text(json.dumps(memory_doc, ensure_ascii=False), encoding="utf-8")
 
-    payload = agent_cli.build_load_case_memory_payload(
+    payload = tph.build_load_case_memory_payload(
         platform="android",
         control_kind="action",
         query="登录",
@@ -117,7 +126,7 @@ def test_build_load_case_memory_payload_should_return_filtered_entries(monkeypat
 
 
 def test_run_reporter_finalize_should_update_case_memory(monkeypatch, tmp_path):
-    monkeypatch.setattr(agent_cli.config, "CASE_MEMORY_PATH", tmp_path / "case_memory.json")
+    monkeypatch.setattr(config, "CASE_MEMORY_PATH", tmp_path / "case_memory.json")
 
     reporter = RunReporter(
         goal="点击登录",
@@ -149,7 +158,7 @@ def test_run_reporter_finalize_should_update_case_memory(monkeypatch, tmp_path):
         last_error="",
     )
 
-    memory_path = Path(agent_cli.config.CASE_MEMORY_PATH)
+    memory_path = Path(config.CASE_MEMORY_PATH)
     memory_doc = json.loads(memory_path.read_text(encoding="utf-8"))
 
     assert len(memory_doc["entries"]) == 1
@@ -159,10 +168,10 @@ def test_run_reporter_finalize_should_update_case_memory(monkeypatch, tmp_path):
 
 
 def test_build_tool_response_payload_should_not_require_model_for_action(monkeypatch):
-    monkeypatch.setattr(agent_cli.config, "validate_config", lambda: False)
-    monkeypatch.setattr(agent_cli, "_dispatch_execution", lambda *args: 0)
-    monkeypatch.setattr(agent_cli, "_list_run_dirs", lambda base_dir: set())
-    monkeypatch.setattr(agent_cli, "_resolve_new_run_dir", lambda before, base_dir: None)
+    monkeypatch.setattr(config, "validate_config", lambda: False)
+    monkeypatch.setattr(dispatch, "_dispatch_execution", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(tph, "_list_run_dirs", lambda base_dir: set())
+    monkeypatch.setattr(tph, "_resolve_new_run_dir", lambda before, base_dir: None)
 
     request = ToolRequest.model_validate(
         {
@@ -177,7 +186,7 @@ def test_build_tool_response_payload_should_not_require_model_for_action(monkeyp
         }
     )
 
-    payload = agent_cli.build_tool_response_payload(request)
+    payload = tph.build_tool_response_payload(request)
 
     assert payload["operation"] == "execute"
     assert payload["exit_code"] == 0
@@ -185,11 +194,11 @@ def test_build_tool_response_payload_should_not_require_model_for_action(monkeyp
 
 def test_build_tool_response_payload_should_include_case_memory_hit(monkeypatch, tmp_path):
     memory_path = tmp_path / "case_memory.json"
-    monkeypatch.setattr(agent_cli.config, "CASE_MEMORY_PATH", memory_path)
-    monkeypatch.setattr(agent_cli.config, "validate_config", lambda: False)
-    monkeypatch.setattr(agent_cli, "_dispatch_execution", lambda *args: 0)
-    monkeypatch.setattr(agent_cli, "_list_run_dirs", lambda base_dir: set())
-    monkeypatch.setattr(agent_cli, "_resolve_new_run_dir", lambda before, base_dir: None)
+    monkeypatch.setattr(config, "CASE_MEMORY_PATH", memory_path)
+    monkeypatch.setattr(config, "validate_config", lambda: False)
+    monkeypatch.setattr(dispatch, "_dispatch_execution", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(tph, "_list_run_dirs", lambda base_dir: set())
+    monkeypatch.setattr(tph, "_resolve_new_run_dir", lambda before, base_dir: None)
     memory_path.write_text(
         json.dumps(
             {
@@ -232,7 +241,7 @@ def test_build_tool_response_payload_should_include_case_memory_hit(monkeypatch,
         }
     )
 
-    payload = agent_cli.build_tool_response_payload(request)
+    payload = tph.build_tool_response_payload(request)
 
     assert payload["case_memory_hit"] is True
     assert payload["case_memory_entry"]["control_label"] == "点击登录"
