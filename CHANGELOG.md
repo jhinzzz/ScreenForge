@@ -2,6 +2,30 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
+## [Unreleased]
+
+### Changed (BREAKING)
+- **`assert_exist` / `assert_text_equals` now report real pass/fail.** Previously
+  both always "passed" (the engine generated assertion code but never failed the
+  step), so `--goal` verification and `--action` assert steps could never fail.
+  A failing assertion now returns a failed step. In `--json` output, assertion
+  failures carry `"result": "assertion_failed", "assertion_failed": true` to
+  distinguish a verification verdict from an engine error — agents should report
+  these as test failures, not retry them.
+
+### Fixed
+- **Web recording was dead**: the persistent-browser context was created without
+  `record_video_dir`, so `stop_record_and_get_path` found no video. New browser
+  sessions now record; reused/reconnected contexts log that recording is off.
+- **Broken install command**: docs and `doctor`'s remediation told users to run
+  `pip install -r requirement.txt`; the file is `requirements.txt`.
+- **7 failing tests** from the `agent_cli.py` shim refactor — tests now target
+  the real modules (`cli.tool_protocol_handlers` / `cli.shared` / `cli.dispatch`).
+
+### Added
+- `test_public_surface.py` — pins the CLI package's public symbols so future
+  refactors that drop a name fail fast at the contract.
+
 ## [0.2.1] - 2026-05-25
 
 ### Added

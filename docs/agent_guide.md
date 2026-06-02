@@ -63,8 +63,23 @@ Returns a single JSON line on stdout:
 
 On failure:
 ```json
-{"ok": false, "action": "click:Login", "platform": "ios", "error": "Action failed: click:Login"}
+{"ok": false, "action": "click:Login", "platform": "ios", "result": "engine_error", "assertion_failed": false, "error": "Action failed: click:Login"}
 ```
+
+**Assertion failures are different from engine errors.** When an `assert_exist` /
+`assert_text_equals` step fails, the element/text simply did not match — the SUT
+did not meet the assertion. This is a *verification verdict*, not an engine bug:
+
+```json
+{"ok": false, "action": "assert_exist:Dashboard", "platform": "ios", "result": "assertion_failed", "assertion_failed": true, "error": "Assertion failed: assert_exist:Dashboard"}
+```
+
+Branch on `assertion_failed` / `result`:
+- `assertion_failed: true` → the assertion did not hold. **Do NOT retry or add
+  `--vision`** — surface it as a test failure (the page did not reach the
+  expected state).
+- `result: "engine_error"` (assertion_failed false) → a real failure (locator
+  not found, action blocked, connection). Re-inspect and adjust strategy.
 
 This halves the round-trips needed per step — execute and observe in one call.
 
@@ -139,11 +154,18 @@ Supported operations: `capabilities`, `inspect_ui`, `load_case_memory`, `execute
 ## Troubleshooting
 
 - **Exit code 0**: Success — script generated at the `--output` path
-- **Exit code 1**: Failure — check terminal logs for error codes:
+- **Exit code 1**: Failure — first check `result` / `assertion_failed` in `--json`,
+  then terminal logs for error codes:
+  - **Assertion failure** (`assertion_failed: true`): an `assert_*` step did not
+    hold. This is an expected verification verdict, **not** an engine bug — report
+    it as a test failure, do NOT retry or add `--vision`.
   - `[E020] UI stagnation`: Action executed but page didn't change. Add preconditions and retry.
   - `[E022] Circuit breaker`: Consecutive failures reached threshold. Narrow steps or add `--vision`.
   - `[E030] Ref not found`: Element ref is stale. Re-run `inspect_ui` to refresh.
 - **Never blindly retry with the same parameters**
+
+> Note: in `--goal` autonomous mode, a failing final assertion fails the whole
+> run immediately (no retry). Assertions are verdicts, so they are not retried.
 
 ## Prohibited Actions
 
