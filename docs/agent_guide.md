@@ -141,10 +141,22 @@ Combine with `--plan-only` (view plan only) or `--dry-run` (simulate without exe
 
 ## Element Location Capabilities
 
-- **Ref system (@N)**: `inspect_ui` assigns ref numbers (@1, @2...) to each interactive element. Use `--locator-type ref --locator-value @3` to locate directly.
-- **Bbox coordinates**: Each element includes `x, y, w, h` bounding box for coordinate-based clicking or visual comparison.
-- **Screenshot annotation**: In `--vision` mode, screenshots are automatically annotated with ref numbers for visual location.
-- **Visual fallback (VLM)**: When DOM/XML cannot locate the target (Canvas, games, custom-rendered UI), the engine calls a VLM to parse coordinates from screenshots.
+> **Per-platform — read the machine-readable source.** `screenforge --capabilities`
+> returns `locators` (which `locator_type` works per platform) and `features` (which
+> location features are platform-gated). Don't assume a locator works everywhere.
+>
+> | locator_type | Web | Android | iOS |
+> |---|:---:|:---:|:---:|
+> | `css` | ✅ | — | — |
+> | `ref` (@N) | ✅ | ❌ | ❌ |
+> | `resourceId` | — | ✅ | ✅ (→ name) |
+> | `text` | ✅ | ✅ | ✅ (→ label) |
+> | `description` | ✅ | ✅ | ✅ (→ label) |
+
+- **Ref system (@N) — Web only**: on Web, `inspect_ui` assigns ref numbers (@1, @2...) to each interactive element; use `--locator-type ref --locator-value @3`. Android/iOS UI trees do NOT carry ref numbers — use `resourceId` / `text` / `description` there.
+- **Bbox coordinates — Web only**: Web elements include an `x, y, w, h` bounding box for coordinate clicking / visual comparison. Mobile compressors don't emit bbox.
+- **Screenshot annotation — Web only**: In `--vision` mode, Web screenshots are annotated with ref numbers.
+- **Visual fallback (VLM) — Web only**: when the DOM can't locate the target (Canvas, games, custom-rendered UI), the engine calls a VLM to parse coordinates. This fallback is gated to the Web platform.
 
 ## Tool Protocol Entries
 
