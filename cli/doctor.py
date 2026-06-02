@@ -145,7 +145,7 @@ def _build_doctor_remediation(check_name: str, message: str) -> dict:
     if normalized_check_name == "uiautomator2":
         return {
             "fix_label": "Install Android Python dependencies",
-            "fix_command": "./.venv/bin/python -m pip install -r requirement.txt",
+            "fix_command": "./.venv/bin/python -m pip install -r requirements.txt",
             **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
         }
 

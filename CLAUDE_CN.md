@@ -55,8 +55,8 @@ locator_type 优先级：`css` > `resourceId` > `text` > `description`
 # Activate virtual environment
 source .venv/bin/activate
 
-# Install dependencies (note: requirement.txt not requirements.txt)
-pip install -r requirement.txt
+# Install dependencies
+pip install -r requirements.txt
 
 # Initialize Android device (first time only)
 python -m uiautomator2 init
@@ -126,7 +126,7 @@ docs/                     # Agent integration guide and capability matrix
 
 ## Other conventions
 
-- Dependency file is `requirement.txt` (not `requirements.txt`).
+- Dependency file is `requirements.txt`.
 - Auto-generated test files follow the naming pattern `test_auto_<YYYYMMDD_HHMMSS>.py` and are placed under `test_cases/<platform>/`.
 - Do not commit `.env` files; use `.env_template` as the reference.
 - `conftest.py` at project root handles cross-platform fixture dispatch and attaches video/screenshot artifacts to Allure reports.
