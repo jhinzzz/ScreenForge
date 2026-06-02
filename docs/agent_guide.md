@@ -186,6 +186,16 @@ Supported operations: `capabilities`, `inspect_ui`, `load_case_memory`, `execute
 > Note: in `--goal` autonomous mode, a failing final assertion fails the whole
 > run immediately (no retry). Assertions are verdicts, so they are not retried.
 
+### Web: persistent browser lifecycle
+
+Web runs launch a detached Chromium (CDP port 9333) and **keep it running** across
+calls so cookies/login persist (the PID is tracked in `report/web_session.json`).
+When you're done, stop it explicitly so it doesn't linger:
+
+```bash
+screenforge --web-stop   # terminates the persistent Chromium; idempotent (no-op if none)
+```
+
 ## Prohibited Actions
 
 1. **Do NOT use `--goal`**: It calls an internal LLM to think for you — wastes tokens and produces worse results.

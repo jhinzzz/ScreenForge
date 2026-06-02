@@ -132,6 +132,13 @@ def main():
     if getattr(args, "session_end", ""):
         sys.exit(_run_session_end(args))
 
+    if getattr(args, "web_stop", False):
+        from common.adapters.web_adapter import stop_persistent_browser
+
+        # Idempotent: stopping a browser, or finding none to stop, both succeed.
+        stop_persistent_browser()
+        sys.exit(0)
+
     try:
         validate_cli_args(args)
     except ValueError as e:

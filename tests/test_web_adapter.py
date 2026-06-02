@@ -15,7 +15,8 @@ These tests pin the contract:
 
 from unittest.mock import MagicMock
 
-from common.adapters.web_adapter import WebPlaywrightAdapter
+import common.adapters.web_adapter as web_adapter
+from common.adapters.web_adapter import WebPlaywrightAdapter, stop_persistent_browser
 
 
 def _make_adapter():
@@ -83,3 +84,34 @@ def test_stop_record_handles_none_video_when_enabled():
 
     # should warn and return "" rather than raising on None.path()
     assert adapter.stop_record_and_get_path("out.webm") == ""
+
+
+class TestStopPersistentBrowser:
+    """--web-stop reaper (T9): kill the leaked detached Chromium."""
+
+    def test_no_session_returns_false(self, monkeypatch):
+        monkeypatch.setattr(web_adapter, "_read_session", lambda: None)
+        assert stop_persistent_browser() is False
+
+    def test_dead_pid_clears_stale_session(self, monkeypatch):
+        cleared = {"done": False}
+        monkeypatch.setattr(web_adapter, "_read_session", lambda: {"pid": 4242})
+        monkeypatch.setattr(web_adapter, "_is_process_alive", lambda pid: False)
+        monkeypatch.setattr(web_adapter, "_clear_session", lambda: cleared.update(done=True))
+        assert stop_persistent_browser() is False
+        assert cleared["done"] is True
+
+    def test_live_pid_is_signalled_and_cleared(self, monkeypatch):
+        killed = {}
+        cleared = {"done": False}
+        monkeypatch.setattr(web_adapter, "_read_session", lambda: {"pid": 4242})
+        monkeypatch.setattr(web_adapter, "_is_process_alive", lambda pid: True)
+        monkeypatch.setattr(web_adapter, "_clear_session", lambda: cleared.update(done=True))
+        monkeypatch.setattr(web_adapter.sys, "platform", "darwin")
+        monkeypatch.setattr(web_adapter.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+
+        assert stop_persistent_browser() is True
+        assert killed["pid"] == 4242
+        import signal
+        assert killed["sig"] == signal.SIGTERM
+        assert cleared["done"] is True

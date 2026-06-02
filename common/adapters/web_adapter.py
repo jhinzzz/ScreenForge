@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 
 import config.config as config
@@ -39,6 +40,41 @@ def _is_process_alive(pid: int) -> bool:
         os.kill(pid, 0)
         return True
     except (OSError, ProcessLookupError):
+        return False
+
+
+def stop_persistent_browser() -> bool:
+    """Terminate the detached persistent Chromium recorded in the session file.
+
+    The web adapter launches Chromium with --remote-debugging-port and keeps it
+    running across CLI calls (teardown only disconnects). Nothing else ever kills
+    it, so repeated runs leak browsers holding port 9333. This is the explicit
+    reaper, wired to `--web-stop`. Returns True if a live process was signalled.
+    """
+    import signal
+
+    session = _read_session()
+    if not session:
+        log.info("ℹ️ [System] No persistent web browser session on record")
+        return False
+
+    pid = session.get("pid", 0)
+    if not pid or not _is_process_alive(pid):
+        log.info("ℹ️ [System] Recorded browser is not running; clearing stale session")
+        _clear_session()
+        return False
+
+    try:
+        if sys.platform == "win32":
+            import subprocess as _sp
+            _sp.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+        else:
+            os.kill(pid, signal.SIGTERM)
+        log.info(f"✅ [System] Stopped persistent Chromium (pid {pid})")
+        _clear_session()
+        return True
+    except Exception as e:
+        log.error(f"❌ [Error] Failed to stop persistent browser (pid {pid}): {e}")
         return False
 
 
