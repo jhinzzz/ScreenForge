@@ -341,11 +341,15 @@ class _SharedAdapterManager:
         """Return the shared UIExecutor for a platform, creating it (and its
         adapter) on first use. Reused across inspect_ui / action requests so the
         ref cache survives between them within one MCP session."""
-        existing = self._executors.get(platform)
-        if existing is not None:
-            return existing
         _ensure_executor_runtime()
         adapter = self.get_or_create(platform, env)
+        existing = self._executors.get(platform)
+        if existing is not None:
+            # Re-sync to the live driver: if the adapter reconnected or made a
+            # new page, adapter.driver may have changed under us. Cheap defensive
+            # rebind so the cached executor never drives a stale/closed handle.
+            existing.d = adapter.driver
+            return existing
         executor = UIExecutor(adapter.driver, platform=platform)
         self._executors[platform] = executor
         return executor

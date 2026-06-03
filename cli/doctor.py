@@ -35,7 +35,15 @@ def _render_rich_doctor_table(checks: list[dict]) -> None:
     for check in checks:
         name = check.get("name", "unknown")
         ok = check.get("ok", False)
-        status = "[green]PASS[/]" if ok else "[red]FAIL[/]"
+        advisory = check.get("advisory", False)
+        # An advisory finding (ok=False but advisory) is a NOTE, not a failure —
+        # render it yellow so it never reads as a broken environment.
+        if ok:
+            status = "[green]PASS[/]"
+        elif advisory:
+            status = "[yellow]NOTE[/]"
+        else:
+            status = "[red]FAIL[/]"
         details = ""
         if not ok:
             issues = check.get("issues", []) or []
@@ -258,10 +266,37 @@ def _append_recommended_action(actions: list[dict], category: str, priority: int
 
 def _build_doctor_summary(checks: list[dict]) -> dict:
     groups = {}
+    advisories = []
     severity_rank = {"error": 0, "issue": 1, "hint": 2}
 
     for check in checks:
         if check.get("ok", False):
+            continue
+
+        # Advisory findings (e.g. a healthy persistent browser) are NOTES, not
+        # blockers: collect them separately so they never affect summary["ok"]
+        # or sort among real failures, but the remediation note still reaches
+        # the user (surfaced even on the success path).
+        if check.get("advisory", False):
+            check_name = str(check.get("name", "unknown")).strip() or "unknown"
+            # One note per advisory check: the error is the "what", the
+            # remediation carries the "how" (fix_command). The hint largely
+            # restates the remediation, so don't emit it as a second line.
+            message = _normalize_doctor_message(check.get("error", "")) or next(
+                (m for _k, m in _iter_doctor_check_findings(check)), ""
+            )
+            if message:
+                remediation = _build_doctor_remediation(check_name, message)
+                advisories.append(
+                    {
+                        "message": message,
+                        "check_names": [check_name],
+                        "fix_label": remediation.get("fix_label", ""),
+                        "fix_command": remediation.get("fix_command", ""),
+                        "fix_doc": remediation.get("fix_doc", ""),
+                        "fix_doc_section": remediation.get("fix_doc_section", ""),
+                    }
+                )
             continue
 
         group_meta = _classify_doctor_check(check)
@@ -334,6 +369,7 @@ def _build_doctor_summary(checks: list[dict]) -> dict:
         "top_items": top_items,
         "groups": ordered_groups,
         "recommended_actions": recommended_actions,
+        "advisories": advisories,
     }
 
 
@@ -398,6 +434,7 @@ def run_doctor_mode(args, output_script_path: str) -> int:
             top_items=doctor_summary.get("top_items", []),
             groups=doctor_summary.get("groups", []),
             recommended_actions=doctor_summary.get("recommended_actions", []),
+            advisories=doctor_summary.get("advisories", []),
         )
 
         _render_rich_doctor_table(result.get("checks", []))
@@ -410,7 +447,9 @@ def run_doctor_mode(args, output_script_path: str) -> int:
             final_error = "Doctor check failed"
             log.error("❌ [Doctor] Environment check failed. Fix prerequisites first.")
             for check in result.get("checks", []):
-                if not check.get("ok", False):
+                # Advisory findings are NOTES, not failures — keep them out of
+                # the error list (they're surfaced below regardless of verdict).
+                if not check.get("ok", False) and not check.get("advisory", False):
                     log.error(_build_doctor_check_failure_message(check))
             remediation_items = doctor_summary.get("recommended_actions", [])
             if remediation_items:
@@ -424,6 +463,13 @@ def run_doctor_mode(args, output_script_path: str) -> int:
                             "      Docs: "
                             f"{item.get('fix_doc', '')} ({item.get('fix_doc_section', '')})"
                         )
+
+        # Advisory notes surface on BOTH paths (a healthy env can still have a
+        # leftover browser worth reclaiming). They never affect status/exit code.
+        for note in doctor_summary.get("advisories", []):
+            log.info(f"💡 [Doctor] Note: {note.get('message', '')}")
+            if note.get("fix_command"):
+                log.info(f"      Run: {note.get('fix_command', '')}")
     finally:
         reporter.finalize(
             status=final_status,
