@@ -149,6 +149,29 @@ def run_default_mode(
                         success=False,
                         action_description="missing_action",
                     )
+                elif action_data.get("action") == "not_found":
+                    # The model explicitly reports the target is absent from the
+                    # UI tree and needs visual verification. This is not an
+                    # engine error and must NOT count toward the circuit breaker
+                    # (otherwise two not_found in a row trips it before vision is
+                    # ever tried, since max_retries defaults to 2).
+                    last_error = (
+                        "Model reported the target element is not in the current "
+                        "UI tree (action='not_found'). Re-run with --vision to let "
+                        "the visual model locate it, or try a different strategy/"
+                        "scroll to bring it into view."
+                    )
+                    log.warning(
+                        "[Agent] Model returned 'not_found' — target absent from UI "
+                        "tree. Suggesting visual fallback (no circuit-breaker penalty)."
+                    )
+                    reporter.emit_event(
+                        "action_executed",
+                        step=step_count,
+                        success=False,
+                        action_description="not_found",
+                    )
+                    continue
                 else:
                     result = executor.execute_and_record(action_data)
                     if result.get("success"):

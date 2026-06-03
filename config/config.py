@@ -147,6 +147,18 @@ def validate_config() -> bool:
             f"WEB_CDP_URL must start with http:// or https:// (current: {WEB_CDP_URL}).",
             "Fix: export WEB_CDP_URL=http://localhost:9222",
         ))
+    if not (0 <= AUTO_HEAL_MIN_CONFIDENCE <= 1):
+        errors.append((
+            "E006",
+            f"AUTO_HEAL_MIN_CONFIDENCE must be 0-1 (current: {AUTO_HEAL_MIN_CONFIDENCE}).",
+            "Fix: export AUTO_HEAL_MIN_CONFIDENCE=0.7",
+        ))
+    if AUTO_HEAL_TRIGGER_THRESHOLD < 1:
+        errors.append((
+            "E007",
+            f"AUTO_HEAL_TRIGGER_THRESHOLD must be >= 1 (current: {AUTO_HEAL_TRIGGER_THRESHOLD}).",
+            "Fix: export AUTO_HEAL_TRIGGER_THRESHOLD=2",
+        ))
 
     if errors:
         for code, what, fix in errors:

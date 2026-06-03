@@ -3,7 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import agent_cli as autonomous_cli
+import cli.dispatch as autonomous_cli  # main() entry; agent_cli.py is now a thin shim
+import cli.shared as cli_shared  # adapter factory / launch_app / log live here
 import conftest as project_conftest
 import main as interactive_main
 from common.ai import AIBrain
@@ -178,9 +179,12 @@ def test_main_should_teardown_adapter_when_launch_app_fails(monkeypatch):
 def test_agent_cli_should_teardown_adapter_when_launch_app_fails(monkeypatch):
     adapter = _TrackingAdapter()
 
-    monkeypatch.setattr(autonomous_cli, "AndroidU2Adapter", lambda: adapter)
+    # Adapter factory + launch_app are resolved in cli.shared (via _connect_adapter);
+    # main() entry lives in cli.dispatch. Patch each at its real lookup site.
+    monkeypatch.setattr(cli_shared, "AndroidU2Adapter", lambda: adapter)
+    monkeypatch.setattr(cli_shared, "_create_adapter", lambda platform, args=None: adapter)
     monkeypatch.setattr(
-        autonomous_cli, "launch_app", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("launch failed"))
+        cli_shared, "launch_app", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("launch failed"))
     )
     monkeypatch.setattr(
         autonomous_cli.sys,
@@ -199,9 +203,10 @@ def test_agent_cli_should_log_cleanup_warning_when_teardown_fails(monkeypatch):
     adapter = _TrackingAdapter(teardown_error=RuntimeError("cleanup failed"))
     warnings = []
 
-    monkeypatch.setattr(autonomous_cli, "AndroidU2Adapter", lambda: adapter)
+    monkeypatch.setattr(cli_shared, "AndroidU2Adapter", lambda: adapter)
+    monkeypatch.setattr(cli_shared, "_create_adapter", lambda platform, args=None: adapter)
     monkeypatch.setattr(
-        autonomous_cli, "launch_app", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("launch failed"))
+        cli_shared, "launch_app", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("launch failed"))
     )
     monkeypatch.setattr(
         autonomous_cli.sys,
@@ -209,13 +214,15 @@ def test_agent_cli_should_log_cleanup_warning_when_teardown_fails(monkeypatch):
         ["agent_cli.py", "--goal", "测试目标", "--platform", "android"],
     )
     monkeypatch.setattr(
-        autonomous_cli.log, "warning", lambda message: warnings.append(message)
+        cli_shared.log, "warning", lambda message: warnings.append(message)
     )
 
     with pytest.raises(SystemExit):
         autonomous_cli.main()
 
-    assert any("清理资源时发生异常" in message for message in warnings)
+    # cli.shared._connect_adapter logs an English warning on teardown failure
+    # ("⚠️ [Warning] Cleanup failed during teardown: ...").
+    assert any("Cleanup failed" in message for message in warnings)
 
 
 def test_capture_failure_screenshot_should_handle_android_image_without_raw(monkeypatch):

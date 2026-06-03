@@ -1,7 +1,7 @@
 import json
 import os
-import shutil
 import subprocess
+import sys
 import time
 
 import config.config as config
@@ -37,33 +37,71 @@ def _clear_session() -> None:
 def _is_process_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-        return True
     except (OSError, ProcessLookupError):
         return False
+    # os.kill(pid, 0) succeeds for a ZOMBIE (killed but not yet reaped by its
+    # parent — common here because Chromium's parent is Playwright's node driver,
+    # which only reaps on its own exit). A zombie is dead, not alive. On POSIX,
+    # check the process state and treat Z/defunct as not-alive so the reaper and
+    # the reconnect path don't mistake a corpse for a live browser.
+    if sys.platform != "win32":
+        try:
+            state = subprocess.run(
+                ["ps", "-o", "state=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=3,
+            ).stdout.strip()
+            if state.startswith("Z"):
+                return False
+        except Exception:
+            pass  # ps unavailable → fall back to the os.kill result
+    return True
 
 
-def _find_chromium_path() -> str:
+def stop_persistent_browser() -> bool:
+    """Terminate the detached persistent Chromium recorded in the session file.
+
+    The web adapter launches Chromium with --remote-debugging-port and keeps it
+    running across CLI calls (teardown only disconnects). Nothing else ever kills
+    it, so repeated runs leak browsers holding port 9333. This is the explicit
+    reaper, wired to `--web-stop`. Returns True if a live process was signalled.
+    """
+    import signal
+
+    session = _read_session()
+    if not session:
+        log.info("ℹ️ [System] No persistent web browser session on record")
+        return False
+
+    pid = session.get("pid", 0)
+    if not pid or not _is_process_alive(pid):
+        log.info("ℹ️ [System] Recorded browser is not running; clearing stale session")
+        _clear_session()
+        return False
+
     try:
-        import subprocess as sp
-        result = sp.run(
-            ["python", "-c", "from playwright._impl._driver import compute_driver_executable; print(compute_driver_executable())"],
-            capture_output=True, text=True, cwd=os.getcwd(),
-        )
-        driver_path = result.stdout.strip()
-        if driver_path:
-            pass
-    except Exception:
-        pass
-
-    try:
-        import pathlib
-
-        from playwright._impl._driver import compute_driver_executable
-        _driver = pathlib.Path(compute_driver_executable())  # noqa: F841
-    except Exception:
-        pass
-
-    return ""
+        if sys.platform == "win32":
+            import subprocess as _sp
+            _sp.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+        else:
+            # Chromium ignores SIGTERM while a CDP client is attached, so escalate
+            # to SIGKILL if it's still up after a short grace period. (A leftover
+            # zombie — parent not yet reaped — reads as not-alive via _is_process_alive.)
+            os.kill(pid, signal.SIGTERM)
+            for _ in range(10):
+                time.sleep(0.2)
+                if not _is_process_alive(pid):
+                    break
+            else:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        log.info(f"✅ [System] Stopped persistent Chromium (pid {pid})")
+        _clear_session()
+        return True
+    except Exception as e:
+        log.error(f"❌ [Error] Failed to stop persistent browser (pid {pid}): {e}")
+        return False
 
 
 class WebPlaywrightAdapter(BasePlatformAdapter):
@@ -76,10 +114,8 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
         self.driver = None
         self._chromium_process = None
 
-        self.video_dir = os.path.abspath(os.path.join("report", "videos_web"))
         self.state_file = os.path.abspath(os.path.join("report", "browser_state.json"))
         self.viewport_size = {"width": 1920, "height": 1080}
-        self.video_size = {"width": 1280, "height": 720}
 
     def setup(self):
         log.info("⏱️ [System] Initializing Web (Playwright) browser...")
@@ -176,8 +212,12 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
             self._create_context_and_page()
 
     def _create_context_and_page(self):
-        os.makedirs(self.video_dir, exist_ok=True)
-
+        # NOTE: no video recording here. The adapter attaches to Chromium over CDP
+        # (connect_over_cdp) for cross-call session reuse, and Playwright cannot
+        # record video for a CDP-attached browser — `page.video` yields an object
+        # but no file is ever written. Recording only works for a browser
+        # Playwright launches itself, which this design does not do. Web video is
+        # therefore unsupported; see stop_record_and_get_path().
         if self.browser.contexts:
             self.context = self.browser.contexts[0]
         else:
@@ -215,26 +255,14 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
                     pass
 
     def start_record(self, video_name: str):
-        log.info("✅ [System] Playwright recording engine ready")
+        # Web video recording is unsupported (CDP-attached browser; see
+        # _create_context_and_page). No-op kept for the adapter interface.
+        log.info("ℹ️ [System] Web video recording is not supported (CDP session)")
 
     def stop_record_and_get_path(self, video_name: str) -> str:
-        log.info("⏱️ [System] Processing Playwright video file...")
-        if not self.driver or not self.context:
-            return ""
-
-        try:
-            original_path = self.driver.video.path()
-            self.driver.close()
-            self.driver = None
-
-            if os.path.exists(original_path):
-                shutil.move(original_path, video_name)
-                return video_name
-            else:
-                log.warning(f"⚠️ [Warning] Playwright video file not found: {original_path}")
-        except Exception as e:
-            log.error(f"❌ [Error] Failed to get web recording: {e}")
-
+        # Unsupported on web — return "" cleanly. (This also avoids the old
+        # AttributeError: stop used to call self.driver.video.path() which is
+        # None when no record_video_dir was set.)
         return ""
 
     def take_screenshot(self) -> bytes:

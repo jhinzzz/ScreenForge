@@ -12,15 +12,20 @@
 
 ## 元素定位能力
 
+> ⚠️ **ref / bbox / 截图标注 / 视觉 fallback 仅 Web 端可用。** 移动端的 UI 树压缩器
+> (`utils_xml.py` / `utils_ios.py`) 不产出 ref 编号或 bbox 坐标，视觉 fallback 在
+> `executor.py` 也只对 `platform == "web"` 生效。机器可读版本见
+> `python agent_cli.py --capabilities` 的 `locators` / `features` 字段。
+
 | 能力 | Android | iOS | Web | 说明 |
 |---|---|---|---|---|
-| ref 编号 (@N) | 支持 | 支持 | 支持 | `inspect_ui` 返回的每个可交互元素自带 ref 编号，可直接用于定位 |
-| bbox 坐标 (x,y,w,h) | 支持 | 支持 | 支持 | 每个元素附带边界框坐标，用于坐标点击或视觉比对 |
-| 截图标注 | 支持 | 支持 | 支持 | `--vision` 模式下自动生成带 ref 标注的截图，方便上层 Agent 或 VLM 识别 |
-| 视觉 fallback (VLM) | 支持 | 支持 | 支持 | DOM/XML 无法定位时（Canvas、游戏、自绘 UI），调用 VLM 从截图解析坐标 |
+| ref 编号 (@N) | 不支持 | 不支持 | 支持 | 仅 `compress_web_dom` 为每个 Web 元素分配 ref；移动端不产出 |
+| bbox 坐标 (x,y,w,h) | 不支持 | 不支持 | 支持 | 仅 Web 元素附带边界框坐标，用于坐标点击或视觉比对 |
+| 截图标注 | 不支持 | 不支持 | 支持 | `--vision` 模式下仅 Web 自动生成带 ref 标注的截图 |
+| 视觉 fallback (VLM) | 不支持 | 不支持 | 支持 | 仅 Web：DOM 无法定位时调用 VLM 从截图解析坐标（`executor.py` 内 gate 在 web） |
 | css 选择器 | 不适用 | 不适用 | 支持 | Web 端首选定位方式 |
-| resourceId | 支持 | 部分支持 | 不适用 | Android 原生 resource-id |
-| text / description | 支持 | 支持 | 支持 | 跨平台通用，按可见文本或无障碍描述定位 |
+| resourceId | 支持 | 映射到 name | 不适用 | Android 原生 resource-id；iOS 映射到 `name` |
+| text / description | 支持 | 支持（映射到 label） | 支持 | 跨平台通用，按可见文本或无障碍描述定位 |
 
 ## CLI 模式支持
 

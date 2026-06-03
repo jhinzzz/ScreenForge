@@ -1,9 +1,14 @@
 from pathlib import Path
-from typing import Optional
-
-from sentence_transformers import SentenceTransformer
+from typing import Any, Optional
 
 from common.logs import log
+
+# NOTE: `sentence_transformers` (and its torch/transformers stack, ~2GB) is an
+# OPTIONAL dependency — installed via `pip install screenforge[ml]`, not the core
+# requirements. It is imported lazily inside load(), NOT at module scope, so that
+# importing common.cache / common.ai on a clean (core-only) install does not crash
+# with ModuleNotFoundError. The semantic (vector) cache degrades gracefully when
+# the package is absent; the exact-key (hash) cache keeps working.
 
 
 class EmbeddingModelLoader:
@@ -102,10 +107,23 @@ class EmbeddingModelLoader:
         error_indicators = ["Can't load the model", "pytorch_model.bin", "safetensors"]
         return any(indicator in error_msg for indicator in error_indicators)
 
-    def load(self) -> SentenceTransformer:
-        """加载模型（带缓存、代理兼容和错误处理机制）"""
+    def load(self) -> Optional[Any]:
+        """加载模型（带缓存、代理兼容和错误处理机制）。
+
+        ML 依赖缺失时返回 None（优雅降级，不抛异常），调用方据此跳过向量检索。
+        """
         if self._model is not None:
             return self._model
+
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            log.warning(
+                "[System] Semantic cache disabled — 'sentence_transformers' not "
+                "installed. Install with: pip install screenforge[ml] (exact-key "
+                "cache still works without it)."
+            )
+            return None
 
         log.info("[System] Initializing local semantic cache engine...")
 

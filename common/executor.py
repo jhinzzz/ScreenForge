@@ -379,14 +379,15 @@ class AssertExistHandler(ActionHandler):
                 is_exist = element.is_visible()
             else:
                 is_exist = element.wait(timeout=config.DEFAULT_TIMEOUT)
-
-                if not is_exist:
-                    log.warning("❌ [Warning] Element not visible (assertion code still generated)")
-                else:
-                    log.info("[Assert] Passed")
         except Exception:
-            log.warning("❌ [Warning] Wait for element timed out (assertion code still generated)")
-        return True
+            log.warning("❌ [Assert] Element not found / wait timed out — assertion FAILED")
+            return False
+
+        if is_exist:
+            log.info("[Assert] Passed")
+        else:
+            log.warning("❌ [Assert] Element not visible — assertion FAILED")
+        return bool(is_exist)
 
     def generate_code(
         self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
@@ -430,15 +431,17 @@ class AssertTextEqualsHandler(ActionHandler):
                 actual_text = element.inner_text().strip()
             else:
                 if not element.wait(timeout=config.DEFAULT_TIMEOUT):
+                    log.warning("❌ [Assert] Element not found — text assertion FAILED")
                     return False
                 actual_text = element.get_text()
-
-            if actual_text != extra_value:
-                log.warning(f"[Warning] Expected '{extra_value}', got '{actual_text}'")
-            else:
-                log.info("[Assert] Passed")
         except Exception:
-            log.warning("[Warning] Failed to get text (assertion code still generated)")
+            log.warning("❌ [Assert] Failed to read element text — assertion FAILED")
+            return False
+
+        if actual_text != extra_value:
+            log.warning(f"❌ [Assert] Expected '{extra_value}', got '{actual_text}' — assertion FAILED")
+            return False
+        log.info("[Assert] Passed")
         return True
 
     def generate_code(
@@ -573,7 +576,14 @@ class UIExecutor:
             }
             u2_key = u2_locator_map.get(l_type, l_type)
 
-            if u2_key == "ref" and not _cached_ui_elements and self.platform == "web":
+            if u2_key == "ref" and self.platform == "web":
+                # Always re-inspect the live page before resolving a web ref.
+                # The ref cache is a process-global; under the long-lived MCP
+                # server it would otherwise serve stale @N from a previous page
+                # or request (the old `not _cached_ui_elements` guard skipped
+                # refresh once anything was cached). compress_web_dom assigns @N
+                # by ordinal, so a fresh inspect keeps @N aligned with the page
+                # the agent is actually looking at.
                 try:
                     import json as _json
 
@@ -581,9 +591,9 @@ class UIExecutor:
                     ui_json = compress_web_dom(self.d)
                     tree = _json.loads(ui_json)
                     set_ui_elements(tree.get("ui_elements", []))
-                    log.info(f"🔍 [Ref] Auto-inspect populated cache: {len(_cached_ui_elements)} elements")
+                    log.info(f"🔍 [Ref] Refreshed ref cache from live page: {len(_cached_ui_elements)} elements")
                 except Exception as e:
-                    log.warning(f"⚠️ [Ref] Auto-inspect failed: {e}")
+                    log.warning(f"⚠️ [Ref] Live re-inspect failed, using existing cache: {e}")
 
             try:
                 element = get_actual_element(self.d, self.platform, u2_key, l_value)
@@ -645,11 +655,26 @@ class UIExecutor:
         try:
             log.info(handler.get_log_message(l_type, l_value, extra_value))
 
-            if element or action in ("goto", "swipe", "press"):
+            # Use `is not None`, NOT truthiness: android's UiObject is falsy when
+            # it currently matches 0 elements, but it's a valid resolved handle —
+            # the handler must still run (e.g. assert_exist needs to wait and then
+            # report a real failure). Keying on `element` (truthy) would skip
+            # execution for an absent android element and wrongly report success.
+            if element is not None or action in ("goto", "swipe", "press"):
                 if not handler.execute(self.d, element, self.platform, extra_value):
-                    log.error(
-                        f"❌ [Error] Action blocked or dependent element not found within {timeout}s"
-                    )
+                    if action in ("assert_exist", "assert_text_equals"):
+                        # A failed assertion is a verification verdict (the SUT
+                        # did not meet the assertion), NOT an engine error. Tag
+                        # it so callers / --json can tell the two apart.
+                        result["assertion_failed"] = True
+                        log.error(
+                            f"❌ [Assert] Assertion failed: {action} "
+                            f"{l_type}='{l_value}'"
+                        )
+                    else:
+                        log.error(
+                            f"❌ [Error] Action blocked or dependent element not found within {timeout}s"
+                        )
                     return result
 
             safe_u2_key = u2_key if needs_locator else ""

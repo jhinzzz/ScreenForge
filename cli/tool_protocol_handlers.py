@@ -168,6 +168,16 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
         except json.JSONDecodeError:
             ui_tree = {"ui_elements": [], "raw": ui_json}
 
+        # Sync the executor's web ref cache to THIS inspect, so a subsequent
+        # `--action --locator-type ref @N` in the same (long-lived MCP) process
+        # resolves against the page just inspected, not a stale prior page.
+        if request.platform == "web":
+            try:
+                from common.executor import set_ui_elements
+                set_ui_elements(ui_tree.get("ui_elements", []) or [])
+            except Exception as e:
+                log.warning(f"⚠️ [Warning] Failed to sync ref cache from inspect_ui: {e}")
+
         annotated_screenshot_base64 = ""
         if screenshot_base64 and ui_tree.get("ui_elements"):
             try:

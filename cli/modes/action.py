@@ -98,7 +98,11 @@ def run_action_default_mode(
         )
         result = executor.execute_and_record(action_data)
         if not result.get("success"):
-            final_error = f"Action failed: {action_data['name']}"
+            assertion_failed = bool(result.get("assertion_failed"))
+            if assertion_failed:
+                final_error = f"Assertion failed: {action_data['name']}"
+            else:
+                final_error = f"Action failed: {action_data['name']}"
             reporter.emit_event(
                 "action_executed",
                 step=1,
@@ -107,10 +111,15 @@ def run_action_default_mode(
             )
             log.error(f"❌ [Action] Failed: {action_data['name']}")
             if json_mode:
+                # Distinguish a verification verdict (assertion_failed=true: the
+                # SUT did not meet the assertion — do NOT retry, report as test
+                # failure) from a real engine error (result="engine_error").
                 json.dump({
                     "ok": False,
                     "action": action_data["name"],
                     "platform": args.platform,
+                    "result": "assertion_failed" if assertion_failed else "engine_error",
+                    "assertion_failed": assertion_failed,
                     "error": final_error,
                 }, sys.stdout, ensure_ascii=False)
                 sys.stdout.write("\n")

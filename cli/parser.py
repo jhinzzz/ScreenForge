@@ -175,6 +175,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="End a session by ID (stops recording, outputs final test file path)",
     )
+    parser.add_argument(
+        "--web-stop",
+        action="store_true",
+        help="Terminate the persistent Chromium browser left running by web runs",
+    )
     return parser
 
 
@@ -269,6 +274,8 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         return
     has_session_end = bool(str(getattr(args, "session_end", "")).strip())
     if has_session_end:
+        return
+    if bool(getattr(args, "web_stop", False)):
         return
     if not args.doctor and not has_goal and not has_workflow and not has_action:
         raise ValueError("Must provide --goal, --workflow, or --action (use --doctor for diagnostics)")
