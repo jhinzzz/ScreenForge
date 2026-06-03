@@ -48,6 +48,13 @@ All notable changes to ScreenForge will be documented in this file.
   CDP-attached Chromium ignores `SIGTERM`, so the reaper escalates to `SIGKILL`
   after a grace period; `_is_process_alive` now treats a `Z`/defunct zombie as
   not-alive (an unreaped corpse was being mistaken for a live browser).
+- **Android `resourceId` locator was completely unusable** (caught by expanding
+  the live Android smoke to the click/input/swipe/press verbs): the XML
+  compressor stripped the package prefix, emitting a bare `search_src_text` while
+  uiautomator2's `resourceId` selector matches the full `pkg:id/name`. So every
+  resourceId the agent received (its #2-priority Android locator) matched zero
+  elements. The compressor now emits the full resource-id (+ an optional
+  `id_short` hint). Verified on a real device: `input` via the full id now works.
 - **Android assert/action on an absent element wrongly reported success**
   (caught by the new live Android smoke): `execute_and_record` gated execution on
   `element` truthiness, but uiautomator2's `UiObject` is *falsy* when it matches

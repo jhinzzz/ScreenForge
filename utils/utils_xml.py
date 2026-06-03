@@ -29,10 +29,17 @@ def _should_filter_by_desc(desc: str) -> bool:
         return True
     return False
 
-def _clean_resource_id(res_id: str) -> str:
-    clean_id = res_id.split("/")[-1]
-    clean_id = _PATTERN_HASH_SUFFIX.sub('', clean_id)
-    return clean_id
+def _short_resource_id(res_id: str) -> str:
+    """The bare id name (no package prefix), for display/token economy only.
+
+    NOTE: do NOT use this as a locator value — uiautomator2's resourceId
+    selector matches the FULL `pkg:id/name`, so the compressor emits the full id
+    (see compress_android_xml). This helper exists only for the optional `id_short`
+    hint.
+    """
+    short = res_id.split("/")[-1]
+    short = _PATTERN_HASH_SUFFIX.sub('', short)
+    return short
 
 def compress_android_xml(raw_xml: str) -> str:
     try:
@@ -68,8 +75,14 @@ def compress_android_xml(raw_xml: str) -> str:
             if clickable: el_info["clickable"] = True
 
             if res_id:
-                clean_id = _clean_resource_id(res_id)
-                el_info["id"] = clean_id
+                # Emit the FULL resource-id (pkg:id/name) — this is what
+                # uiautomator2's resourceId selector matches. Stripping the
+                # prefix produced ids that could never be located (the agent's
+                # #2-priority locator was silently broken on Android).
+                el_info["id"] = res_id
+                short = _short_resource_id(res_id)
+                if short and short != res_id:
+                    el_info["id_short"] = short
 
             elements.append(el_info)
 
