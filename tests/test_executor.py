@@ -7,10 +7,64 @@ from common.executor import (
     ClickHandler,
     InputHandler,
     LocatorBuilder,
+    SwipeHandler,
     UIExecutor,
     _resolve_ref,
     set_ui_elements,
 )
+
+
+class _RecordingDevice:
+    """Records the method name called on it (for swipe dispatch checks)."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __getattr__(self, name):
+        def _call(*args, **kwargs):
+            self.calls.append(name)
+            return None
+        return _call
+
+
+class TestSwipeHandlerPlatformDispatch:
+    """Regression for the iOS swipe bug (found on a real simulator):
+    SwipeHandler called d.swipe_ext() — a uiautomator2/Android-only API — on
+    every non-web platform, so swipe crashed on iOS with AttributeError. iOS
+    must use facebook-wda's directional swipe_up/down/left/right()."""
+
+    def test_ios_execute_uses_directional_swipe(self):
+        dev = _RecordingDevice()
+        assert SwipeHandler().execute(dev, None, "ios", "up") is True
+        assert dev.calls == ["swipe_up"], f"expected swipe_up, got {dev.calls}"
+
+    def test_ios_execute_never_calls_swipe_ext(self):
+        dev = _RecordingDevice()
+        for direction in ("up", "down", "left", "right"):
+            SwipeHandler().execute(dev, None, "ios", direction)
+        assert "swipe_ext" not in dev.calls
+        assert dev.calls == ["swipe_up", "swipe_down", "swipe_left", "swipe_right"]
+
+    def test_android_execute_still_uses_swipe_ext(self):
+        dev = _RecordingDevice()
+        SwipeHandler().execute(dev, None, "android", "up")
+        assert dev.calls == ["swipe_ext"]
+
+    def test_ios_generate_code_emits_directional(self):
+        code = "".join(SwipeHandler().generate_code("ios", "", "", "left", 30.0))
+        assert "d.swipe_left()" in code
+        assert "swipe_ext" not in code
+
+    def test_android_generate_code_emits_swipe_ext(self):
+        code = "".join(SwipeHandler().generate_code("android", "", "", "up", 30.0))
+        assert "d.swipe_ext('up')" in code
+
+    def test_invalid_direction_defaults_to_down(self):
+        dev = _RecordingDevice()
+        SwipeHandler().execute(dev, None, "ios", "diagonal")
+        assert dev.calls == ["swipe_down"]  # no swipe_diagonal attribute built
+        code = "".join(SwipeHandler().generate_code("ios", "", "", "diagonal", 30.0))
+        assert "d.swipe_down()" in code
 
 
 class _WebElement:

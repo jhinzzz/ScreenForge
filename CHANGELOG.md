@@ -48,6 +48,12 @@ All notable changes to ScreenForge will be documented in this file.
   CDP-attached Chromium ignores `SIGTERM`, so the reaper escalates to `SIGKILL`
   after a grace period; `_is_process_alive` now treats a `Z`/defunct zombie as
   not-alive (an unreaped corpse was being mistaken for a live browser).
+- **iOS `swipe` crashed** (caught by the live iOS simulator smoke): `SwipeHandler`
+  called `d.swipe_ext(direction)` — a uiautomator2 (Android) API — on every
+  non-web platform, so swipe raised `AttributeError: 'Client' object has no
+  attribute 'swipe_ext'` on iOS. Now uses facebook-wda's directional
+  `swipe_up/down/left/right()`. Verified on a real simulator: all four directions
+  work. (Invalid directions safely default to `down`.)
 - **Android `resourceId` locator was completely unusable** (caught by expanding
   the live Android smoke to the click/input/swipe/press verbs): the XML
   compressor stripped the package prefix, emitting a bare `search_src_text` while
