@@ -88,7 +88,12 @@ def run_action_default_mode(
             history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
             save_to_disk(output_script_path, get_initial_header())
 
-        executor = _shared.UIExecutor(device, platform=args.platform)
+        if shared_adapter_manager:
+            # Reuse the session's shared executor so a `ref @N` action resolves
+            # against the cache a prior inspect_ui populated (same MCP session).
+            executor = shared_adapter_manager.get_executor(args.platform, args.env)
+        else:
+            executor = _shared.UIExecutor(device, platform=args.platform)
 
         reporter.emit_event(
             "step_started",

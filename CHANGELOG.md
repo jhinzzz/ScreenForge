@@ -23,8 +23,12 @@ All notable changes to ScreenForge will be documented in this file.
   recording anyway (only iOS records). So `start_record`/`stop_record` are now
   honest no-ops returning `""`, and the dead `record_video_dir` branch + unused
   `_find_chromium_path` are removed.
-- **Broken install command**: docs and `doctor`'s remediation told users to run
-  `pip install -r requirement.txt`; the file is `requirements.txt`.
+- **Broken / imprecise install commands**: docs and `doctor`'s remediation told
+  users to run `pip install -r requirement.txt` (the file is `requirements.txt`).
+  `doctor`'s per-platform dependency remediation now points at the documented
+  editable extras instead — `pip install -e ".[android]"` / `".[ios]"` /
+  `pip install -e .` (web) — so a missing platform dep installs exactly that
+  platform, not the whole pinned set.
 - **7 failing tests** from the `agent_cli.py` shim refactor — tests now target
   the real modules (`cli.tool_protocol_handlers` / `cli.shared` / `cli.dispatch`).
 - **ML stack made truly optional**: `sentence_transformers` (the ~2GB torch
@@ -33,10 +37,14 @@ All notable changes to ScreenForge will be documented in this file.
   the semantic cache degrades gracefully (exact-key cache still works) when the
   `[ml]` extra isn't installed. torch/transformers/sentence-transformers/
   scikit-learn moved out of core `requirements.txt`.
-- **MCP web ref cache leak**: the process-global `_cached_ui_elements` could
-  serve stale `@N` from a prior page/request. `inspect_ui` now syncs the cache
-  to the page just inspected, and web ref resolution always re-inspects the live
-  page.
+- **MCP web ref cache leak**: the web `@N`→element cache was a process-global
+  (`_cached_ui_elements`) that could serve stale refs from a prior page/request
+  across a long-lived MCP session. It now lives on the `UIExecutor` instance,
+  and `_SharedAdapterManager` keeps one executor per platform — so `inspect_ui`
+  and a follow-up `ref @N` action share state within a session while separate
+  sessions can't leak into each other. Ref resolution is threaded through an
+  explicit `resolve_ref` callable instead of ambient global state, and web ref
+  resolution still re-inspects the live page each time.
 - **`not_found` no longer trips the circuit breaker**: in `--goal` mode the
   model's `not_found` signal is intercepted (suggest `--vision`) without counting
   as a failure.
@@ -77,6 +85,13 @@ All notable changes to ScreenForge will be documented in this file.
   Web-only (mobile docs previously over-claimed them as universal).
 - `--web-stop` — terminate the persistent Chromium (CDP port 9333) left running
   by web runs; idempotent.
+- **`doctor` notices a leftover persistent Chromium**: closes the loop with
+  `--web-stop`. A new web preflight check reads `report/web_session.json` and, if
+  the recorded pid is still alive, surfaces it as an **advisory NOTE** ("run
+  `screenforge --web-stop` to reclaim it") with the `--web-stop` command. It is
+  advisory by design — a live persistent browser is the intended cross-call
+  reconnect target, so it never fails `--doctor` or changes the exit code; only
+  real blockers do.
 - **Live smoke tests against real hardware**, all opt-in and skipped by default:
   - `test_web_smoke_live.py` (`RUN_LIVE_WEB_SMOKE=1`) — real Chromium: launch /
     inspect+ref / assert / `--web-stop`. Caught the SIGTERM/zombie bug above.

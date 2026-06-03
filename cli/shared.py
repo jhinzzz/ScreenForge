@@ -315,6 +315,11 @@ class _SharedAdapterManager:
 
     def __init__(self):
         self._adapters: dict[str, object] = {}
+        # One UIExecutor per platform, created lazily alongside the adapter and
+        # living exactly as long as it. The executor owns the web ref cache, so
+        # an inspect_ui and a follow-up `ref @N` action in the same MCP session
+        # share state via get_executor() — without any process-global.
+        self._executors: dict[str, object] = {}
 
     def get_or_create(self, platform: str, env: str = "dev"):
         if platform in self._adapters:
@@ -332,6 +337,23 @@ class _SharedAdapterManager:
         self._adapters[platform] = adapter
         return adapter
 
+    def get_executor(self, platform: str, env: str = "dev"):
+        """Return the shared UIExecutor for a platform, creating it (and its
+        adapter) on first use. Reused across inspect_ui / action requests so the
+        ref cache survives between them within one MCP session."""
+        _ensure_executor_runtime()
+        adapter = self.get_or_create(platform, env)
+        existing = self._executors.get(platform)
+        if existing is not None:
+            # Re-sync to the live driver: if the adapter reconnected or made a
+            # new page, adapter.driver may have changed under us. Cheap defensive
+            # rebind so the cached executor never drives a stale/closed handle.
+            existing.d = adapter.driver
+            return existing
+        executor = UIExecutor(adapter.driver, platform=platform)
+        self._executors[platform] = executor
+        return executor
+
     def teardown_all(self):
         for platform, adapter in self._adapters.items():
             try:
@@ -340,3 +362,4 @@ class _SharedAdapterManager:
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Failed to clean up {platform} adapter: {e}")
         self._adapters.clear()
+        self._executors.clear()
