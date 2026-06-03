@@ -98,7 +98,9 @@ def _classify_doctor_check(check: dict) -> dict:
         "http://localhost:9222",
     } or check_name.startswith(("http://", "https://")):
         return {"category": "connectivity", "title": "Connectivity", "priority": 4}
-    return {"category": "other", "title": "Other", "priority": 5}
+    if check_name == "orphan_web_browser":
+        return {"category": "cleanup", "title": "Cleanup", "priority": 5}
+    return {"category": "other", "title": "Other", "priority": 6}
 
 
 def _doctor_fix_doc_reference(doc_name: str, section: str) -> dict:
@@ -187,6 +189,13 @@ def _build_doctor_remediation(check_name: str, message: str) -> dict:
         return {
             "fix_label": "Verify WebDriverAgent service status",
             "fix_command": "",
+            **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
+        }
+
+    if normalized_check_name == "orphan_web_browser":
+        return {
+            "fix_label": "Stop the leaked persistent Chromium",
+            "fix_command": "screenforge --web-stop",
             **_doctor_fix_doc_reference("docs/agent_guide.md", "Troubleshooting"),
         }
 

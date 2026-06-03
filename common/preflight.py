@@ -412,6 +412,48 @@ def check_wda_status_endpoint(url: str, timeout_seconds: float = 1.5) -> Dict[st
     }
 
 
+def check_orphan_web_browser() -> Dict[str, object]:
+    """Report a leaked persistent Chromium still holding the CDP port.
+
+    The web adapter launches Chromium detached on port 9333 and keeps it alive
+    across CLI calls (teardown only disconnects) so later runs can reconnect.
+    `--web-stop` reaps it, but until now doctor had no way to *notice* one was
+    leaked. This closes the loop: read report/web_session.json, and if the
+    recorded pid is still alive, surface it as an actionable cleanup finding.
+
+    Reuses web_adapter's _read_session / _is_process_alive so the zombie-aware
+    liveness logic stays single-sourced.
+    """
+    from common.adapters import web_adapter
+
+    ok_result = {
+        "name": "orphan_web_browser",
+        "ok": True,
+        "pid": 0,
+        "cdp_url": "",
+        "error": "",
+        "hint": "",
+    }
+
+    session = web_adapter._read_session()
+    if not session:
+        return ok_result
+
+    pid = session.get("pid", 0)
+    cdp_url = session.get("cdp_url", "")
+    if not pid or not web_adapter._is_process_alive(pid):
+        return ok_result
+
+    return {
+        "name": "orphan_web_browser",
+        "ok": False,
+        "pid": pid,
+        "cdp_url": cdp_url,
+        "error": f"Leaked persistent Chromium still running (pid {pid}, {cdp_url})",
+        "hint": "Run `screenforge --web-stop` to terminate the leftover persistent browser.",
+    }
+
+
 def run_preflight(platform: str, script_dir: Path, run_dir: Path) -> Dict[str, object]:
     checks = [
         check_required_config(),
@@ -435,6 +477,7 @@ def run_preflight(platform: str, script_dir: Path, run_dir: Path) -> Dict[str, o
         checks.append(web_endpoint_check)
         if web_endpoint_check.get("ok", False):
             checks.append(check_cdp_debug_endpoint(config.WEB_CDP_URL))
+        checks.append(check_orphan_web_browser())
 
     ok = all(item.get("ok", False) for item in checks)
     return {
