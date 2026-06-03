@@ -146,23 +146,23 @@ def _build_doctor_remediation(check_name: str, message: str) -> dict:
 
     if normalized_check_name == "uiautomator2":
         return {
-            "fix_label": "Install Android Python dependencies",
-            "fix_command": "./.venv/bin/python -m pip install -r requirements.txt",
-            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
+            "fix_label": "Install Android extras",
+            "fix_command": 'pip install -e ".[android]"',
+            **_doctor_fix_doc_reference("README.md", "Platform-specific extras"),
         }
 
     if normalized_check_name == "playwright":
         return {
-            "fix_label": "Install Playwright dependencies",
-            "fix_command": "./.venv/bin/python -m pip install playwright",
-            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
+            "fix_label": "Install web dependencies (default extra)",
+            "fix_command": "pip install -e .",
+            **_doctor_fix_doc_reference("README.md", "Platform-specific extras"),
         }
 
     if normalized_check_name == "wda":
         return {
-            "fix_label": "Install iOS WDA dependencies",
-            "fix_command": "./.venv/bin/python -m pip install facebook-wda",
-            **_doctor_fix_doc_reference("README.md", "Install Python dependencies"),
+            "fix_label": "Install iOS extras",
+            "fix_command": 'pip install -e ".[ios]"',
+            **_doctor_fix_doc_reference("README.md", "Platform-specific extras"),
         }
 
     if normalized_check_name == "adb":
