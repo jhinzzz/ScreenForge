@@ -88,17 +88,41 @@ class TestStopPersistentBrowser:
         assert stop_persistent_browser() is False
         assert cleared["done"] is True
 
-    def test_live_pid_is_signalled_and_cleared(self, monkeypatch):
-        killed = {}
+    def test_live_pid_sigterm_then_clears(self, monkeypatch):
+        """Process dies on SIGTERM — no escalation needed, session cleared."""
+        import signal
+        signals = []
         cleared = {"done": False}
+        state = {"alive": True}
         monkeypatch.setattr(web_adapter, "_read_session", lambda: {"pid": 4242})
-        monkeypatch.setattr(web_adapter, "_is_process_alive", lambda pid: True)
+        # alive once for the initial check, then dead after the first signal.
+        monkeypatch.setattr(web_adapter, "_is_process_alive", lambda pid: state["alive"])
         monkeypatch.setattr(web_adapter, "_clear_session", lambda: cleared.update(done=True))
         monkeypatch.setattr(web_adapter.sys, "platform", "darwin")
-        monkeypatch.setattr(web_adapter.os, "kill", lambda pid, sig: killed.update(pid=pid, sig=sig))
+        monkeypatch.setattr(web_adapter.time, "sleep", lambda s: None)
+
+        def fake_kill(pid, sig):
+            signals.append(sig)
+            if sig == signal.SIGTERM:
+                state["alive"] = False  # process honors SIGTERM
+
+        monkeypatch.setattr(web_adapter.os, "kill", fake_kill)
 
         assert stop_persistent_browser() is True
-        assert killed["pid"] == 4242
-        import signal
-        assert killed["sig"] == signal.SIGTERM
+        assert signals == [signal.SIGTERM]  # no SIGKILL escalation needed
         assert cleared["done"] is True
+
+    def test_live_pid_escalates_to_sigkill(self, monkeypatch):
+        """Process ignores SIGTERM (CDP-attached Chromium) — reaper escalates to SIGKILL."""
+        import signal
+        signals = []
+        monkeypatch.setattr(web_adapter, "_read_session", lambda: {"pid": 4242})
+        monkeypatch.setattr(web_adapter, "_is_process_alive", lambda pid: True)  # never dies on TERM
+        monkeypatch.setattr(web_adapter, "_clear_session", lambda: None)
+        monkeypatch.setattr(web_adapter.sys, "platform", "darwin")
+        monkeypatch.setattr(web_adapter.time, "sleep", lambda s: None)
+        monkeypatch.setattr(web_adapter.os, "kill", lambda pid, sig: signals.append(sig))
+
+        assert stop_persistent_browser() is True
+        assert signal.SIGTERM in signals
+        assert signal.SIGKILL in signals  # escalated because TERM didn't take

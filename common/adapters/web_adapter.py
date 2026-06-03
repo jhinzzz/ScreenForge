@@ -37,9 +37,24 @@ def _clear_session() -> None:
 def _is_process_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-        return True
     except (OSError, ProcessLookupError):
         return False
+    # os.kill(pid, 0) succeeds for a ZOMBIE (killed but not yet reaped by its
+    # parent — common here because Chromium's parent is Playwright's node driver,
+    # which only reaps on its own exit). A zombie is dead, not alive. On POSIX,
+    # check the process state and treat Z/defunct as not-alive so the reaper and
+    # the reconnect path don't mistake a corpse for a live browser.
+    if sys.platform != "win32":
+        try:
+            state = subprocess.run(
+                ["ps", "-o", "state=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=3,
+            ).stdout.strip()
+            if state.startswith("Z"):
+                return False
+        except Exception:
+            pass  # ps unavailable → fall back to the os.kill result
+    return True
 
 
 def stop_persistent_browser() -> bool:
@@ -66,9 +81,21 @@ def stop_persistent_browser() -> bool:
     try:
         if sys.platform == "win32":
             import subprocess as _sp
-            _sp.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+            _sp.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
         else:
+            # Chromium ignores SIGTERM while a CDP client is attached, so escalate
+            # to SIGKILL if it's still up after a short grace period. (A leftover
+            # zombie — parent not yet reaped — reads as not-alive via _is_process_alive.)
             os.kill(pid, signal.SIGTERM)
+            for _ in range(10):
+                time.sleep(0.2)
+                if not _is_process_alive(pid):
+                    break
+            else:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
         log.info(f"✅ [System] Stopped persistent Chromium (pid {pid})")
         _clear_session()
         return True
