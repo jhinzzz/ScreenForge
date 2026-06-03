@@ -1,6 +1,5 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -87,15 +86,9 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
         self.context = None
         self.driver = None
         self._chromium_process = None
-        # Recording is only possible on a context created with record_video_dir.
-        # Reconnect / reused-context paths set this False; a freshly created
-        # context sets it True. stop_record_and_get_path() honors this flag.
-        self._recording_enabled = False
 
-        self.video_dir = os.path.abspath(os.path.join("report", "videos_web"))
         self.state_file = os.path.abspath(os.path.join("report", "browser_state.json"))
         self.viewport_size = {"width": 1920, "height": 1080}
-        self.video_size = {"width": 1280, "height": 720}
 
     def setup(self):
         log.info("⏱️ [System] Initializing Web (Playwright) browser...")
@@ -192,27 +185,16 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
             self._create_context_and_page()
 
     def _create_context_and_page(self):
-        os.makedirs(self.video_dir, exist_ok=True)
-
+        # NOTE: no video recording here. The adapter attaches to Chromium over CDP
+        # (connect_over_cdp) for cross-call session reuse, and Playwright cannot
+        # record video for a CDP-attached browser — `page.video` yields an object
+        # but no file is ever written. Recording only works for a browser
+        # Playwright launches itself, which this design does not do. Web video is
+        # therefore unsupported; see stop_record_and_get_path().
         if self.browser.contexts:
-            # Reusing the persistent browser's existing context. Playwright can
-            # only record video for a context created WITH record_video_dir, and
-            # that cannot be enabled after the fact — so recording is off on this
-            # (common) reuse path. Be explicit rather than silently producing no
-            # video. self._recording_enabled gates stop_record_and_get_path().
             self.context = self.browser.contexts[0]
-            self._recording_enabled = False
-            log.info(
-                "ℹ️ [System] Reusing persistent browser context — screen recording "
-                "is unavailable (only new browser sessions can be recorded)"
-            )
         else:
-            self.context = self.browser.new_context(
-                viewport=self.viewport_size,
-                record_video_dir=self.video_dir,
-                record_video_size=self.video_size,
-            )
-            self._recording_enabled = True
+            self.context = self.browser.new_context(viewport=self.viewport_size)
 
         if os.path.exists(self.state_file):
             try:
@@ -246,39 +228,14 @@ class WebPlaywrightAdapter(BasePlatformAdapter):
                     pass
 
     def start_record(self, video_name: str):
-        log.info("✅ [System] Playwright recording engine ready")
+        # Web video recording is unsupported (CDP-attached browser; see
+        # _create_context_and_page). No-op kept for the adapter interface.
+        log.info("ℹ️ [System] Web video recording is not supported (CDP session)")
 
     def stop_record_and_get_path(self, video_name: str) -> str:
-        if not self._recording_enabled:
-            # Context was reused (reconnect / persistent browser), so no video
-            # was ever recorded. driver.video would be None — skip cleanly.
-            log.info(
-                "ℹ️ [System] No video recorded (reused browser context); "
-                "skipping video processing"
-            )
-            return ""
-
-        log.info("⏱️ [System] Processing Playwright video file...")
-        if not self.driver or not self.context:
-            return ""
-
-        try:
-            video = self.driver.video
-            if video is None:
-                log.warning("⚠️ [Warning] Playwright recording not available on this page")
-                return ""
-            original_path = video.path()
-            self.driver.close()
-            self.driver = None
-
-            if os.path.exists(original_path):
-                shutil.move(original_path, video_name)
-                return video_name
-            else:
-                log.warning(f"⚠️ [Warning] Playwright video file not found: {original_path}")
-        except Exception as e:
-            log.error(f"❌ [Error] Failed to get web recording: {e}")
-
+        # Unsupported on web — return "" cleanly. (This also avoids the old
+        # AttributeError: stop used to call self.driver.video.path() which is
+        # None when no record_video_dir was set.)
         return ""
 
     def take_screenshot(self) -> bytes:

@@ -1,16 +1,14 @@
-"""Tests for common/adapters/web_adapter.py — recording wiring (audit T2).
+"""Tests for common/adapters/web_adapter.py.
 
-Regression guard: the persistent-browser refactor created the context with
-new_context(viewport=...) but never passed record_video_dir, while
-stop_record_and_get_path() called self.driver.video.path() — which is None
-when recording was never enabled, so web recording silently produced nothing
-(or raised, caught as "video file not found").
+Web video recording is UNSUPPORTED: the adapter attaches to Chromium over CDP
+(connect_over_cdp) for cross-call session reuse, and Playwright cannot record
+video for a CDP-attached browser (verified on real hardware — page.video yields
+an object but no file is ever written). So the contract here is:
+  - _create_context_and_page never passes record_video_dir
+  - stop_record_and_get_path returns "" cleanly, WITHOUT touching driver.video
+    (the original bug was an AttributeError from driver.video.path() being None)
 
-These tests pin the contract:
-- a freshly created context gets record_video_dir / record_video_size
-- a reused context does NOT (Playwright can't enable recording after creation)
-- stop_record_and_get_path() returns "" cleanly when recording was never on,
-  instead of touching driver.video
+Plus the --web-stop reaper (T9) for the leaked persistent Chromium.
 """
 
 from unittest.mock import MagicMock
@@ -26,44 +24,39 @@ def _make_adapter():
     return adapter
 
 
-def test_new_context_enables_recording_with_video_dir():
+def test_new_context_does_not_request_recording():
+    # CDP can't record; we must NOT pass record_video_dir (it would be a silent
+    # no-op that misleads callers into expecting a video).
     adapter = _make_adapter()
     browser = MagicMock()
     browser.contexts = []  # force the "create new context" branch
-    new_context = MagicMock()
-    browser.new_context.return_value = new_context
+    browser.new_context.return_value = MagicMock()
     adapter.browser = browser
 
     adapter._create_context_and_page()
 
-    # new_context must receive recording params
     _, kwargs = browser.new_context.call_args
-    assert kwargs.get("record_video_dir") == adapter.video_dir
-    assert kwargs.get("record_video_size") == adapter.video_size
-    assert adapter._recording_enabled is True
-    new_context.new_page.assert_called_once()
+    assert "record_video_dir" not in kwargs
+    assert "record_video_size" not in kwargs
 
 
-def test_reused_context_disables_recording():
+def test_reused_context_creates_no_new_context():
     adapter = _make_adapter()
     browser = MagicMock()
-    existing_context = MagicMock()
-    browser.contexts = [existing_context]  # force the "reuse" branch
+    existing = MagicMock()
+    browser.contexts = [existing]  # reuse branch
     adapter.browser = browser
 
     adapter._create_context_and_page()
 
-    # must NOT create a new context, and recording stays off
     browser.new_context.assert_not_called()
-    assert adapter._recording_enabled is False
-    existing_context.new_page.assert_called_once()
+    existing.new_page.assert_called_once()
 
 
-def test_stop_record_skips_cleanly_when_recording_disabled():
+def test_stop_record_returns_empty_without_touching_driver_video():
+    # Regression: stop used to call self.driver.video.path() -> AttributeError
+    # when no record_video_dir was set. It must now short-circuit cleanly.
     adapter = _make_adapter()
-    adapter._recording_enabled = False
-    # driver.video access would blow up if reached — make it explode to prove
-    # we never touch it on the disabled path.
     driver = MagicMock()
     type(driver).video = property(
         lambda self: (_ for _ in ()).throw(AssertionError("video must not be accessed"))
@@ -74,16 +67,10 @@ def test_stop_record_skips_cleanly_when_recording_disabled():
     assert adapter.stop_record_and_get_path("out.webm") == ""
 
 
-def test_stop_record_handles_none_video_when_enabled():
+def test_start_record_is_noop():
     adapter = _make_adapter()
-    adapter._recording_enabled = True
-    driver = MagicMock()
-    driver.video = None  # page without an attached video object
-    adapter.driver = driver
-    adapter.context = MagicMock()
-
-    # should warn and return "" rather than raising on None.path()
-    assert adapter.stop_record_and_get_path("out.webm") == ""
+    # Must not raise; recording is unsupported on web.
+    adapter.start_record("whatever.webm")
 
 
 class TestStopPersistentBrowser:

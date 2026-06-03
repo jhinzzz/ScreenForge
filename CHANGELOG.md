@@ -14,9 +14,15 @@ All notable changes to ScreenForge will be documented in this file.
   these as test failures, not retry them.
 
 ### Fixed
-- **Web recording was dead**: the persistent-browser context was created without
-  `record_video_dir`, so `stop_record_and_get_path` found no video. New browser
-  sessions now record; reused/reconnected contexts log that recording is off.
+- **Web recording crash removed; recording documented as unsupported**:
+  `stop_record_and_get_path` called `self.driver.video.path()` which is `None`
+  when no `record_video_dir` was set, raising under some paths. Web video
+  recording is in fact impossible here — the adapter attaches over CDP
+  (`connect_over_cdp`) and Playwright cannot record a CDP-attached browser
+  (verified: `page.video` exists but no file is written). The CLI never wired web
+  recording anyway (only iOS records). So `start_record`/`stop_record` are now
+  honest no-ops returning `""`, and the dead `record_video_dir` branch + unused
+  `_find_chromium_path` are removed.
 - **Broken install command**: docs and `doctor`'s remediation told users to run
   `pip install -r requirement.txt`; the file is `requirements.txt`.
 - **7 failing tests** from the `agent_cli.py` shim refactor — tests now target
