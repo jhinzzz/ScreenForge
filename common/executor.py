@@ -253,8 +253,12 @@ class InputHandler(ActionHandler):
 
 
 class SwipeHandler(ActionHandler):
+    _DIRECTIONS = ("up", "down", "left", "right")
+
     def execute(self, d, element, platform: str, extra_value: str) -> bool:
         direction = extra_value.lower() if extra_value else "down"
+        if direction not in self._DIRECTIONS:
+            direction = "down"
         if platform == "web":
             if direction == "up":
                 d.mouse.wheel(0, -600)
@@ -265,6 +269,10 @@ class SwipeHandler(ActionHandler):
             else:
                 d.mouse.wheel(0, 600)
             d.wait_for_timeout(1000)
+        elif platform == "ios":
+            # facebook-wda has no swipe_ext (that's uiautomator2/Android). It
+            # exposes directional swipe_up/down/left/right() on the client.
+            getattr(d, f"swipe_{direction}")()
         else:
             d.swipe_ext(direction)
         return True
@@ -273,6 +281,8 @@ class SwipeHandler(ActionHandler):
         self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
     ) -> list:
         direction = extra_value.lower() if extra_value else "down"
+        if direction not in self._DIRECTIONS:
+            direction = "down"
         if platform == "web":
             scroll_code = "d.mouse.wheel(0, 600)"
             if direction == "up":
@@ -287,6 +297,12 @@ class SwipeHandler(ActionHandler):
                 f"        log.info('Action: swipe [{direction}]')\n",
                 f"        {scroll_code}\n",
                 "        d.wait_for_timeout(1000)\n",
+            ]
+        elif platform == "ios":
+            return [
+                f"    with allure.step('Swipe: [{direction}]'):\n",
+                f"        log.info('Action: swipe [{direction}]')\n",
+                f"        d.swipe_{direction}()\n",
             ]
         else:
             return [

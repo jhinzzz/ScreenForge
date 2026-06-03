@@ -128,3 +128,92 @@ def test_ios_adapter_requires_wda(booted_sim):
         assert src, "WDA returned empty source"
     finally:
         adapter.teardown()
+
+
+def _wda_reachable() -> bool:
+    import urllib.request
+    try:
+        urllib.request.urlopen("http://localhost:8100/status", timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+@pytest.fixture
+def wda_adapter():
+    """Connected iOS adapter, or skip if WDA isn't running on :8100."""
+    try:
+        import wda  # noqa: F401
+    except ImportError:
+        pytest.skip("facebook-wda not installed")
+    if sys.platform != "darwin":
+        pytest.skip("iOS requires macOS")
+    if not _wda_reachable():
+        pytest.skip("WDA not reachable on :8100 — start WebDriverAgent to exercise the iOS adapter")
+
+    from common.adapters.ios_adapter import IosWdaAdapter
+
+    adapter = IosWdaAdapter()
+    adapter.setup()
+    try:
+        yield adapter
+    finally:
+        try:
+            adapter.teardown()
+        except Exception:
+            pass
+
+
+def _ios_tree(adapter):
+    from utils.utils_ios import compress_ios_xml
+    return json.loads(compress_ios_xml(adapter.driver.source()))
+
+
+def test_ios_assert_contract(wda_adapter):
+    """T4 on real iOS: assert_exist passes for an on-screen label and fails
+    (assertion_failed) for a guaranteed-absent one. Self-calibrating."""
+    from common.executor import UIExecutor
+
+    tree = _ios_tree(wda_adapter)
+    # Pick a real, interactable element — NOT the app-root containers
+    # (Application/Window), whose label is matched by `name`, not `label`, in
+    # WDA. A real agent targets controls (buttons, cells, static text), which
+    # the executor's text->label mapping resolves correctly.
+    _CONTAINER_TYPES = {"Application", "Window", "Other"}
+    labels = [
+        e["label"] for e in tree.get("ui_elements", [])
+        if e.get("label") and e.get("type") not in _CONTAINER_TYPES
+    ]
+    if not labels:
+        pytest.skip("no labeled control elements on current iOS screen")
+
+    executor = UIExecutor(wda_adapter.driver, platform="ios")
+    present = executor.execute_and_record(
+        {"action": "assert_exist", "locator_type": "text",
+         "locator_value": labels[0], "extra_value": ""}
+    )
+    assert present["success"] is True, f"assert_exist failed for present label {labels[0]!r}"
+    assert not present.get("assertion_failed")
+
+    absent = executor.execute_and_record(
+        {"action": "assert_exist", "locator_type": "text",
+         "locator_value": "zzz-absent-ios-9f3c2", "extra_value": ""}
+    )
+    assert absent["success"] is False
+    assert absent.get("assertion_failed") is True
+
+
+def test_ios_swipe_all_directions(wda_adapter):
+    """Regression for the iOS swipe bug: SwipeHandler used to call swipe_ext()
+    (Android-only) on iOS, crashing with AttributeError. All four directions
+    must execute via facebook-wda's directional swipe."""
+    from common.executor import UIExecutor
+
+    executor = UIExecutor(wda_adapter.driver, platform="ios")
+    for direction in ("up", "down", "left", "right"):
+        result = executor.execute_and_record(
+            {"action": "swipe", "locator_type": "global",
+             "locator_value": "global", "extra_value": direction}
+        )
+        assert result["success"] is True, f"iOS swipe {direction} failed"
+        assert f"d.swipe_{direction}()" in "".join(result["code_lines"])
