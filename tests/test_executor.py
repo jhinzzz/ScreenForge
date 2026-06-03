@@ -185,6 +185,30 @@ class _AssertDevice:
         return self._element
 
 
+class _FalsyMobileElement:
+    """Mimics uiautomator2's UiObject: FALSY when it matches 0 elements (its
+    __len__ returns the match count), yet a valid, non-None resolved handle.
+
+    This is the shape that caused the android assert bug: execute_and_record
+    gated on `element` truthiness, so a present-but-zero-match handle made the
+    handler (and its wait) get skipped, wrongly reporting success.
+    """
+
+    def __init__(self, count=0, exists=False):
+        self._count = count
+        self._exists = exists
+
+    def __len__(self):
+        return self._count  # 0 -> falsy
+
+    @property
+    def exists(self):
+        return self._exists
+
+    def wait(self, timeout=0):
+        return self._exists
+
+
 class TestExecuteAndRecordAssertionTag:
     """execute_and_record must tag assertion failures so --json can disambiguate."""
 
@@ -230,3 +254,21 @@ class TestExecuteAndRecordAssertionTag:
         )
         assert result["success"] is False
         assert result.get("assertion_failed") is None
+
+    def test_falsy_but_resolved_android_element_runs_handler(self):
+        # Regression (found on a real device): a resolved-but-zero-match android
+        # UiObject is FALSY. execute_and_record must still run the handler
+        # (gating on `element is not None`, not truthiness) so the assert reports
+        # a real failure instead of falling through to a fast false success.
+        device = _AssertDevice(_FalsyMobileElement(count=0, exists=False))
+        executor = UIExecutor(device, platform="android")
+        result = executor.execute_and_record(
+            {
+                "action": "assert_exist",
+                "locator_type": "text",
+                "locator_value": "definitely-absent",
+                "extra_value": "",
+            }
+        )
+        assert result["success"] is False, "falsy android element wrongly reported success"
+        assert result.get("assertion_failed") is True

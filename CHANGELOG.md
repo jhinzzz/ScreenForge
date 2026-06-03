@@ -48,6 +48,13 @@ All notable changes to ScreenForge will be documented in this file.
   CDP-attached Chromium ignores `SIGTERM`, so the reaper escalates to `SIGKILL`
   after a grace period; `_is_process_alive` now treats a `Z`/defunct zombie as
   not-alive (an unreaped corpse was being mistaken for a live browser).
+- **Android assert/action on an absent element wrongly reported success**
+  (caught by the new live Android smoke): `execute_and_record` gated execution on
+  `element` truthiness, but uiautomator2's `UiObject` is *falsy* when it matches
+  0 elements — so the handler (and its wait) was skipped and the step returned a
+  fast false success. Now gates on `element is not None`, so the handler runs and
+  reports the real verdict. Affects every element action on a transiently-absent
+  android element, not just asserts.
 
 ### Added
 - `test_public_surface.py` — pins the CLI package's public symbols so future
@@ -57,10 +64,16 @@ All notable changes to ScreenForge will be documented in this file.
   Web-only (mobile docs previously over-claimed them as universal).
 - `--web-stop` — terminate the persistent Chromium (CDP port 9333) left running
   by web runs; idempotent.
-- **Live web smoke** (`tests/test_web_smoke_live.py`, opt-in via
-  `RUN_LIVE_WEB_SMOKE=1`): drives a real Chromium through launch / inspect+ref /
-  assert / `--web-stop` so "passes in mocks but broken on real hardware"
-  regressions fail loudly. (It immediately caught the SIGTERM/zombie bug above.)
+- **Live smoke tests against real hardware**, all opt-in and skipped by default:
+  - `test_web_smoke_live.py` (`RUN_LIVE_WEB_SMOKE=1`) — real Chromium: launch /
+    inspect+ref / assert / `--web-stop`. Caught the SIGTERM/zombie bug above.
+  - `test_android_smoke_live.py` (`RUN_LIVE_ANDROID_SMOKE=1`) — real device via
+    uiautomator2: setup / live UI-tree / assert contract. Caught the falsy
+    `UiObject` bug above.
+  - `test_ios_smoke_live.py` (`RUN_LIVE_IOS_SMOKE=1`) — booted simulator: the
+    `simctl` session-recording reaper (WDA-dependent adapter checks self-skip).
+  These exist because mock-only tests passed while the real features were broken;
+  the smokes make "green in mocks, broken on hardware" fail loudly.
 
 ### Docs
 - Corrected `capability-matrix.md` / `agent_guide.md`: ref/bbox/visual fallback

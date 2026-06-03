@@ -655,7 +655,12 @@ class UIExecutor:
         try:
             log.info(handler.get_log_message(l_type, l_value, extra_value))
 
-            if element or action in ("goto", "swipe", "press"):
+            # Use `is not None`, NOT truthiness: android's UiObject is falsy when
+            # it currently matches 0 elements, but it's a valid resolved handle —
+            # the handler must still run (e.g. assert_exist needs to wait and then
+            # report a real failure). Keying on `element` (truthy) would skip
+            # execution for an absent android element and wrongly report success.
+            if element is not None or action in ("goto", "swipe", "press"):
                 if not handler.execute(self.d, element, self.platform, extra_value):
                     if action in ("assert_exist", "assert_text_equals"):
                         # A failed assertion is a verification verdict (the SUT
