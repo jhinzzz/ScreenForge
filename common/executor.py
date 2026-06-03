@@ -3,19 +3,13 @@ from abc import ABC, abstractmethod
 import config.config as config
 from common.logs import log
 
-_cached_ui_elements: list[dict] = []
-
-
-def set_ui_elements(elements: list[dict]) -> None:
-    global _cached_ui_elements
-    _cached_ui_elements = list(elements) if elements else []
-
-
-def _resolve_ref(ref_value: str) -> dict | None:
-    for el in _cached_ui_elements:
-        if el.get("ref") == ref_value:
-            return el
-    return None
+# NOTE: the web ref cache (@N -> element) lives on the UIExecutor INSTANCE
+# (see UIExecutor.set_ui_elements / resolve_ref), not as a module global. A
+# process-global cache leaked refs across pages/requests under the long-lived
+# MCP server; binding it to the executor the SharedAdapterManager owns per
+# platform keeps each session's @N aligned with the page it inspected. The
+# ref-aware helpers below therefore take an explicit `resolve_ref` callable
+# (default None) instead of reaching for ambient state.
 
 
 def _escape_locator_value(value: str) -> str:
@@ -35,11 +29,11 @@ def _escape_python_string(value: str) -> str:
 
 class LocatorBuilder:
     @staticmethod
-    def build_code(platform: str, u2_key: str, l_value: str) -> str:
+    def build_code(platform: str, u2_key: str, l_value: str, resolve_ref=None) -> str:
         safe_val = _escape_locator_value(l_value)
         if platform == "web":
             if u2_key == "ref":
-                el_data = _resolve_ref(l_value)
+                el_data = resolve_ref(l_value) if resolve_ref else None
                 if el_data and el_data.get("id"):
                     return f"locator('#{_escape_locator_value(el_data['id'])}').first"
                 if el_data and el_data.get("text"):
@@ -61,12 +55,12 @@ class LocatorBuilder:
             return f"{u2_key}='{safe_val}'"
 
     @staticmethod
-    def get_element(d, platform: str, u2_key: str, l_value: str):
+    def get_element(d, platform: str, u2_key: str, l_value: str, resolve_ref=None):
         if platform == "web":
             if u2_key == "ref":
-                el_data = _resolve_ref(l_value)
+                el_data = resolve_ref(l_value) if resolve_ref else None
                 if not el_data:
-                    log.warning(f"[E030] Ref {l_value} not found in cache ({len(_cached_ui_elements)} elements available). Fix: run inspect_ui first to refresh the element cache")
+                    log.warning(f"[E030] Ref {l_value} not found in cache. Fix: run inspect_ui first to refresh the element cache")
                     return None
                 if el_data.get("id"):
                     return d.locator(f"#{el_data['id']}").first
@@ -94,12 +88,12 @@ class LocatorBuilder:
             return d(**{u2_key: l_value})
 
 
-def build_locator_code(platform: str, u2_key: str, l_value: str) -> str:
-    return LocatorBuilder.build_code(platform, u2_key, l_value)
+def build_locator_code(platform: str, u2_key: str, l_value: str, resolve_ref=None) -> str:
+    return LocatorBuilder.build_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
 
 
-def get_actual_element(d, platform: str, u2_key: str, l_value: str):
-    return LocatorBuilder.get_element(d, platform, u2_key, l_value)
+def get_actual_element(d, platform: str, u2_key: str, l_value: str, resolve_ref=None):
+    return LocatorBuilder.get_element(d, platform, u2_key, l_value, resolve_ref=resolve_ref)
 
 
 class ActionHandler(ABC):
@@ -109,7 +103,8 @@ class ActionHandler(ABC):
 
     @abstractmethod
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         pass
 
@@ -128,9 +123,10 @@ class HoverHandler(ActionHandler):
             return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Hover: [{l_value}]'):\n",
@@ -160,9 +156,10 @@ class ClickHandler(ActionHandler):
             return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Click: [{l_value}]'):\n",
@@ -196,9 +193,10 @@ class LongClickHandler(ActionHandler):
             return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Long click: [{l_value}]'):\n",
@@ -230,10 +228,11 @@ class InputHandler(ActionHandler):
             return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         safe_extra = _escape_python_string(extra_value)
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Input: [{safe_extra}] into [{l_value}]'):\n",
@@ -278,7 +277,8 @@ class SwipeHandler(ActionHandler):
         return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         direction = extra_value.lower() if extra_value else "down"
         if direction not in self._DIRECTIONS:
@@ -350,7 +350,8 @@ class PressHandler(ActionHandler):
         return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         key = extra_value if extra_value else "Enter"
         safe_key = _escape_python_string(key)
@@ -406,9 +407,10 @@ class AssertExistHandler(ActionHandler):
         return bool(is_exist)
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Assert: element [{l_value}] exists'):\n",
@@ -461,10 +463,11 @@ class AssertTextEqualsHandler(ActionHandler):
         return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         safe_expected = _escape_python_string(extra_value)
-        loc_str = build_locator_code(platform, u2_key, l_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
             return [
                 f"    with allure.step('Assert: text equals [{safe_expected}]'):\n",
@@ -504,7 +507,8 @@ class GotoHandler(ActionHandler):
         return True
 
     def generate_code(
-        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
     ) -> list:
         url = extra_value.strip()
         if not url.startswith(("http://", "https://")):
@@ -527,6 +531,11 @@ class UIExecutor:
     def __init__(self, device, platform="android"):
         self.d = device
         self.platform = platform
+        # Web ref cache (@N -> element), bound to THIS instance. The
+        # SharedAdapterManager keeps one executor per platform, so an inspect_ui
+        # and a follow-up `ref @N` action in the same MCP session share this
+        # cache while separate sessions/pages can never leak into each other.
+        self._cached_ui_elements: list[dict] = []
         if not self._handlers:
             self._handlers = {
                 "click": ClickHandler(),
@@ -543,6 +552,15 @@ class UIExecutor:
     @classmethod
     def register_handler(cls, action_type: str, handler: ActionHandler):
         cls._handlers[action_type] = handler
+
+    def set_ui_elements(self, elements: list[dict]) -> None:
+        self._cached_ui_elements = list(elements) if elements else []
+
+    def resolve_ref(self, ref_value: str) -> dict | None:
+        for el in self._cached_ui_elements:
+            if el.get("ref") == ref_value:
+                return el
+        return None
 
     def execute_and_record(self, action_data: dict, file_obj=None) -> dict:
         action = action_data.get("action")
@@ -594,31 +612,32 @@ class UIExecutor:
 
             if u2_key == "ref" and self.platform == "web":
                 # Always re-inspect the live page before resolving a web ref.
-                # The ref cache is a process-global; under the long-lived MCP
-                # server it would otherwise serve stale @N from a previous page
-                # or request (the old `not _cached_ui_elements` guard skipped
-                # refresh once anything was cached). compress_web_dom assigns @N
-                # by ordinal, so a fresh inspect keeps @N aligned with the page
-                # the agent is actually looking at.
+                # compress_web_dom assigns @N by ordinal, so a fresh inspect
+                # keeps @N aligned with the page the agent is actually looking
+                # at. The cache is bound to this executor instance (not a
+                # process-global), so the refresh can't bleed into another
+                # session.
                 try:
                     import json as _json
 
                     from utils.utils_web import compress_web_dom
                     ui_json = compress_web_dom(self.d)
                     tree = _json.loads(ui_json)
-                    set_ui_elements(tree.get("ui_elements", []))
-                    log.info(f"🔍 [Ref] Refreshed ref cache from live page: {len(_cached_ui_elements)} elements")
+                    self.set_ui_elements(tree.get("ui_elements", []))
+                    log.info(f"🔍 [Ref] Refreshed ref cache from live page: {len(self._cached_ui_elements)} elements")
                 except Exception as e:
                     log.warning(f"⚠️ [Ref] Live re-inspect failed, using existing cache: {e}")
 
             try:
-                element = get_actual_element(self.d, self.platform, u2_key, l_value)
+                element = get_actual_element(
+                    self.d, self.platform, u2_key, l_value, resolve_ref=self.resolve_ref
+                )
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Element locator resolution failed: {e}")
                 return result
 
             if element is None and u2_key == "ref" and self.platform == "web":
-                el_data = _resolve_ref(l_value)
+                el_data = self.resolve_ref(l_value)
                 if el_data and el_data.get("w", 0) > 0:
                     cx = el_data["x"] + el_data["w"] // 2
                     cy = el_data["y"] + el_data["h"] // 2
@@ -695,7 +714,8 @@ class UIExecutor:
 
             safe_u2_key = u2_key if needs_locator else ""
             code_lines = handler.generate_code(
-                self.platform, safe_u2_key, l_value, extra_value, timeout
+                self.platform, safe_u2_key, l_value, extra_value, timeout,
+                resolve_ref=self.resolve_ref,
             )
 
             result["success"] = True

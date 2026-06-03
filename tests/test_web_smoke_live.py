@@ -78,7 +78,7 @@ def test_real_launch_and_inspect_then_ref_resolves(live_adapter):
     """T2 (real launch) + T13 (inspect syncs ref cache → ref resolves on live page)."""
     import json
 
-    from common.executor import UIExecutor, set_ui_elements
+    from common.executor import UIExecutor
     from utils.utils_web import compress_web_dom
 
     live_adapter.driver.goto(_PAGE)
@@ -90,12 +90,14 @@ def test_real_launch_and_inspect_then_ref_resolves(live_adapter):
     assert elements, "live DOM compression returned no elements"
     assert any(e.get("id") == "go" for e in elements), "button#go not captured live"
 
-    # Mirror what build_inspect_ui_payload does (T13): sync ref cache to this page.
-    set_ui_elements(elements)
     ref = next(e["ref"] for e in elements if e.get("id") == "go")
 
-    # A real ref-based click must resolve against the live page and succeed.
+    # Mirror what build_inspect_ui_payload does (T13): sync the ref cache on the
+    # SAME executor that will run the action, so @N resolves on this page.
     executor = UIExecutor(live_adapter.driver, platform="web")
+    executor.set_ui_elements(elements)
+
+    # A real ref-based click must resolve against the live page and succeed.
     result = executor.execute_and_record(
         {"action": "click", "locator_type": "ref", "locator_value": ref, "extra_value": ""}
     )
