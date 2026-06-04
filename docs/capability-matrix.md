@@ -20,6 +20,11 @@
 >   （**不**当作 `disabled`，二者语义不同），且 inert 状态会跨 shadow / 同源 iframe 边界继承。
 >
 > **不可穿透**：closed shadow root、跨域 iframe（浏览器安全边界，静默跳过）。
+>
+> **虚拟滚动列表（react-window / 虚拟化表格）只见视口**：此类组件只把视口内的行渲染进 DOM，
+> 视口外的行根本不存在，压缩器看不到也不应编造。这是固有限制而非缺陷——用 workflow B 的
+> `action scroll → 重新 inspect_ui` 循环即可拿到新行（已有 live 测试钉死：滚动后 re-inspect
+> 能取到新切片、旧行不再上报）。不要试图强制渲染全部行（token 会爆）。
 
 ## 元素定位能力
 

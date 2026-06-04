@@ -448,6 +448,67 @@ def test_inert_inherits_across_stacked_boundaries(page):
     )
 
 
+# --- virtual scrolling (react-window style) --------------------------------
+
+# 1000 logical rows, but only ~8 are ever in the DOM at once: a scroll handler
+# re-renders the visible slice based on scrollTop (the react-window pattern).
+_VIRTUAL_LIST = (
+    "<div id='vp' style='height:160px;overflow:auto'>"
+    "<div id='spacer' style='height:20000px;position:relative'>"
+    "<div id='win'></div>"
+    "</div></div>"
+    "<script>"
+    "var vp=document.getElementById('vp'),win=document.getElementById('win');"
+    "function render(){var top=vp.scrollTop,first=Math.floor(top/20),h='';"
+    "for(var i=first;i<first+8;i++){h+=\"<button style='position:absolute;top:\"+(i*20)+\"px;height:20px'>Row\"+i+\"</button>\";}"
+    "win.innerHTML=h;}"
+    "vp.addEventListener('scroll',render);render();"
+    "</script>"
+)
+
+
+def _row_nums(els) -> list:
+    out = []
+    for e in els:
+        t = (e.get("text") or "")
+        if t.startswith("Row"):
+            out.append(int(t[3:]))
+    return sorted(out)
+
+
+def test_virtual_list_shows_only_viewport_then_new_rows_after_scroll(page):
+    """Virtual lists (react-window/virtualized tables) only render the rows in the
+    viewport — off-screen rows do NOT exist in the DOM, so the compressor cannot
+    and should not report them. This pins the HONEST contract: (1) initially only
+    the viewport slice is visible; (2) after scroll + re-inspect, the NEW slice is
+    visible. The workflow-B pattern (action scroll -> re-inspect) is therefore the
+    correct way to reach more rows. A regression here would mean either blindness
+    (re-inspect misses new rows) or a token blowup (forcing all 1000 rows into the
+    tree). Both are failures."""
+    page.goto("data:text/html," + _quote(_VIRTUAL_LIST))
+    page.wait_for_timeout(200)
+    from utils.utils_web import compress_web_dom
+
+    initial = _row_nums(json.loads(compress_web_dom(page)).get("ui_elements", []))
+    assert initial, "no rows captured at all — compressor blind to the rendered slice"
+    assert initial[0] == 0, f"viewport should start at Row0, got {initial[:3]}"
+    assert len(initial) < 50, (
+        f"virtual list leaked {len(initial)} rows into the tree — only the viewport "
+        "slice should be reported (token blowup otherwise)"
+    )
+    assert 200 not in initial, "Row200 is off-screen initially; must not be reported"
+
+    # Scroll the viewport and re-inspect — the standard workflow-B loop.
+    page.evaluate("document.getElementById('vp').scrollTop=4000")
+    page.wait_for_timeout(200)
+    after = _row_nums(json.loads(compress_web_dom(page)).get("ui_elements", []))
+    assert 200 in after, (
+        "re-inspect after scroll did NOT pick up the new viewport slice (Row200) — "
+        "virtual-list rows are unreachable, breaking the scroll->re-inspect workflow"
+    )
+    assert 0 not in after, "Row0 scrolled out of view but is still reported (stale)"
+
+
 # --- regression: simple pages still work -----------------------------------
 
 def test_plain_page_unchanged(page):
