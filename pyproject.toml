@@ -20,6 +20,8 @@ dependencies = [
     "typer>=0.24",
     "retry2>=0.9",
     "opencv-python>=4.10",
+    "numpy>=1.24",
+    "filelock>=3.12",
 ]
 
 [project.optional-dependencies]
