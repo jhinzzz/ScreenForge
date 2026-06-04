@@ -137,6 +137,130 @@ class TestBuildFallbackLocator:
         assert "\\." in frag
 
 
+class TestScopedLocatorDisambiguation:
+    """When N controls share an accessible name (e.g. one 'Delete' per row), the
+    compressor flags them with `scope` (the row's identifying text). codegen must
+    emit a SCOPED locator that targets the right one — and crucially must NOT
+    append `.first`, which silently picks row 1 (the lie). Playwright strict-mode
+    then enforces honesty: a scope that isn't unique fails loud at replay."""
+
+    def test_scoped_locator_omits_first(self):
+        # The single highest-value assertion: a scoped element must NOT degrade to
+        # `.first` (always row 1). It must scope by the row label and still target
+        # the button by role+name.
+        frag = build_fallback_locator({
+            "class": "button", "clickable": True, "text": "Delete",
+            "scope": "Bob Jones",
+        })
+        assert frag is not None
+        assert ".first" not in frag, (
+            "scoped locator degraded to .first — persisted test always clicks row 1"
+        )
+        assert "Bob Jones" in frag, "scope (row label) not used to disambiguate"
+        assert "get_by_role('button'" in frag and "Delete" in frag, (
+            "scoped locator lost the inner role+name strategy"
+        )
+        # Must be a valid python locator expression.
+        ast.parse(f"d.{frag}")
+
+    def test_scope_composes_with_text_inner_when_no_role(self):
+        # A non-role element (e.g. a clickable span) that is ambiguous still scopes.
+        frag = build_fallback_locator({
+            "class": "span", "clickable": True, "text": "Edit", "scope": "Row 7",
+        })
+        assert frag is not None
+        assert ".first" not in frag
+        assert "Row 7" in frag
+        ast.parse(f"d.{frag}")
+
+    def test_unambiguous_element_unchanged_no_scope(self):
+        # Regression guard: an element WITHOUT scope keeps the existing behavior
+        # (this is the common case — must not change, and .first stays allowed).
+        frag = build_fallback_locator({"class": "button", "clickable": True, "text": "Save"})
+        assert frag == "get_by_role('button', name='Save').first"
+
+    def test_known_ambiguous_but_unscopable_returns_none_not_first(self):
+        # The honesty boundary: an element flagged ambiguous (it has dup_index, so
+        # it was in a >=2 collision group) but for which NO scope could be computed
+        # must NOT emit get_by_text('Delete').first (silently row 1 — the lie). It
+        # returns None so the caller takes the honest pytest.skip path.
+        frag = build_fallback_locator({
+            "class": "button", "clickable": True, "text": "Delete", "dup_index": 1,
+        })
+        assert frag is None, (
+            f"known-ambiguous-but-unscopable element emitted {frag!r} — the silent "
+            ".first lie this feature exists to kill"
+        )
+
+    def test_empty_scope_with_dup_index_also_returns_none(self):
+        # computeScope can return '' (row root found but no distinguishing text).
+        # Empty scope + dup_index is still "ambiguous and unscopable" → None.
+        frag = build_fallback_locator({
+            "class": "button", "clickable": True, "text": "Delete",
+            "scope": "", "dup_index": 2,
+        })
+        assert frag is None
+
+    def test_no_nth_ever_emitted_for_dup_index(self):
+        # Positional .nth(k) is a coordinate-by-another-name (brittle to reorder);
+        # it must never appear, scoped or not.
+        for el in (
+            {"class": "button", "clickable": True, "text": "Delete", "dup_index": 0},
+            {"class": "button", "clickable": True, "text": "Delete", "scope": "Bob", "dup_index": 1},
+        ):
+            frag = build_fallback_locator(el)
+            assert frag is None or ".nth(" not in frag
+
+
+class TestScopedLocatorLockstep:
+    """The emitted codegen string (build_code/build_fallback_locator) and the live
+    handle (get_element/get_fallback_element) must resolve to the SAME element for
+    a scoped ref — and an unscopable-ambiguous ref must NOT silently resolve live
+    to row 1 while emitting something else. Both sides flow through one strategy."""
+
+    def _resolve(self, elements):
+        return lambda r: next((e for e in elements if e.get("ref") == r), None)
+
+    def test_build_code_for_scoped_ref_uses_scope_not_first(self):
+        els = [{"ref": "@4", "class": "button", "clickable": True,
+                "text": "Delete", "scope": "Bob Jones", "dup_index": 1,
+                "x": 1, "y": 2, "w": 3, "h": 4}]
+        code = LocatorBuilder.build_code("web", "ref", "@4", resolve_ref=self._resolve(els))
+        assert "Bob Jones" in code, "scoped ref didn't emit the row-scoped locator"
+        assert "mouse.click" not in code
+
+    def test_unscopable_ambiguous_ref_does_not_emit_wrong_first(self):
+        # @4 is known-ambiguous (dup_index) but unscopable (no scope). build_code
+        # must NOT emit get_by_text('Delete').first (row 1) NOR a bogus
+        # locator('@4') raw-ref selector. It should yield the honest skip/None
+        # path — i.e. no get_by_text('Delete').first and no raw '@4' selector.
+        els = [{"ref": "@4", "class": "button", "clickable": True,
+                "text": "Delete", "dup_index": 1, "x": 1, "y": 2, "w": 3, "h": 4}]
+        code = LocatorBuilder.build_code("web", "ref", "@4", resolve_ref=self._resolve(els))
+        assert "get_by_text('Delete').first" not in code, (
+            "unscopable-ambiguous ref emitted the silent row-1 lie"
+        )
+        assert "locator('@4')" not in code, (
+            "emitted the raw @N ref token as a CSS selector (invalid)"
+        )
+
+    def test_get_element_for_unscopable_ambiguous_ref_is_none(self):
+        # The LIVE side must also refuse to resolve an unscopable-ambiguous ref to
+        # row 1 (get_by_text('Delete').first) — otherwise the live click and the
+        # persisted locator diverge. None here routes to the honest skip path.
+        from common.executor import LocatorBuilder as LB
+
+        class _Dev:
+            def get_by_text(self, *a, **k): raise AssertionError(
+                "live resolution fell back to get_by_text for an ambiguous ref (row-1 lie)")
+            def locator(self, *a, **k): raise AssertionError("raw-ref locator on live side")
+
+        els = [{"ref": "@4", "class": "button", "clickable": True,
+                "text": "Delete", "dup_index": 1, "x": 1, "y": 2, "w": 3, "h": 4}]
+        handle = LB.get_element(_Dev(), "web", "ref", "@4", resolve_ref=self._resolve(els))
+        assert handle is None, "unscopable-ambiguous ref must resolve live to None (→ skip)"
+
+
 class TestBuildCodeNeverEmitsCoordinates:
     """The codegen path must never bake a pixel click into a persisted test."""
 

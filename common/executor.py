@@ -75,27 +75,11 @@ def _infer_web_role(el: dict) -> str | None:
     return None
 
 
-def _fallback_strategy(el: dict) -> tuple | None:
-    """Decide the single most-stable locator strategy for a web element, by
-    uniqueness/stability (architect adc8c2c): id > name attr > role+accessible-
-    name > aria-label(desc) > placeholder > text. Returns a (kind, *args) tuple
-    or None when nothing locatable exists. Shared by build_fallback_locator
-    (codegen string) and get_fallback_element (live handle) so the EMITTED
-    locator and the one we actually click can never diverge.
-
-    `name`/`id` rank above role+name because they're unique by spec; a role+name
-    match can be duplicated on a page (the "wrong element" trap)."""
-    if not el:
-        return None
-    if el.get("id"):
-        # CSS.escape-equivalent for an #id selector; bare ids with special chars
-        # would otherwise build a malformed selector.
-        return ("css", f"#{_escape_css_ident(el['id'])}")
-    if el.get("name"):
-        # Escape backslash+double-quote so a name containing " can't prematurely
-        # close the [name="..."] attribute selector.
-        safe_name = str(el["name"]).replace("\\", "\\\\").replace('"', '\\"')
-        return ("css", f'[name="{safe_name}"]')
+def _inner_strategy(el: dict) -> tuple | None:
+    """The role/accessible-name/text part of the stability ranking, WITHOUT the
+    unique-by-spec id/name attrs and WITHOUT scope. Factored out so the scoped
+    and unscoped paths share one source of truth for "how do I name this control"
+    — the scoped locator wraps exactly this inner strategy."""
     role = _infer_web_role(el)
     accessible_name = el.get("desc") or el.get("text")
     if role and accessible_name:
@@ -109,27 +93,113 @@ def _fallback_strategy(el: dict) -> tuple | None:
     return None
 
 
+def _fallback_strategy(el: dict) -> tuple | None:
+    """Decide the single most-stable locator strategy for a web element, by
+    uniqueness/stability (architect adc8c2c): id > name attr > scope+inner >
+    role+accessible-name > aria-label(desc) > placeholder > text. Returns a
+    (kind, *args) tuple or None when nothing locatable exists. Shared by
+    build_fallback_locator (codegen string) and get_fallback_element (live
+    handle) so the EMITTED locator and the one we actually click can never
+    diverge.
+
+    `name`/`id` rank above role+name because they're unique by spec; a role+name
+    match can be duplicated on a page (the "wrong element" trap). When the
+    compressor flagged the element as ambiguous (`scope` = its row's identifying
+    text), we wrap the inner role/text strategy in that scope instead of falling
+    into the silent `.first` trap — Playwright strict-mode then fails loud if the
+    scope still isn't unique."""
+    if not el:
+        return None
+    if el.get("id"):
+        # CSS.escape-equivalent for an #id selector; bare ids with special chars
+        # would otherwise build a malformed selector.
+        return ("css", f"#{_escape_css_ident(el['id'])}")
+    if el.get("name"):
+        # Escape backslash+double-quote so a name containing " can't prematurely
+        # close the [name="..."] attribute selector.
+        safe_name = str(el["name"]).replace("\\", "\\\\").replace('"', '\\"')
+        return ("css", f'[name="{safe_name}"]')
+    inner = _inner_strategy(el)
+    # Ambiguous control (one of N same-named) → scope by its row's identifying
+    # text. Only meaningful when there IS an inner strategy to scope.
+    scope = el.get("scope")
+    if scope and inner:
+        return ("scoped", str(scope), *inner)
+    # Known-ambiguous (compressor set dup_index → it was in a >=2 collision group)
+    # but no usable scope: refuse to emit a flat inner locator, which would carry a
+    # silent `.first` and always hit row 1 (the lie). Return None so the caller
+    # takes the honest pytest.skip path instead of persisting a wrong-row test.
+    if el.get("dup_index") is not None and inner:
+        return None
+    return inner
+
+
+def _inner_locator_frag(strat: tuple) -> str | None:
+    """Render an inner (role/label/placeholder/text) strategy tuple to a
+    Playwright locator fragment WITHOUT a trailing `.first` — so it can be either
+    suffixed with `.first` (flat, unscoped) or chained after a scope (no `.first`,
+    strict-mode enforces uniqueness within the row)."""
+    kind = strat[0]
+    if kind == "css":
+        return f"locator('{_escape_locator_value(strat[1])}')"
+    if kind == "role":
+        return f"get_by_role('{strat[1]}', name='{_escape_locator_value(strat[2])}')"
+    if kind == "label":
+        return f"get_by_label('{_escape_locator_value(strat[1])}')"
+    if kind == "placeholder":
+        return f"get_by_placeholder('{_escape_locator_value(strat[1])}')"
+    if kind == "text":
+        return f"get_by_text('{_escape_locator_value(strat[1])}')"
+    return None
+
+
 def build_fallback_locator(el: dict) -> str | None:
     """Best-effort STABLE Playwright locator EXPRESSION for a web element when
     the @N ref chain (id → text) didn't resolve. Returns e.g.
     "get_by_role('button', name='Save').first", or None when the element has no
     locatable attribute (the pure-coordinate / visual-fallback shape). A
     coordinate is NEVER returned — callers that get None must skip, not click a
-    pixel."""
+    pixel.
+
+    For an ambiguous control (one of N same-named, carrying `scope`), returns a
+    SCOPED locator — get_by_text('<row label>').locator('..').<inner> with NO
+    `.first` — so the persisted test targets the right row instead of silently
+    clicking row 1."""
     strat = _fallback_strategy(el)
     if strat is None:
         return None
+    if strat[0] == "scoped":
+        # ("scoped", scope_text, *inner_strategy)
+        scope_text, inner = strat[1], strat[2:]
+        inner_frag = _inner_locator_frag(inner)
+        if inner_frag is None:
+            return None
+        # Scope to the row by its identifying text, hop to the row container
+        # (`..`), then locate the control within it. exact=True so a scope that is
+        # a SUBSTRING of another row's label (e.g. "Bob" vs "Bob Jones") doesn't
+        # match both — Playwright get_by_text defaults to substring matching. No
+        # `.first`: if the scope still isn't unique, strict-mode fails loud, never
+        # silently row 1.
+        return f"get_by_text('{_escape_locator_value(scope_text)}', exact=True).locator('..').{inner_frag}"
+    inner_frag = _inner_locator_frag(strat)
+    return f"{inner_frag}.first" if inner_frag is not None else None
+
+
+def _inner_locator_handle(scope, strat: tuple):
+    """Live Playwright handle for an inner strategy tuple, rooted at `scope` (a
+    locator/frame). Twin of _inner_locator_frag — same strategy, live handle —
+    so the emitted string and the clicked handle can never diverge."""
     kind = strat[0]
     if kind == "css":
-        return f"locator('{_escape_locator_value(strat[1])}').first"
+        return scope.locator(strat[1])
     if kind == "role":
-        return f"get_by_role('{strat[1]}', name='{_escape_locator_value(strat[2])}').first"
+        return scope.get_by_role(strat[1], name=strat[2])
     if kind == "label":
-        return f"get_by_label('{_escape_locator_value(strat[1])}').first"
+        return scope.get_by_label(strat[1])
     if kind == "placeholder":
-        return f"get_by_placeholder('{_escape_locator_value(strat[1])}').first"
+        return scope.get_by_placeholder(strat[1])
     if kind == "text":
-        return f"get_by_text('{_escape_locator_value(strat[1])}').first"
+        return scope.get_by_text(strat[1])
     return None
 
 
@@ -141,18 +211,15 @@ def get_fallback_element(d, el: dict):
     strat = _fallback_strategy(el)
     if strat is None:
         return None
-    kind = strat[0]
-    if kind == "css":
-        return d.locator(strat[1]).first
-    if kind == "role":
-        return d.get_by_role(strat[1], name=strat[2]).first
-    if kind == "label":
-        return d.get_by_label(strat[1]).first
-    if kind == "placeholder":
-        return d.get_by_placeholder(strat[1]).first
-    if kind == "text":
-        return d.get_by_text(strat[1]).first
-    return None
+    if strat[0] == "scoped":
+        scope_text, inner = strat[1], strat[2:]
+        # exact=True mirrors the emitted string — substring scope ("Bob" in
+        # "Bob Jones") must not match both. No `.first`: strict-mode enforces it.
+        row = d.get_by_text(scope_text, exact=True).locator("..")
+        handle = _inner_locator_handle(row, inner)
+        return handle
+    handle = _inner_locator_handle(d, strat)
+    return handle.first if handle is not None else None
 
 
 def readable_ref_target(el: dict | None) -> str:
@@ -181,12 +248,22 @@ class LocatorBuilder:
             if u2_key == "ref":
                 el_data = resolve_ref(l_value) if resolve_ref else None
                 if el_data:
-                    # Stable-locator chain (id → name → role → label → placeholder
-                    # → text). NEVER a coordinate: a pixel click baked into a
-                    # persisted test rots silently on any layout shift.
+                    # Stable-locator chain (id → name → scope → role → label →
+                    # placeholder → text). NEVER a coordinate: a pixel click baked
+                    # into a persisted test rots silently on any layout shift.
                     fragment = build_fallback_locator(el_data)
                     if fragment:
                         return fragment
+                    # build_fallback_locator returned None. For a KNOWN-AMBIGUOUS
+                    # ref (dup_index set, no usable scope) emit the bare name WITHOUT
+                    # `.first` — strict-mode then fails loud on the ambiguity instead
+                    # of silently clicking row 1. (In normal flow the live side
+                    # resolves to None first and the caller emits pytest.skip; this
+                    # is the honest string if build_code is reached directly.)
+                    if el_data.get("dup_index") is not None:
+                        name = el_data.get("desc") or el_data.get("text") or ""
+                        if name:
+                            return f"get_by_text('{_escape_locator_value(name)}')"
                     # No locatable attribute at all → a literal that fails loud
                     # at replay (better than a silently-rotting coordinate).
                     return f"locator('{safe_val}').first"
@@ -212,9 +289,12 @@ class LocatorBuilder:
                     return None
                 if el_data.get("id"):
                     return d.locator(f"#{el_data['id']}").first
-                if el_data.get("text"):
-                    return d.get_by_text(el_data["text"]).first
-                return None
+                # Defer to the SHARED strategy (the same one build_fallback_locator
+                # emits) instead of a private get_by_text(...).first chain — so a
+                # scoped/ambiguous ref resolves live to the SAME element we persist,
+                # and an unscopable-ambiguous ref resolves to None (→ honest skip)
+                # rather than silently clicking row 1.
+                return get_fallback_element(d, el_data)
             elif u2_key in ["resourceId", "id"]:
                 return d.locator(f"#{l_value}").first
             elif u2_key == "text":

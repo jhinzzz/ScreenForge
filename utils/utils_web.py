@@ -27,6 +27,9 @@ def compress_web_dom(page) -> str:
     () => {
         const elements = [];
         let refIndex = 0;
+        // nodeData -> 原始 DOM el，供「重复同名控件消歧」后处理沿 DOM 上爬找所在行。
+        // 只在内存里用，绝不参与序列化（DOM 节点有环，JSON.stringify 会炸）。
+        const rawElOf = new Map();
 
         // Web 端具有明确交互语义的 role 集合
         const interactiveRoles = new Set(['button', 'link', 'menuitem', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox']);
@@ -131,6 +134,7 @@ def compress_web_dom(page) -> str:
             nodeData.h = Math.round(rect.height);
 
             elements.push(nodeData);
+            rawElOf.set(nodeData, el);
         }
 
         // 递归遍历：普通子树 + shadow DOM + 同源 iframe。这是修复"压缩器对
@@ -197,6 +201,96 @@ def compress_web_dom(page) -> str:
                 uniqueElements.push(el);
             }
         });
+
+        // 7. 重复同名控件消歧。N 行同名按钮（每行一个 "Delete"）压缩后 text 全相同，
+        //    codegen 只能 get_by_text('Delete').first —— 永远点第一行，持久化测试说谎。
+        //    这里给「有歧义」的控件补两样东西：scope（所在行的标识文本，如 "Bob Jones"）
+        //    与 dup_index（DOM 序里的第几个），让 codegen 生成作用域定位器。仅对真正
+        //    碰撞(≥2)的控件补，非歧义页 0 额外 token。
+        //    碰撞键 = (role, accessible-name)，与 codegen 的 _fallback_strategy 同口径。
+        // 角色推断必须与 codegen 的 _infer_web_role 同口径，否则分组会漏判：
+        // 比如 <input type=submit value=X> 与 <button>X</button> 都渲染成
+        // get_by_role('button', name='X')，分组键若只看 tag 会把它们分到两组而漏掉碰撞。
+        function roleOf(nd) {
+            const tag = nd.class;
+            const t = (nd.type || '').toLowerCase();
+            if (tag === 'a') return 'link';
+            if (tag === 'button' || t === 'submit' || t === 'button' || t === 'reset') return 'button';
+            if (t === 'checkbox') return 'checkbox';
+            if (t === 'radio') return 'radio';
+            if (tag === 'select') return 'combobox';
+            if (tag === 'textarea' || (tag === 'input' &&
+                ['', 'text', 'email', 'search', 'url', 'tel', 'password'].includes(t))) return 'textbox';
+            return tag;
+        }
+        function nameKeyOf(nd) {
+            const accName = (nd.desc || nd.text || '').trim();
+            if (!accName) return null;
+            return roleOf(nd) + '\\u0000' + accName;
+        }
+        // 收集每个碰撞键的成员（仅可点击控件——不可点文本不会被 LLM 当点击目标）。
+        const groups = new Map();
+        uniqueElements.forEach(nd => {
+            if (!nd.clickable) return;
+            const k = nameKeyOf(nd);
+            if (!k) return;
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(nd);
+        });
+        groups.forEach(members => {
+            if (members.length < 2) return;  // 唯一 → 不补，省 token
+            const groupEls = members.map(m => rawElOf.get(m)).filter(Boolean);
+            // 先各自算候选 scope（所在行的唯一标识 label）。
+            members.forEach((nd, i) => {
+                nd.dup_index = i;  // DOM 序（uniqueElements 保持遍历顺序）
+                const el = rawElOf.get(nd);
+                nd._scopeCand = el ? computeScope(el, groupEls, nd) : '';
+            });
+            // 组内唯一性校验：若某 scope 被多行共用（行标识相同）或为空，则它无法消歧，
+            // 不写 scope（该成员只保留 dup_index → codegen 走诚实 skip，绝不持久化会必然
+            // 失败的定位器）。只有「组内唯一且非空」的 scope 才采纳。
+            const counts = {};
+            members.forEach(nd => { const s = nd._scopeCand; if (s) counts[s] = (counts[s] || 0) + 1; });
+            members.forEach(nd => {
+                if (nd._scopeCand && counts[nd._scopeCand] === 1) nd.scope = nd._scopeCand;
+                delete nd._scopeCand;
+            });
+        });
+
+        // 找「行根」(子树只含本组这一个成员的最高祖先)，再在行内取一个干净的叶子 label
+        // 作为 scope —— 叶子的 textContent 可被 get_by_text(exact=True) 精确命中，避免
+        // 子串误匹配（"Bob" 命中 "Bob Jones"）。取最长的叶子文本(最具体的行标识)。
+        function computeScope(el, groupEls, nd) {
+            const ownName = (nd.desc || nd.text || '').trim();
+            let rowRoot = null;
+            let cur = el.parentElement;
+            while (cur && cur.tagName && cur.tagName.toLowerCase() !== 'body') {
+                let containsOther = false;
+                for (const other of groupEls) {
+                    if (other !== el && cur.contains(other)) { containsOther = true; break; }
+                }
+                if (containsOther) break;  // 再往上就跨行了
+                rowRoot = cur;
+                cur = cur.parentElement;
+            }
+            if (!rowRoot) return '';
+            let best = '';
+            let nodes;
+            try { nodes = rowRoot.querySelectorAll('*'); } catch (e) { return ''; }
+            nodes.forEach(d => {
+                if (el.contains(d)) return;            // 跳过控件自身及其内部(它的 label)
+                if (d.childElementCount > 0) return;   // 只取叶子 → 文本可被 exact 命中
+                let t = '';
+                try { t = (d.textContent || '').trim().replace(/\\s+/g, ' '); } catch (e) { return; }
+                if (!t || t === ownName) return;
+                // 上限 80：scope 要用 get_by_text(exact=True) 精确命中，绝不能截断
+                //（截断后 exact 永远匹配不上）。超长叶子直接不作为候选 —— 该行宁可
+                // 走诚实 skip，也不持久化一个脆弱/必失败的定位器。
+                if (t.length > 80) return;
+                if (t.length > best.length) best = t;   // 最长叶子 = 最具体的行标识
+            });
+            return best;
+        }
 
         return JSON.stringify({"ui_elements": uniqueElements});
     }

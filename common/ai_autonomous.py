@@ -177,6 +177,9 @@ class AutonomousBrain(AIBrain):
 
         定位器 (locator_type) 优先级: css > resourceId > text > description
         🚨 警告: 若 resourceId 是动态随机的，必须降级使用 text 或 description！
+        💡 多个元素 text 相同时 (如每行一个 "Delete")，选带 `scope` 字段的那个 —— scope 是
+           它所在行/区块的标识文本 (如 "Bob Jones")，引擎会据此生成稳定的作用域定位器，
+           精确命中正确的那一行 (而非永远点第一行)。
 
         【思考与状态决策】
         你需要先思考 (thought)，然后评估当前状态 (status)：

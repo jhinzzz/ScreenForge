@@ -25,6 +25,15 @@
 > 视口外的行根本不存在，压缩器看不到也不应编造。这是固有限制而非缺陷——用 workflow B 的
 > `action scroll → 重新 inspect_ui` 循环即可拿到新行（已有 live 测试钉死：滚动后 re-inspect
 > 能取到新切片、旧行不再上报）。不要试图强制渲染全部行（token 会爆）。
+>
+> **重复同名控件消歧（`scope` / `dup_index`）**：当多个可点击控件 (role, name) 相同
+> （如列表每行一个 "Delete"），压缩器对这些**有歧义**的元素补两字段：`scope`（所在行的
+> 唯一标识叶子文本，如 "Bob Jones"）与 `dup_index`（DOM 序）。非歧义元素不补（0 额外 token）。
+> codegen 据 `scope` 生成作用域定位器 `get_by_text('Bob Jones', exact=True).locator('..').get_by_role('button', name='Delete')`
+> —— **不带 `.first`**，strict-mode 兜底：定位器不唯一就报错，绝不静默点第一行。`scope` 经
+> 组内唯一性校验（被多行共用或为空则不采纳）+ exact 精确匹配（避免 "Bob" 命中 "Bob Jones"）。
+> 实在消歧不了（同名行标识相同 / 超长 / 无行标识）→ 只留 `dup_index`，codegen 走诚实
+> `pytest.skip`，绝不写 `.first`（点第一行的谎）或 `.nth(k)`（位置坐标式脆弱）。
 
 ## 元素定位能力
 
