@@ -30,77 +30,69 @@ def compress_web_dom(page) -> str:
 
         // Web 端具有明确交互语义的 role 集合
         const interactiveRoles = new Set(['button', 'link', 'menuitem', 'option', 'tab', 'switch', 'checkbox', 'radio', 'combobox']);
-        // 纯结构或绝对无用的标签
-        const ignoreTags = new Set(['script', 'style', 'noscript', 'head', 'meta', 'title', 'br', 'hr', 'svg', 'path', 'g', 'img', 'iframe', 'video', 'audio']);
+        // 纯结构或绝对无用的标签。注意 iframe 不在此列：我们要递归进入其内容
+        // 文档（见 walk）而不是把 iframe 框本身当作元素。
+        const ignoreTags = new Set(['script', 'style', 'noscript', 'head', 'meta', 'title', 'br', 'hr', 'svg', 'path', 'g', 'img', 'video', 'audio', 'iframe']);
 
-        document.querySelectorAll('*').forEach(el => {
+        // 处理单个元素：offX/offY 是从内层文档（iframe）坐标系到顶层视口坐标系
+        // 的偏移量，保证 shadow/iframe 内元素的 bbox 仍然是顶层坐标，ref 点击不会错位。
+        function processEl(el, offX, offY) {
             const tag = el.tagName.toLowerCase();
             if (ignoreTags.has(tag)) return;
 
-            // ==========================================
             // 1. 物理可见性校验 (过滤幽灵节点)
-            // ==========================================
             let rect;
-            try {
-                rect = el.getBoundingClientRect();
-            } catch (e) {
-                return;
-            }
+            try { rect = el.getBoundingClientRect(); } catch (e) { return; }
             if (rect.width === 0 || rect.height === 0) return;
             let style;
-            try {
-                style = window.getComputedStyle(el);
-            } catch (e) {
-                return;
-            }
+            try { style = (el.ownerDocument.defaultView || window).getComputedStyle(el); } catch (e) { return; }
             if (style.visibility === 'hidden' || style.opacity === '0' || style.display === 'none') return;
 
-            // ==========================================
-            // 2. 交互意图判定
-            // ==========================================
-            const isInteractive = ['a', 'button', 'input', 'select', 'textarea'].includes(tag) ||
+            // 2. 交互意图判定。disabled / aria-disabled 的控件不可点：标 clickable=false
+            //    （仍然收录，便于断言其存在/禁用），否则 LLM 会去点禁用按钮并卡超时。
+            const ariaDisabled = el.getAttribute('aria-disabled') === 'true';
+            const isDisabled = el.disabled === true || ariaDisabled;
+            const isInteractive = !isDisabled && (
+                                  ['a', 'button', 'input', 'select', 'textarea'].includes(tag) ||
                                   el.hasAttribute('onclick') ||
                                   interactiveRoles.has(el.getAttribute('role')) ||
-                                  style.cursor === 'pointer';
+                                  style.cursor === 'pointer');
 
-            // ==========================================
             // 3. 智能文本提取 (防止父容器吞噬子节点文本造成大量重复)
-            // ==========================================
-            // 仅提取当前元素直属的文本内容，不包含子标签里的内容
             const directText = Array.from(el.childNodes)
                 .filter(node => node.nodeType === Node.TEXT_NODE)
                 .map(node => node.nodeValue.trim())
                 .join(' ').trim();
 
             let fullText = el.innerText ? el.innerText.trim() : '';
-            // 对于表单元素，它的状态就是它的价值
             if (tag === 'input' || tag === 'textarea') fullText = el.value || '';
-            // 限制过长的噪音文本
             if (fullText.length > 100) fullText = fullText.substring(0, 100) + '...';
 
             const ariaLabel = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt') || '';
 
-            // ==========================================
             // 4. 噪音与垃圾数据剔除策略
-            // ==========================================
-            // 策略 A: 如果它既不能点，又没有自己的文本，也没有 aria 描述，那它必定是用来排版的纯透明 wrapper -> 抛弃
-            if (!isInteractive && !directText && !ariaLabel) return;
+            //    收录条件用「语义可交互」(标签/role 本身可交互，忽略 disabled)，
+            //    这样禁用按钮也会被收录(clickable=false)，而纯排版 wrapper 仍被丢弃。
+            const isSemanticControl = ['a', 'button', 'input', 'select', 'textarea'].includes(tag) ||
+                                      el.hasAttribute('onclick') ||
+                                      interactiveRoles.has(el.getAttribute('role'));
+            const keepForLayout = isInteractive || isSemanticControl;
+            if (!keepForLayout && !directText && !ariaLabel) return;
 
-            // 对于非交互元素，优先展示直属文本，防止嵌套导致满屏都是相同的长句子
-            const displayText = (isInteractive || directText.length > 0) ? fullText : directText;
+            // For a kept (interactive/semantic) element, prefer innerText but
+            // fall back to its own directText — otherwise a clickable shadow
+            // HOST whose light text isn't slotted (innerText==='') would be
+            // dropped by the empty-shell guard below, leaving it invisible to
+            // the LLM (the exact blind spot this change targets).
+            const displayText = keepForLayout ? (fullText || directText) : (directText.length > 0 ? fullText : directText);
 
-            // 表单元素的核心上下文注入
             const placeholder = el.getAttribute('placeholder') || '';
             const type = el.getAttribute('type') || '';
             const name = el.getAttribute('name') || '';
 
-            // 策略 B: 经历上述清洗后，如果仍是空壳，且不是必须要填的表单框 -> 抛弃
             if (!displayText && !ariaLabel && !placeholder && !['input', 'select', 'textarea'].includes(tag)) return;
 
-            // ==========================================
             // 5. 构建低 Token 结构体
-            // ==========================================
-            // 采用按需压入（过滤掉值为 空字符串 的 Key），极致压缩 Token 消耗
             refIndex++;
             const nodeData = { "ref": "@" + refIndex, "class": tag, "clickable": isInteractive };
             if (el.id) nodeData.id = el.id;
@@ -109,17 +101,64 @@ def compress_web_dom(page) -> str:
             if (placeholder) nodeData.placeholder = placeholder;
             if (ariaLabel) nodeData.desc = ariaLabel;
             if (displayText) nodeData.text = displayText;
-            nodeData.x = Math.round(rect.x);
-            nodeData.y = Math.round(rect.y);
+            if (isDisabled) nodeData.disabled = true;
+            nodeData.x = Math.round(rect.x + offX);
+            nodeData.y = Math.round(rect.y + offY);
             nodeData.w = Math.round(rect.width);
             nodeData.h = Math.round(rect.height);
 
             elements.push(nodeData);
-        });
+        }
 
-        // ==========================================
+        // 递归遍历：普通子树 + shadow DOM + 同源 iframe。这是修复"压缩器对
+        // shadow DOM / iframe 失明"的核心：querySelectorAll('*') 不穿透 shadow
+        // root，也不进入 iframe 文档，导致整类应用对 LLM 不可见。
+        function walk(root, offX, offY, depth) {
+            // Depth cap: static DOM can't form true cycles (an iframe's
+            // contentDocument is always a fresh document; a shadow root can't
+            // contain its own host), so this is insurance against pathologically
+            // deep generated pages approaching the JS recursion limit.
+            if (depth > 50) return;
+            let nodes;
+            try { nodes = root.querySelectorAll('*'); } catch (e) { return; }
+            nodes.forEach(el => {
+                const tag = el.tagName ? el.tagName.toLowerCase() : '';
+
+                // 同源 iframe：进入其内容文档，并按 iframe 在顶层的位置做坐标偏移。
+                // 跨域 iframe 访问 contentDocument 会抛异常 —— 那是浏览器安全边界，
+                // 无法穿透，静默跳过(诚实:我们不假装能看到跨域内容)。
+                if (tag === 'iframe') {
+                    let doc = null, frameRect = null, insetX = 0, insetY = 0;
+                    try {
+                        frameRect = el.getBoundingClientRect();
+                        // getBoundingClientRect gives the iframe's BORDER-box origin,
+                        // but the content document starts inside the border+padding.
+                        // Without this inset every child is reported too far up-left
+                        // (Chromium's default 2px iframe border alone shifts a ref
+                        // click off-target; thick-bordered embed/payment frames more).
+                        const cs = (el.ownerDocument.defaultView || window).getComputedStyle(el);
+                        insetX = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+                        insetY = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+                        doc = el.contentDocument;
+                    } catch (e) { doc = null; }
+                    if (doc && doc.documentElement) {
+                        walk(doc.documentElement, offX + frameRect.x + insetX, offY + frameRect.y + insetY, depth + 1);
+                    }
+                    return;
+                }
+
+                processEl(el, offX, offY);
+
+                // shadow root（open 模式）：递归进入。坐标系与宿主一致，偏移不变。
+                if (el.shadowRoot) {
+                    walk(el.shadowRoot, offX, offY, depth + 1);
+                }
+            });
+        }
+
+        walk(document.documentElement, 0, 0, 0);
+
         // 6. 最终去重 (防止某些前端库生成多个不可见的克隆 DOM)
-        // ==========================================
         const uniqueElements = [];
         const seen = new Set();
         elements.forEach(el => {

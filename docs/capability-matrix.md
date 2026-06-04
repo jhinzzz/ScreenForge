@@ -8,7 +8,13 @@
 |---|---|---|---|---|---|---|
 | Android | `uiautomator2` | XML 压缩 | 支持 | 支持 | `scrcpy` 录像 | 高 |
 | iOS | `facebook-wda` | 暂未实现结构压缩 | 支持 | 基础支持 | 暂无原生录像 | 低 |
-| Web | Playwright + CDP | DOM 压缩 | 支持 | 支持 | Playwright 视频 + storage state | 中 |
+| Web | Playwright + CDP | DOM 压缩（穿透 open shadow DOM + 同源 iframe） | 支持 | 支持 | Playwright 视频 + storage state | 中 |
+
+> ℹ️ **Web DOM 压缩器穿透能力（2026-06）**：`compress_web_dom` 递归遍历 open shadow
+> DOM 与同源/`srcdoc` iframe，iframe 内元素的 bbox 会按 iframe 的位置 + 边框 + 内边距
+> 偏移回顶层坐标，保证 ref/坐标点击不错位。`disabled` / `aria-disabled` 控件仍会被
+> 收录（便于断言）但标 `clickable:false`，避免 LLM 去点禁用元素卡超时。**不可穿透**：
+> closed shadow root、跨域 iframe（浏览器安全边界，静默跳过）。
 
 ## 元素定位能力
 

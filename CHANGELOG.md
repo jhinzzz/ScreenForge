@@ -4,6 +4,22 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Web DOM compressor was blind to shadow DOM and iframes** — the LLM's "eyes"
+  (`compress_web_dom`) used a flat `querySelectorAll('*')` that doesn't pierce
+  shadow roots or descend into iframe documents, so whole Web-Component apps and
+  embedded (payment/login) frames were invisible: Playwright could click those
+  elements but the model never learned they existed. The compressor now
+  recursively walks open shadow DOM and same-origin/`srcdoc` iframes, offsetting
+  iframe-child bounding boxes back to top-document coordinates (including the
+  iframe's border + padding inset, so ref/coordinate clicks land correctly).
+  Closed shadow roots and cross-origin iframes remain un-pierceable (browser
+  security boundary) and are skipped honestly.
+- `disabled` / `aria-disabled` controls were reported `clickable:true`, so the
+  model would target them and hang on the action timeout. They are now recorded
+  (for existence/disabled assertions) but marked `clickable:false` with a
+  `disabled:true` flag.
+
 ### Added
 - Richer web interaction actions (close the "can't automate forms / off-viewport
   elements" gap): `scroll_into_view` (element-targeted, not blind swipe),
