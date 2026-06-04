@@ -50,8 +50,15 @@ def compress_web_dom(page) -> str:
 
             // 2. 交互意图判定。disabled / aria-disabled 的控件不可点：标 clickable=false
             //    （仍然收录，便于断言其存在/禁用），否则 LLM 会去点禁用按钮并卡超时。
+            //    用 :disabled 伪类而非 el.disabled —— 后者只反映元素自身的 disabled
+            //    属性，看不到「<fieldset disabled> 传播给后代控件」这一规范行为
+            //    （含首个 <legend> 内控件豁免、嵌套 fieldset 由外层继续禁用）。
+            //    :disabled 正是浏览器对「actually disabled」的实现，一次到位且权威。
             const ariaDisabled = el.getAttribute('aria-disabled') === 'true';
-            const isDisabled = el.disabled === true || ariaDisabled;
+            let nativeDisabled;
+            try { nativeDisabled = el.matches(':disabled'); }
+            catch (e) { nativeDisabled = el.disabled === true; }
+            const isDisabled = nativeDisabled || ariaDisabled;
             const isInteractive = !isDisabled && (
                                   ['a', 'button', 'input', 'select', 'textarea'].includes(tag) ||
                                   el.hasAttribute('onclick') ||

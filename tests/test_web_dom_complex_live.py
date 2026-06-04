@@ -204,6 +204,113 @@ def test_enabled_button_still_clickable(page):
     assert eb is not None and eb.get("clickable") is True
 
 
+# --- disabled <fieldset> propagation ---------------------------------------
+
+_FIELDSET_DISABLED = (
+    "<fieldset disabled>"
+    "<legend>Section</legend>"
+    "<button>InsideDisabledFieldset</button>"
+    "<input name='fld_input'>"
+    "</fieldset>"
+    "<button>OutsideBtn</button>"
+)
+
+
+def test_disabled_fieldset_propagates_to_child_controls(page):
+    """HTML spec: a <fieldset disabled> disables ALL descendant form controls,
+    not just controls carrying their own `disabled` attribute. The compressor
+    only checked el.disabled (the element's OWN attribute), so a button/input
+    inside a disabled fieldset was reported clickable=True — the LLM would click
+    it and hang on the timeout (same failure class as the native-disabled fix)."""
+    els = _compress(page, _FIELDSET_DISABLED)
+    btn = next((e for e in els if (e.get("text") or "") == "InsideDisabledFieldset"), None)
+    assert btn is not None, "control inside disabled fieldset should still be reported"
+    assert btn.get("clickable") is False, (
+        "button inside <fieldset disabled> reported clickable — fieldset disabling "
+        "not propagated; the LLM will click it and hang"
+    )
+    inp = next((e for e in els if e.get("name") == "fld_input"), None)
+    assert inp is not None, "input inside disabled fieldset should still be reported"
+    assert inp.get("clickable") is False, "input inside <fieldset disabled> reported clickable"
+    # The unrelated outside button must stay clickable (no over-correction).
+    out = next((e for e in els if (e.get("text") or "") == "OutsideBtn"), None)
+    assert out is not None and out.get("clickable") is True
+
+
+_FIELDSET_DISABLED_LEGEND = (
+    "<fieldset disabled>"
+    "<legend><button>LegendBtn</button></legend>"
+    "<button>BodyBtn</button>"
+    "</fieldset>"
+)
+
+
+def test_disabled_fieldset_legend_child_remains_clickable(page):
+    """Spec exception: controls inside the FIRST <legend> of a disabled fieldset
+    are NOT disabled (e.g. a collapse/expand toggle in the legend). Guards against
+    an over-broad fix that disables the whole subtree."""
+    els = _compress(page, _FIELDSET_DISABLED_LEGEND)
+    legend_btn = next((e for e in els if (e.get("text") or "") == "LegendBtn"), None)
+    body_btn = next((e for e in els if (e.get("text") or "") == "BodyBtn"), None)
+    assert legend_btn is not None and legend_btn.get("clickable") is True, (
+        "legend child of disabled fieldset wrongly disabled — over-correction"
+    )
+    assert body_btn is not None and body_btn.get("clickable") is False, (
+        "non-legend child of disabled fieldset still reported clickable"
+    )
+
+
+_FIELDSET_NESTED = (
+    "<fieldset disabled>"  # outer
+    "<legend>Outer</legend>"
+    "<fieldset disabled>"  # inner
+    "<legend><button>InnerLegendBtn</button></legend>"
+    "<button>DeepBodyBtn</button>"
+    "</fieldset>"
+    "</fieldset>"
+)
+
+
+def test_nested_disabled_fieldset_legend_still_disabled_by_outer(page):
+    """The legend-exemption is per-fieldset, not absolute. A control in the INNER
+    fieldset's legend is exempt from the inner fieldset, but it sits in the OUTER
+    disabled fieldset's BODY, so the outer fieldset still disables it (HTML spec).
+    A naive single-`closest('fieldset[disabled]')` fix gets this wrong (reports it
+    clickable); the implementation must consider every ancestor disabled fieldset."""
+    els = _compress(page, _FIELDSET_NESTED)
+    legend_btn = next((e for e in els if (e.get("text") or "") == "InnerLegendBtn"), None)
+    assert legend_btn is not None, "inner-legend button should still be reported"
+    assert legend_btn.get("clickable") is False, (
+        "inner-legend button reported clickable — outer disabled fieldset's "
+        "propagation was missed (naive single-closest fix)"
+    )
+
+
+_FIELDSET_REENABLE = (
+    "<fieldset disabled>"  # outer disabled
+    "<legend>Outer</legend>"
+    "<fieldset>"  # inner NOT disabled — must NOT re-enable
+    "<button>InnerNonDisabledBtn</button>"
+    "</fieldset>"
+    "</fieldset>"
+)
+
+
+def test_nested_non_disabled_fieldset_does_not_reenable(page):
+    """A non-disabled inner <fieldset> does NOT re-enable controls that an outer
+    <fieldset disabled> disabled (HTML spec: disabling propagates down; only the
+    fieldset's own first <legend> is exempt, never a nested plain fieldset). A
+    reader might naively expect the inner fieldset to "reset" the state — it does
+    not, and :disabled gets this right."""
+    els = _compress(page, _FIELDSET_REENABLE)
+    btn = next((e for e in els if (e.get("text") or "") == "InnerNonDisabledBtn"), None)
+    assert btn is not None, "button in nested non-disabled fieldset should still be reported"
+    assert btn.get("clickable") is False, (
+        "nested non-disabled fieldset wrongly re-enabled a control the outer "
+        "disabled fieldset disabled"
+    )
+
+
 # --- regression: simple pages still work -----------------------------------
 
 def test_plain_page_unchanged(page):
