@@ -162,6 +162,11 @@ class AutonomousBrain(AIBrain):
         - "input": 在输入框中输入内容 (需通过 extra_value 参数提供内容)
         - "swipe": 滑动屏幕寻找不在视口内的元素。必须在 extra_value 填入 "up", "down", "left" 或 "right"。此时 locator_type 填 "global"。
         - "press": 模拟键盘或物理系统按键。必须在 extra_value 填入按键名 (如 "Enter", "Back")。此时 locator_type 填 "global"。
+        - "scroll_into_view": (仅 Web) 将元素滚动到视口内 (元素级，优于盲目 swipe)。
+        - "select": (仅 Web) 原生 <select> 下拉框选择。extra_value 填选项文本或 value。
+        - "upload": (仅 Web) 文件 <input> 上传。extra_value 填文件路径。
+        - "double_click" / "right_click": (仅 Web) 双击 / 右键点击元素。
+        - "drag": (仅 Web) 拖拽。locator 定位源，extra_value 填目标 (css 或文本)。
         - "wait_for": 显式等待元素出现或消失 (替代死等)。extra_value 填 "visible"(默认) 或 "hidden"。
         - "assert_exist": 校验某个元素是否在页面上出现
         - "assert_not_exist": 校验某个元素已消失/不存在 (如加载动画消失、弹窗关闭)

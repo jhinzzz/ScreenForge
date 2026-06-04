@@ -163,6 +163,12 @@ class AIBrain:
         - "input": 在输入框中输入内容 (必须在 extra_value 字段提供输入内容)
         - "swipe": 滑动屏幕以寻找不在视口内的元素。必须在 extra_value 填入 "up", "down", "left" 或 "right"。此时 locator_type 填 "global"。
         - "press": 模拟键盘或物理系统按键。必须在 extra_value 填入按键名 (如 "Enter", "Back", "Home")。此时 locator_type 填 "global"。
+        - "scroll_into_view": (仅 Web) 将指定元素滚动到视口内 (元素级，优于盲目 swipe)。
+        - "select": (仅 Web) 在原生 <select> 下拉框中选择选项。extra_value 填选项的可见文本或 value。
+        - "upload": (仅 Web) 给文件 <input> 设置文件。extra_value 填文件路径。
+        - "double_click": (仅 Web) 双击元素。
+        - "right_click": (仅 Web) 右键点击元素 (触发上下文菜单)。
+        - "drag": (仅 Web) 将源元素拖拽到目标。locator 定位源元素，extra_value 填目标 (css 选择器或可见文本)。
         - "wait_for": 显式等待元素出现或消失 (替代死等)。extra_value 填 "visible"(默认) 或 "hidden"。用于等待异步加载完成。
         - "assert_exist": 校验某个元素是否在页面上出现
         - "assert_not_exist": 校验某个元素已消失/不存在 (如加载动画消失、弹窗关闭)

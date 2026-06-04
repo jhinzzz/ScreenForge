@@ -942,6 +942,195 @@ class GotoHandler(ActionHandler):
         return f"[Action] Navigate to: {extra_value}"
 
 
+def _web_only(action_label: str, platform: str) -> bool:
+    """These interactions have a clean, stable Playwright API but no robust
+    coordinate-free equivalent on uiautomator2/wda, and P2 deliberately stopped
+    emitting coordinate-based code. Engage only on web; elsewhere fail honestly
+    (not a silent skip) so the caller knows the action wasn't performed."""
+    if platform == "web":
+        return True
+    log.warning(f"⚠️ [Action] '{action_label}' is web-only; not supported on {platform}")
+    return False
+
+
+def _autodetect_web_target(d, value: str):
+    """Resolve a secondary target (e.g. a drag destination) from a bare string:
+    a value starting with #/./[ is treated as a css selector, anything else as
+    visible text. (Mirrors _target_locator_code so live and codegen agree.)"""
+    v = str(value).strip()
+    if v.startswith(("#", ".", "[")):
+        return d.locator(v).first
+    return d.get_by_text(v).first
+
+
+def _target_locator_code(value: str) -> str:
+    v = str(value).strip()
+    if v.startswith(("#", ".", "[")):
+        return f"locator('{_escape_locator_value(v)}').first"
+    return f"get_by_text('{_escape_locator_value(v)}').first"
+
+
+class ScrollIntoViewHandler(ActionHandler):
+    """Scroll an element into the viewport (element-targeted, not blind swipe)."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("scroll_into_view", platform):
+            return False
+        try:
+            element.scroll_into_view_if_needed(timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception:
+            log.warning("❌ [Action] scroll_into_view timed out")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        return [
+            f"    with allure.step('Scroll into view: [{l_value}]'):\n",
+            f"        log.info('Action: scroll [{l_value}] into view')\n",
+            f"        d.{loc}.scroll_into_view_if_needed(timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Scroll into view: {l_type}='{l_value}'"
+
+
+class SelectHandler(ActionHandler):
+    """Select an <option> in a native <select> by its label/value."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("select", platform):
+            return False
+        try:
+            element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
+            element.select_option(extra_value, timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception as e:
+            log.warning(f"❌ [Action] select_option('{extra_value}') failed: {e}")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        safe = _escape_python_string(extra_value)
+        return [
+            f"    with allure.step('Select [{safe}] in [{l_value}]'):\n",
+            f"        log.info('Action: select [{safe}] in [{l_value}]')\n",
+            f"        d.{loc}.select_option('{safe}', timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Select: {l_type}='{l_value}', option='{extra_value}'"
+
+
+class UploadHandler(ActionHandler):
+    """Set a file <input>'s files (file upload). extra_value is the file path."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("upload", platform):
+            return False
+        try:
+            # No wait_for(visible): file <input>s are routinely display:none
+            # (styled label over a hidden input); set_input_files targets hidden
+            # inputs by design, so a visibility wait would wrongly break it.
+            element.set_input_files(extra_value, timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception as e:
+            log.warning(f"❌ [Action] set_input_files('{extra_value}') failed: {e}")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        safe = _escape_python_string(extra_value)
+        return [
+            f"    with allure.step('Upload [{safe}] to [{l_value}]'):\n",
+            f"        log.info('Action: upload [{safe}] to [{l_value}]')\n",
+            f"        d.{loc}.set_input_files('{safe}', timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Upload: {l_type}='{l_value}', file='{extra_value}'"
+
+
+class DoubleClickHandler(ActionHandler):
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("double_click", platform):
+            return False
+        try:
+            element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
+            element.dblclick(timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception as e:
+            log.warning(f"❌ [Action] dblclick failed: {e}")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        return [
+            f"    with allure.step('Double click: [{l_value}]'):\n",
+            f"        log.info('Action: double click [{l_value}]')\n",
+            f"        d.{loc}.dblclick(timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Double click: {l_type}='{l_value}'"
+
+
+class RightClickHandler(ActionHandler):
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("right_click", platform):
+            return False
+        try:
+            element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
+            element.click(button="right", timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception as e:
+            log.warning(f"❌ [Action] right click failed: {e}")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        return [
+            f"    with allure.step('Right click: [{l_value}]'):\n",
+            f"        log.info('Action: right click [{l_value}]')\n",
+            f"        d.{loc}.click(button='right', timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Right click: {l_type}='{l_value}'"
+
+
+class DragHandler(ActionHandler):
+    """Drag the source element onto a target. The source is the action's
+    locator; the target is extra_value, auto-detected (css if #/./[ else text)."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if not _web_only("drag", platform):
+            return False
+        if not str(extra_value).strip():
+            log.warning("❌ [Action] drag requires a target in extra_value")
+            return False
+        try:
+            target = _autodetect_web_target(d, extra_value)
+            element.drag_to(target, timeout=config.DEFAULT_TIMEOUT * 1000)
+            return True
+        except Exception as e:
+            log.warning(f"❌ [Action] drag_to failed: {e}")
+            return False
+
+    def generate_code(self, platform, u2_key, l_value, extra_value, timeout, resolve_ref=None) -> list:
+        loc = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        target_loc = _target_locator_code(extra_value)
+        safe_target = _escape_python_string(extra_value)
+        return [
+            f"    with allure.step('Drag [{l_value}] to [{safe_target}]'):\n",
+            f"        log.info('Action: drag [{l_value}] to [{safe_target}]')\n",
+            f"        d.{loc}.drag_to(d.{target_loc}, timeout={timeout * 1000})\n",
+        ]
+
+    def get_log_message(self, l_type, l_value, extra_value) -> str:
+        return f"[Action] Drag: {l_type}='{l_value}' to '{extra_value}'"
+
+
 class UIExecutor:
     _handlers = {}
 
@@ -962,6 +1151,12 @@ class UIExecutor:
                 "swipe": SwipeHandler(),
                 "press": PressHandler(),
                 "goto": GotoHandler(),
+                "scroll_into_view": ScrollIntoViewHandler(),
+                "select": SelectHandler(),
+                "upload": UploadHandler(),
+                "double_click": DoubleClickHandler(),
+                "right_click": RightClickHandler(),
+                "drag": DragHandler(),
                 "wait_for": WaitForHandler(),
                 "assert_exist": AssertExistHandler(),
                 "assert_not_exist": AssertNotExistHandler(),

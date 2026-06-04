@@ -9,6 +9,12 @@ SUPPORTED_ACTIONS = (
     "input",
     "swipe",
     "press",
+    "scroll_into_view",
+    "select",
+    "upload",
+    "double_click",
+    "right_click",
+    "drag",
     "wait_for",
     "assert_exist",
     "assert_not_exist",
@@ -30,9 +36,26 @@ ASSERTION_ACTIONS = {
 }
 # assert_url reads page.url, not an element — it needs no locator (web-global).
 GLOBAL_ACTIONS = {"goto", "swipe", "press", "assert_url"}
+# Actions with a clean Playwright API but no robust coordinate-free mobile
+# equivalent. Engaged only on web; on android/ios the handler fails honestly
+# rather than emitting a brittle coordinate-based step (see P2 coordinate
+# honesty). assert_url is web-only for a different reason (reads page.url).
+WEB_ONLY_ACTIONS = {
+    "goto",
+    "scroll_into_view",
+    "select",
+    "upload",
+    "double_click",
+    "right_click",
+    "drag",
+    "assert_url",
+}
 ACTIONS_REQUIRING_EXTRA_VALUE = {
     "goto",
     "input",
+    "select",
+    "upload",
+    "drag",
     "assert_text_equals",
     "assert_text_contains",
     "assert_value",
@@ -70,6 +93,7 @@ def get_capabilities_payload() -> dict:
         "control_planes": list(CONTROL_PLANES),
         "supported_actions": list(SUPPORTED_ACTIONS),
         "global_actions": sorted(GLOBAL_ACTIONS),
+        "web_only_actions": sorted(WEB_ONLY_ACTIONS),
         "actions_requiring_extra_value": sorted(ACTIONS_REQUIRING_EXTRA_VALUE),
         "locators": {p: list(v) for p, v in LOCATORS_BY_PLATFORM.items()},
         "locator_priority": ["css", "resourceId", "text", "description"],

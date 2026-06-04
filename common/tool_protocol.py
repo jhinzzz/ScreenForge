@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from common.capabilities import (
     ACTIONS_REQUIRING_EXTRA_VALUE,
+    GLOBAL_ACTIONS,
     SUPPORTED_ACTIONS,
     SUPPORTED_PLATFORMS,
     get_capabilities_payload,
@@ -35,7 +36,11 @@ class ActionToolControl(BaseModel):
     def validate_action(self):
         if self.action not in SUPPORTED_ACTIONS:
             raise ValueError(f"Unsupported action: {self.action}")
-        if self.action not in {"goto", "swipe", "press"}:
+        # Use the shared GLOBAL_ACTIONS set, not a hardcoded literal: a global
+        # action (goto/swipe/press/assert_url) needs no locator. A literal here
+        # drifts from the canonical set (e.g. it wrongly demanded a locator for
+        # assert_url, which reads page.url).
+        if self.action not in GLOBAL_ACTIONS:
             if not str(self.locator_type).strip() or not str(self.locator_value).strip():
                 raise ValueError("Element actions require locator_type and locator_value")
         if self.action in ACTIONS_REQUIRING_EXTRA_VALUE and not str(self.extra_value).strip():

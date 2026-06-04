@@ -5,6 +5,13 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- Richer web interaction actions (close the "can't automate forms / off-viewport
+  elements" gap): `scroll_into_view` (element-targeted, not blind swipe),
+  `select` (native `<select>`), `upload` (file input), `double_click`,
+  `right_click` (context menu), and `drag` (source = locator, target =
+  `extra_value`, css/text auto-detected). Web-first — each maps to a stable
+  Playwright API; they fail honestly on mobile rather than emitting a brittle
+  coordinate step. The capabilities payload now advertises `web_only_actions`.
 - Richer assertion vocabulary for real test generation: `assert_text_contains`
   (substring), `assert_not_exist` (element gone/hidden), `assert_value` (form
   field value), and `assert_url` (web page URL contains substring, a global

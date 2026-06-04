@@ -16,6 +16,7 @@ core-only environment.
 """
 
 import os
+from urllib.parse import quote as _quote
 
 import pytest
 
@@ -403,3 +404,144 @@ def test_real_ref_click_label_has_no_stale_at_token(live_adapter):
     assert result["success"] is True
     emitted = "".join(result["code_lines"])
     assert f"[{ref}]" not in emitted, f"stale ref token {ref} leaked into the allure.step label"
+
+
+# ---------------------------------------------------------------------------
+# P3a: richer web interaction actions on a REAL browser.
+# ---------------------------------------------------------------------------
+
+# A form page exercising select, double-click, right-click, scroll, and drag.
+# JS records interaction outcomes into #log so the test can assert real effects.
+# URL-encoded: unencoded inline JS (the ',', '{', etc.) truncates a data: URL in
+# Chromium, so the elements would silently never exist.
+_FORM_PAGE = "data:text/html," + _quote(
+    "<select id='country'><option value='us'>US</option>"
+    "<option value='jp'>Japan</option></select>"
+    "<div id='dbl'>dbl-target</div>"
+    "<div id='ctx'>ctx-target</div>"
+    "<div style='height:1500px'>spacer</div>"
+    "<button id='far'>Far Button</button>"
+    "<div id='log'></div>"
+    "<script>"
+    "document.getElementById('dbl').ondblclick=function(){document.getElementById('log').textContent='dbl-fired';};"
+    "document.getElementById('ctx').oncontextmenu=function(e){e.preventDefault();document.getElementById('log').textContent='ctx-fired';};"
+    "</script>"
+)
+
+
+def _run_generated(driver, code_lines):
+    """Compile + run emitted step lines against the live page, as a real test
+    file would. Raises on any malformed or failing generated line."""
+    src = "import allure\nfrom common.logs import log\n\ndef _gen(d):\n" + "".join(code_lines)
+    ns: dict = {}
+    exec(compile(src, "<generated>", "exec"), ns)  # noqa: S102 — exercising our own codegen
+    ns["_gen"](driver)
+
+
+def test_real_select_option(live_adapter):
+    """select must change a native <select> AND its emitted code must run green."""
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_FORM_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "select", "locator_type": "css", "locator_value": "#country", "extra_value": "jp"}
+    )
+    assert result["success"] is True
+    assert live_adapter.driver.locator("#country").input_value() == "jp"
+    # Reset, then prove the EMITTED code reproduces the selection.
+    live_adapter.driver.goto(_FORM_PAGE)
+    _run_generated(live_adapter.driver, result["code_lines"])
+    assert live_adapter.driver.locator("#country").input_value() == "jp"
+
+
+def test_real_double_click(live_adapter):
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_FORM_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "double_click", "locator_type": "css", "locator_value": "#dbl", "extra_value": ""}
+    )
+    assert result["success"] is True
+    assert live_adapter.driver.locator("#log").inner_text() == "dbl-fired"
+    _run_generated(live_adapter.driver, result["code_lines"])  # emitted code is runnable
+
+
+def test_real_right_click(live_adapter):
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_FORM_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "right_click", "locator_type": "css", "locator_value": "#ctx", "extra_value": ""}
+    )
+    assert result["success"] is True
+    assert live_adapter.driver.locator("#log").inner_text() == "ctx-fired"
+    _run_generated(live_adapter.driver, result["code_lines"])
+
+
+def test_real_scroll_into_view(live_adapter):
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_FORM_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "scroll_into_view", "locator_type": "css", "locator_value": "#far", "extra_value": ""}
+    )
+    assert result["success"] is True
+    # The far button is now in the viewport.
+    assert live_adapter.driver.locator("#far").is_visible()
+    _run_generated(live_adapter.driver, result["code_lines"])
+
+
+def test_real_upload(live_adapter, tmp_path):
+    from common.executor import UIExecutor
+
+    f = tmp_path / "upload.txt"
+    f.write_text("hello")
+    page = "data:text/html," + _quote(
+        "<input id='file' type='file'>"
+        "<div id='log'></div>"
+        "<script>document.getElementById('file').onchange=function(e){"
+        "document.getElementById('log').textContent=e.target.files[0].name;};</script>"
+    )
+    live_adapter.driver.goto(page)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "upload", "locator_type": "css", "locator_value": "#file", "extra_value": str(f)}
+    )
+    assert result["success"] is True
+    assert live_adapter.driver.locator("#log").inner_text() == "upload.txt"
+
+
+def test_real_drag(live_adapter):
+    from common.executor import UIExecutor
+
+    # Pointer-based drag (mousedown→move→mouseup) — the model Playwright's
+    # drag_to actually drives. The inline JS MUST be URL-encoded or Chromium
+    # truncates the data: URL and the elements never exist.
+    page = "data:text/html," + _quote(
+        "<div id='src' style='width:80px;height:80px;background:#ccc'>SRC</div>"
+        "<div id='dst' style='width:120px;height:120px;background:#eee'>DST</div>"
+        "<div id='log'></div>"
+        "<script>"
+        "var s=document.getElementById('src'),d=document.getElementById('dst');"
+        "s.addEventListener('mousedown',function(){window.__dragging=true;});"
+        "d.addEventListener('mouseup',function(){if(window.__dragging){"
+        "document.getElementById('log').textContent='dropped';window.__dragging=false;}});"
+        "</script>"
+    )
+    live_adapter.driver.goto(page)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    result = ex.execute_and_record(
+        {"action": "drag", "locator_type": "css", "locator_value": "#src", "extra_value": "#dst"}
+    )
+    assert result["success"] is True
+    assert live_adapter.driver.locator("#log").inner_text() == "dropped"
+    emitted = "".join(result["code_lines"])
+    assert "drag_to" in emitted and "#dst" in emitted
+    # The emitted drag code is itself runnable on the live page.
+    live_adapter.driver.goto(page)
+    _run_generated(live_adapter.driver, result["code_lines"])
+    assert live_adapter.driver.locator("#log").inner_text() == "dropped"

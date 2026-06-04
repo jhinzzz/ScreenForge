@@ -60,6 +60,12 @@
 | `input` | 支持 | 基础支持 | 支持 | |
 | `swipe` | 支持 | 依赖底层能力 | 支持 | Web 通过滚轮模拟 |
 | `press` | 支持 | 基础支持 | 支持 | |
+| `scroll_into_view` | 不适用 | 不适用 | 支持 | 仅 Web：元素级滚动进视口（优于盲目 swipe）。移动端无稳健的免坐标等价实现 |
+| `select` | 不适用 | 不适用 | 支持 | 仅 Web：原生 `<select>` 选项选择。`extra_value` = 选项文本或 value |
+| `upload` | 不适用 | 不适用 | 支持 | 仅 Web：文件 `<input>` 上传。`extra_value` = 文件路径 |
+| `double_click` | 不适用 | 不适用 | 支持 | 仅 Web：双击 |
+| `right_click` | 不适用 | 不适用 | 支持 | 仅 Web：右键（触发上下文菜单） |
+| `drag` | 不适用 | 不适用 | 支持 | 仅 Web：拖拽。locator 定位源，`extra_value` = 目标(css 或文本)。指针式拖拽；HTML5 dataTransfer 原生 DnD 不在覆盖范围 |
 | `wait_for` | 支持 | 基础支持 | 支持 | 显式同步：等待元素出现/消失，替代死等。`extra_value` = `visible`(默认)/`hidden` |
 | `assert_exist` | 支持 | 基础支持 | 支持 | 元素出现（Web 端 `wait_for(visible)` 自动轮询） |
 | `assert_not_exist` | 支持 | 基础支持 | 支持 | 元素消失/不存在（Web `to_be_hidden`、Android `wait_gone`） |
