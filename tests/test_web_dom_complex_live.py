@@ -311,6 +311,143 @@ def test_nested_non_disabled_fieldset_does_not_reenable(page):
     )
 
 
+# --- inert subtree (modal backdrop pattern) --------------------------------
+
+_INERT = (
+    "<div inert>"
+    "<button>InertBackgroundBtn</button>"
+    "<input name='inert_input'>"
+    "</div>"
+    "<div role='dialog'><button>ModalOkBtn</button></div>"
+)
+
+
+def test_inert_subtree_controls_not_clickable(page):
+    """The `inert` attribute (the standard modal-backdrop pattern: everything
+    behind an open <dialog> is marked inert) makes a subtree non-interactive —
+    the browser swallows clicks on it. Such controls are still visible (bbox > 0)
+    so the compressor emits them, but with clickable=True the LLM targets a dead
+    button behind the modal and the click no-ops/hangs — the same failure class as
+    disabled controls. `:disabled` does NOT catch inert; must check closest('[inert]')."""
+    els = _compress(page, _INERT)
+    bg = next((e for e in els if (e.get("text") or "") == "InertBackgroundBtn"), None)
+    assert bg is not None, "inert button should still be reported (for assertions)"
+    assert bg.get("clickable") is False, (
+        "button inside an inert subtree reported clickable — the LLM will target a "
+        "dead control behind the modal; inert not honored"
+    )
+    # Honesty: inert is NOT disabled. Surface it as its own signal so an
+    # `assert disabled` can't wrongly pass and the LLM can reason "a modal is
+    # open" (dismiss it) rather than "the form is disabled".
+    assert bg.get("inert") is True, "inert control should carry an explicit inert flag"
+    assert bg.get("disabled") is not True, (
+        "inert wrongly conflated with disabled — they are distinct DOM concepts"
+    )
+    inp = next((e for e in els if e.get("name") == "inert_input"), None)
+    assert inp is not None and inp.get("clickable") is False, "inert input reported clickable"
+    # The active modal button (outside the inert subtree) must stay clickable.
+    ok = next((e for e in els if (e.get("text") or "") == "ModalOkBtn"), None)
+    assert ok is not None and ok.get("clickable") is True, (
+        "active modal button wrongly marked non-clickable — over-correction"
+    )
+
+
+_INERT_SHADOW = (
+    "<div inert><div id='ihost'></div></div>"
+    "<script>"
+    "document.getElementById('ihost').attachShadow({mode:'open'})"
+    ".innerHTML=\"<button>ShadowInertBtn</button>\";"
+    "</script>"
+)
+
+
+def test_inert_pierces_shadow_boundary(page):
+    """A shadow-DOM component whose HOST sits behind an inert backdrop is
+    click-blocked by the browser, but el.closest('[inert]') from inside the shadow
+    tree returns null (closest stops at the shadow root). The walk must therefore
+    INHERIT the host's inert state across the boundary — exactly as it already
+    inherits coordinate offsets — or the LLM targets a dead shadow control and
+    hangs (the same failure class, leaking through the shadow boundary)."""
+    els = _compress(page, _INERT_SHADOW)
+    btn = next((e for e in els if (e.get("text") or "") == "ShadowInertBtn"), None)
+    assert btn is not None, "shadow button behind inert backdrop should still be reported"
+    assert btn.get("clickable") is False, (
+        "shadow control behind an inert backdrop reported clickable — inert not "
+        "inherited across the shadow boundary"
+    )
+
+
+_INERT_IFRAME = (
+    "<div inert>"
+    "<iframe srcdoc=\"<button>IframeInertBtn</button>\"></iframe>"
+    "</div>"
+)
+
+
+def test_inert_pierces_iframe_boundary(page):
+    """Same boundary gap for same-origin iframes: content inside an iframe that
+    sits in an inert subtree is click-blocked, but closest('[inert]') inside the
+    frame document can't see the parent's inert ancestor. The walk must inherit
+    inert when descending into the frame."""
+    els = _compress(page, _INERT_IFRAME)
+    btn = next((e for e in els if (e.get("text") or "") == "IframeInertBtn"), None)
+    assert btn is not None, "iframe button behind inert backdrop should still be reported"
+    assert btn.get("clickable") is False, (
+        "iframe control behind an inert backdrop reported clickable — inert not "
+        "inherited when descending into the frame document"
+    )
+
+
+_FREE_SHADOW = (
+    "<div id='fhost'></div>"
+    "<script>"
+    "document.getElementById('fhost').attachShadow({mode:'open'})"
+    ".innerHTML=\"<button>FreeShadowBtn</button>\";"
+    "</script>"
+)
+
+
+def test_shadow_without_inert_stays_clickable(page):
+    """Over-correction guard for the cross-boundary direction: a shadow control
+    with NO inert anywhere must stay clickable. Pins that inheritedInert defaults
+    to false and isn't accidentally "sticky" across the shadow boundary."""
+    els = _compress(page, _FREE_SHADOW)
+    btn = next((e for e in els if (e.get("text") or "") == "FreeShadowBtn"), None)
+    assert btn is not None, "free shadow button must be captured (no inert)"
+    assert btn.get("clickable") is True, (
+        "shadow control with no inert wrongly marked non-clickable — inert state "
+        "leaked across the boundary as sticky"
+    )
+    assert btn.get("inert") is not True, "non-inert element should not carry inert flag"
+
+
+_COMPOSITE_INERT = (
+    "<div inert>"
+    "<iframe srcdoc=\""
+    "<div id='ch'></div>"
+    "<scr" "ipt>"
+    "document.getElementById('ch').attachShadow({mode:'open'})"
+    ".innerHTML='<button>DeepDeepBtn</button>';"
+    "</scr" "ipt>\"></iframe>"
+    "</div>"
+)
+
+
+def test_inert_inherits_across_stacked_boundaries(page):
+    """Composite: a shadow component INSIDE an iframe INSIDE an inert subtree —
+    two stacked boundaries. Inert must compose across both (iframe→frameInert, then
+    shadow→isInertEl(host, inheritedInert)), or a deeply-nested shadow control behind
+    a modal is reported clickable. Pins inheritance COMPOSITION, which single-boundary
+    tests can't catch."""
+    els = _compress(page, _COMPOSITE_INERT)
+    btn = next((e for e in els if (e.get("text") or "") == "DeepDeepBtn"), None)
+    assert btn is not None, "shadow-in-iframe button should still be reported"
+    assert btn.get("clickable") is False, (
+        "shadow-in-iframe control behind inert reported clickable — inert did not "
+        "compose across the stacked iframe+shadow boundaries"
+    )
+
+
 # --- regression: simple pages still work -----------------------------------
 
 def test_plain_page_unchanged(page):

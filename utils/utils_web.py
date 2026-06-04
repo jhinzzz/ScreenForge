@@ -34,9 +34,18 @@ def compress_web_dom(page) -> str:
         // 文档（见 walk）而不是把 iframe 框本身当作元素。
         const ignoreTags = new Set(['script', 'style', 'noscript', 'head', 'meta', 'title', 'br', 'hr', 'svg', 'path', 'g', 'img', 'video', 'audio', 'iframe']);
 
+        // 判定元素是否处于 inert 子树。closest('[inert]') 只在同一棵树内向上找，
+        // 看不到 shadow host / iframe 之外的祖先 —— 故由 walk 把跨边界继承来的
+        // inert 状态(inherited)一并算入，与 offX/offY 跨边界传递的方式一致。
+        function isInertEl(el, inherited) {
+            if (inherited) return true;
+            try { return el.closest('[inert]') !== null; } catch (e) { return false; }
+        }
+
         // 处理单个元素：offX/offY 是从内层文档（iframe）坐标系到顶层视口坐标系
         // 的偏移量，保证 shadow/iframe 内元素的 bbox 仍然是顶层坐标，ref 点击不会错位。
-        function processEl(el, offX, offY) {
+        // inheritedInert：宿主/iframe 跨边界继承来的 inert 状态（见 walk）。
+        function processEl(el, offX, offY, inheritedInert) {
             const tag = el.tagName.toLowerCase();
             if (ignoreTags.has(tag)) return;
 
@@ -59,7 +68,13 @@ def compress_web_dom(page) -> str:
             try { nativeDisabled = el.matches(':disabled'); }
             catch (e) { nativeDisabled = el.disabled === true; }
             const isDisabled = nativeDisabled || ariaDisabled;
-            const isInteractive = !isDisabled && (
+            // inert 子树（开 <dialog> 时背景标 inert 的标准模式）会吞掉点击 ——
+            // 这类控件仍可见会被收录，但若仍标 clickable，LLM 会去点模态背后的死
+            // 按钮然后 no-op/超时，故同样判为不可点。但 inert ≠ disabled（前者是"被
+            // 遮挡/暂不可交互"，后者是"控件本身被禁用"），分开上报：让 LLM 能推断
+            // "有模态需先关掉"而非"表单被禁用"，也避免 assert disabled 误判通过。
+            const isInert = isInertEl(el, inheritedInert);
+            const isInteractive = !isDisabled && !isInert && (
                                   ['a', 'button', 'input', 'select', 'textarea'].includes(tag) ||
                                   el.hasAttribute('onclick') ||
                                   interactiveRoles.has(el.getAttribute('role')) ||
@@ -109,6 +124,7 @@ def compress_web_dom(page) -> str:
             if (ariaLabel) nodeData.desc = ariaLabel;
             if (displayText) nodeData.text = displayText;
             if (isDisabled) nodeData.disabled = true;
+            if (isInert) nodeData.inert = true;
             nodeData.x = Math.round(rect.x + offX);
             nodeData.y = Math.round(rect.y + offY);
             nodeData.w = Math.round(rect.width);
@@ -120,7 +136,7 @@ def compress_web_dom(page) -> str:
         // 递归遍历：普通子树 + shadow DOM + 同源 iframe。这是修复"压缩器对
         // shadow DOM / iframe 失明"的核心：querySelectorAll('*') 不穿透 shadow
         // root，也不进入 iframe 文档，导致整类应用对 LLM 不可见。
-        function walk(root, offX, offY, depth) {
+        function walk(root, offX, offY, depth, inheritedInert) {
             // Depth cap: static DOM can't form true cycles (an iframe's
             // contentDocument is always a fresh document; a shadow root can't
             // contain its own host), so this is insurance against pathologically
@@ -135,6 +151,9 @@ def compress_web_dom(page) -> str:
                 // 跨域 iframe 访问 contentDocument 会抛异常 —— 那是浏览器安全边界，
                 // 无法穿透，静默跳过(诚实:我们不假装能看到跨域内容)。
                 if (tag === 'iframe') {
+                    // inert 跨 iframe 边界继承：frame 内文档看不到父文档的 inert 祖先，
+                    // 故在此判定 iframe 自身或其祖先是否 inert，向内传递。
+                    const frameInert = inheritedInert || isInertEl(el, false);
                     let doc = null, frameRect = null, insetX = 0, insetY = 0;
                     try {
                         frameRect = el.getBoundingClientRect();
@@ -149,21 +168,23 @@ def compress_web_dom(page) -> str:
                         doc = el.contentDocument;
                     } catch (e) { doc = null; }
                     if (doc && doc.documentElement) {
-                        walk(doc.documentElement, offX + frameRect.x + insetX, offY + frameRect.y + insetY, depth + 1);
+                        walk(doc.documentElement, offX + frameRect.x + insetX, offY + frameRect.y + insetY, depth + 1, frameInert);
                     }
                     return;
                 }
 
-                processEl(el, offX, offY);
+                processEl(el, offX, offY, inheritedInert);
 
                 // shadow root（open 模式）：递归进入。坐标系与宿主一致，偏移不变。
+                // inert 同样跨 shadow 边界继承：closest 不穿透 shadow root，故把
+                // 宿主自身/继承来的 inert 状态算好后传入。
                 if (el.shadowRoot) {
-                    walk(el.shadowRoot, offX, offY, depth + 1);
+                    walk(el.shadowRoot, offX, offY, depth + 1, isInertEl(el, inheritedInert));
                 }
             });
         }
 
-        walk(document.documentElement, 0, 0, 0);
+        walk(document.documentElement, 0, 0, 0, false);
 
         // 6. 最终去重 (防止某些前端库生成多个不可见的克隆 DOM)
         const uniqueElements = [];

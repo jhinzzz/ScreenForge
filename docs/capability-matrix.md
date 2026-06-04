@@ -12,9 +12,14 @@
 
 > ℹ️ **Web DOM 压缩器穿透能力（2026-06）**：`compress_web_dom` 递归遍历 open shadow
 > DOM 与同源/`srcdoc` iframe，iframe 内元素的 bbox 会按 iframe 的位置 + 边框 + 内边距
-> 偏移回顶层坐标，保证 ref/坐标点击不错位。`disabled` / `aria-disabled` 控件仍会被
-> 收录（便于断言）但标 `clickable:false`，避免 LLM 去点禁用元素卡超时。**不可穿透**：
-> closed shadow root、跨域 iframe（浏览器安全边界，静默跳过）。
+> 偏移回顶层坐标，保证 ref/坐标点击不错位。**不可交互判定**（均仍收录便于断言，但标
+> `clickable:false`，避免 LLM 去点死元素卡超时）：
+> - `disabled` / `aria-disabled` 控件 → `disabled:true`；用 `:disabled` 伪类判定，
+>   故 `<fieldset disabled>` 传播给后代控件（含首个 `<legend>` 内豁免、嵌套继承）也覆盖。
+> - `inert` 子树（开 `<dialog>` 时背景标 inert 的标准模式）→ 独立的 `inert:true` 字段
+>   （**不**当作 `disabled`，二者语义不同），且 inert 状态会跨 shadow / 同源 iframe 边界继承。
+>
+> **不可穿透**：closed shadow root、跨域 iframe（浏览器安全边界，静默跳过）。
 
 ## 元素定位能力
 
