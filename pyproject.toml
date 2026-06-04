@@ -1,6 +1,6 @@
 [project]
 name = "screenforge"
-version = "0.1.0"
+version = "0.3.0"
 description = "AI-driven cross-platform UI automation engine with test script generation"
 requires-python = ">=3.11"
 license = {text = "MIT"}

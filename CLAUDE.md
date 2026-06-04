@@ -131,7 +131,7 @@ common/adapters/          # Platform adapters (android / ios / web)
 utils/utils_xml.py        # Android XML cleaning and dimensionality reduction
 utils/utils_web.py        # Web DOM compression and URL handling
 utils/screenshot_annotator.py  # Screenshot annotation (ref numbers on screenshots)
-tests/                    # Framework unit tests (210 test cases)
+tests/                    # Framework unit tests (278 passing, 15 live-smoke skipped)
 test_cases/               # Auto-generated test scripts (android / ios / web)
 docs/                     # Agent integration guide and capability matrix
 ```

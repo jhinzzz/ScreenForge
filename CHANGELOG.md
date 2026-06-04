@@ -4,108 +4,58 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-04
+
 ### Changed (BREAKING)
-- **`assert_exist` / `assert_text_equals` now report real pass/fail.** Previously
-  both always "passed" (the engine generated assertion code but never failed the
-  step), so `--goal` verification and `--action` assert steps could never fail.
-  A failing assertion now returns a failed step. In `--json` output, assertion
-  failures carry `"result": "assertion_failed", "assertion_failed": true` to
-  distinguish a verification verdict from an engine error — agents should report
-  these as test failures, not retry them.
+- `assert_exist` / `assert_text_equals` now report real pass/fail. Assertion
+  failures carry `"result": "assertion_failed", "assertion_failed": true` in
+  `--json` output.
 
 ### Fixed
-- **Web recording crash removed; recording documented as unsupported**:
-  `stop_record_and_get_path` called `self.driver.video.path()` which is `None`
-  when no `record_video_dir` was set, raising under some paths. Web video
-  recording is in fact impossible here — the adapter attaches over CDP
-  (`connect_over_cdp`) and Playwright cannot record a CDP-attached browser
-  (verified: `page.video` exists but no file is written). The CLI never wired web
-  recording anyway (only iOS records). So `start_record`/`stop_record` are now
-  honest no-ops returning `""`, and the dead `record_video_dir` branch + unused
-  `_find_chromium_path` are removed.
-- **Broken / imprecise install commands**: docs and `doctor`'s remediation told
-  users to run `pip install -r requirement.txt` (the file is `requirements.txt`).
-  `doctor`'s per-platform dependency remediation now points at the documented
-  editable extras instead — `pip install -e ".[android]"` / `".[ios]"` /
-  `pip install -e .` (web) — so a missing platform dep installs exactly that
-  platform, not the whole pinned set.
-- **7 failing tests** from the `agent_cli.py` shim refactor — tests now target
-  the real modules (`cli.tool_protocol_handlers` / `cli.shared` / `cli.dispatch`).
-- **ML stack made truly optional**: `sentence_transformers` (the ~2GB torch
-  stack) was imported at module load, so a clean core-only install crashed at
-  `import common.ai`. Now imported lazily inside `EmbeddingModelLoader.load()`;
-  the semantic cache degrades gracefully (exact-key cache still works) when the
-  `[ml]` extra isn't installed. torch/transformers/sentence-transformers/
-  scikit-learn moved out of core `requirements.txt`.
-- **MCP web ref cache leak**: the web `@N`→element cache was a process-global
-  (`_cached_ui_elements`) that could serve stale refs from a prior page/request
-  across a long-lived MCP session. It now lives on the `UIExecutor` instance,
-  and `_SharedAdapterManager` keeps one executor per platform — so `inspect_ui`
-  and a follow-up `ref @N` action share state within a session while separate
-  sessions can't leak into each other. Ref resolution is threaded through an
-  explicit `resolve_ref` callable instead of ambient global state, and web ref
-  resolution still re-inspects the live page each time.
-- **`not_found` no longer trips the circuit breaker**: in `--goal` mode the
-  model's `not_found` signal is intercepted (suggest `--vision`) without counting
-  as a failure.
-- Dead `common/prompts.py` (172 LOC, zero importers, diverged from the live
-  brains) deleted; dead `_find_chromium_path` removed.
+- Removed web recording crash; `start_record`/`stop_record` are now no-ops
+  returning `""` (web recording is unsupported). Removed the dead
+  `record_video_dir` branch and `_find_chromium_path`.
+- Fixed install commands in docs and `doctor` remediation; per-platform
+  remediation now points at editable extras (`pip install -e ".[android]"` /
+  `".[ios]"` / `pip install -e .`).
+- Fixed 7 failing tests from the `agent_cli.py` shim refactor; tests now target
+  `cli.tool_protocol_handlers` / `cli.shared` / `cli.dispatch`.
+- Made the ML stack optional: `sentence_transformers` is now imported lazily in
+  `EmbeddingModelLoader.load()`. Moved torch/transformers/sentence-transformers/
+  scikit-learn out of core `requirements.txt`.
+- Fixed MCP web ref cache leak: the `@N`→element cache now lives on the
+  `UIExecutor` instance instead of a process-global, with one executor per
+  platform via `_SharedAdapterManager`. Ref resolution threaded through an
+  explicit `resolve_ref` callable.
+- `not_found` no longer trips the circuit breaker in `--goal` mode.
+- Deleted dead `common/prompts.py`; removed dead `_find_chromium_path`.
 - `config.validate_config` now bounds-checks `AUTO_HEAL_MIN_CONFIDENCE` (0-1) and
   `AUTO_HEAL_TRIGGER_THRESHOLD` (>= 1).
-- **`--web-stop` now reliably kills the browser** (caught by the new live smoke):
-  CDP-attached Chromium ignores `SIGTERM`, so the reaper escalates to `SIGKILL`
-  after a grace period; `_is_process_alive` now treats a `Z`/defunct zombie as
-  not-alive (an unreaped corpse was being mistaken for a live browser).
-- **iOS `swipe` crashed** (caught by the live iOS simulator smoke): `SwipeHandler`
-  called `d.swipe_ext(direction)` — a uiautomator2 (Android) API — on every
-  non-web platform, so swipe raised `AttributeError: 'Client' object has no
-  attribute 'swipe_ext'` on iOS. Now uses facebook-wda's directional
-  `swipe_up/down/left/right()`. Verified on a real simulator: all four directions
-  work. (Invalid directions safely default to `down`.)
-- **Android `resourceId` locator was completely unusable** (caught by expanding
-  the live Android smoke to the click/input/swipe/press verbs): the XML
-  compressor stripped the package prefix, emitting a bare `search_src_text` while
-  uiautomator2's `resourceId` selector matches the full `pkg:id/name`. So every
-  resourceId the agent received (its #2-priority Android locator) matched zero
-  elements. The compressor now emits the full resource-id (+ an optional
-  `id_short` hint). Verified on a real device: `input` via the full id now works.
-- **Android assert/action on an absent element wrongly reported success**
-  (caught by the new live Android smoke): `execute_and_record` gated execution on
-  `element` truthiness, but uiautomator2's `UiObject` is *falsy* when it matches
-  0 elements — so the handler (and its wait) was skipped and the step returned a
-  fast false success. Now gates on `element is not None`, so the handler runs and
-  reports the real verdict. Affects every element action on a transiently-absent
-  android element, not just asserts.
+- `--web-stop` now reliably kills the browser: the reaper escalates to `SIGKILL`
+  after a grace period, and `_is_process_alive` treats a `Z`/defunct zombie as
+  not-alive.
+- Fixed iOS `swipe` crash: now uses facebook-wda's `swipe_up/down/left/right()`
+  instead of the Android-only `swipe_ext`.
+- Fixed Android `resourceId` locator: the XML compressor now emits the full
+  resource-id (+ optional `id_short` hint).
+- Fixed Android assert/action on an absent element wrongly reporting success:
+  `execute_and_record` now gates on `element is not None`.
 
 ### Added
-- `test_public_surface.py` — pins the CLI package's public symbols so future
-  refactors that drop a name fail fast at the contract.
-- **Per-platform locator matrix** in `--capabilities` (`locators` / `features`):
-  ref/bbox/screenshot-annotation/visual-fallback are now correctly reported as
-  Web-only (mobile docs previously over-claimed them as universal).
-- `--web-stop` — terminate the persistent Chromium (CDP port 9333) left running
-  by web runs; idempotent.
-- **`doctor` notices a leftover persistent Chromium**: closes the loop with
-  `--web-stop`. A new web preflight check reads `report/web_session.json` and, if
-  the recorded pid is still alive, surfaces it as an **advisory NOTE** ("run
-  `screenforge --web-stop` to reclaim it") with the `--web-stop` command. It is
-  advisory by design — a live persistent browser is the intended cross-call
-  reconnect target, so it never fails `--doctor` or changes the exit code; only
-  real blockers do.
-- **Live smoke tests against real hardware**, all opt-in and skipped by default:
-  - `test_web_smoke_live.py` (`RUN_LIVE_WEB_SMOKE=1`) — real Chromium: launch /
-    inspect+ref / assert / `--web-stop`. Caught the SIGTERM/zombie bug above.
-  - `test_android_smoke_live.py` (`RUN_LIVE_ANDROID_SMOKE=1`) — real device via
-    uiautomator2: setup / live UI-tree / assert contract. Caught the falsy
-    `UiObject` bug above.
-  - `test_ios_smoke_live.py` (`RUN_LIVE_IOS_SMOKE=1`) — booted simulator: the
-    `simctl` session-recording reaper (WDA-dependent adapter checks self-skip).
-  These exist because mock-only tests passed while the real features were broken;
-  the smokes make "green in mocks, broken on hardware" fail loudly.
+- `test_public_surface.py` — pins the CLI package's public symbols.
+- Per-platform locator matrix in `--capabilities` (`locators` / `features`);
+  ref/bbox/screenshot-annotation/visual-fallback reported as Web-only.
+- `--web-stop` — terminate the persistent Chromium (CDP port 9333); idempotent.
+- `doctor` web preflight check: reads `report/web_session.json` and surfaces a
+  leftover persistent Chromium as an advisory NOTE (never fails `--doctor`).
+- Live smoke tests against real hardware, opt-in and skipped by default:
+  - `test_web_smoke_live.py` (`RUN_LIVE_WEB_SMOKE=1`)
+  - `test_android_smoke_live.py` (`RUN_LIVE_ANDROID_SMOKE=1`)
+  - `test_ios_smoke_live.py` (`RUN_LIVE_IOS_SMOKE=1`)
 
 ### Docs
 - Corrected `capability-matrix.md` / `agent_guide.md`: ref/bbox/visual fallback
-  are Web-only; `--capabilities` is the machine-readable source of truth.
+  are Web-only.
 - Documented the `--json` assertion-failure contract and the persistent-browser
   lifecycle.
 
