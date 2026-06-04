@@ -22,6 +22,18 @@ All notable changes to ScreenForge will be documented in this file.
   generated code likewise drop their fixed sleeps.
 - Generated test files no longer carry an unused `import pytest` (was F401-dirty
   under ruff).
+- Generated tests are now named after the user's goal/action/workflow
+  (`def test_<slug>`) with the intent in the docstring + `allure.story`, instead
+  of an opaque `test_auto_generated_case`. Unicode goals (e.g. Chinese) are
+  preserved; symbols-only/blank labels fall back safely.
+- Web codegen never bakes a pixel `mouse.click(x, y)` into a persisted test.
+  When a `@N` ref can't resolve by id/text, the runtime recovers a stable
+  locator (id > name > role+name > label > placeholder > text) from the
+  element's remaining attributes, validates it against the live page, and
+  re-drives the action's own handler (an input stays an input). When no durable
+  locator exists, an honest `pytest.skip` is emitted (and for the pure VLM
+  visual fallback, which has no DOM node) rather than a coordinate that rots
+  silently. `allure.step` labels now show the resolved target, not a raw `@N`.
 
 ## [0.3.0] - 2026-06-04
 

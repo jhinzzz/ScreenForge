@@ -267,3 +267,139 @@ def test_real_generated_assertions_are_runnable(live_adapter):
     # Run the generated steps against the real page. Any malformed/failing
     # assertion raises here and fails the test.
     ns["_gen"](live_adapter.driver)
+
+
+# ---------------------------------------------------------------------------
+# P2: codegen quality on a REAL browser — goal-named tests, coordinate honesty.
+# ---------------------------------------------------------------------------
+
+# A page with a button that has NO id and NO direct text (text is in a child
+# span), but DOES have an accessible name via aria-label — so the @N id/text
+# chain misses it, forcing the runtime to recover a get_by_role/label locator
+# instead of a coordinate.
+_NAMELESS_BUTTON_PAGE = (
+    "data:text/html,"
+    "<button aria-label='Save document'><span>💾</span></button>"
+    # name-only input, NO value/id/text → only locatable by [name=], so a ref
+    # action must recover via the name-based locator (exercises the fallback).
+    "<input name='token'>"
+)
+
+
+def test_real_goal_named_generated_file_runs_green(live_adapter):
+    """A full generated file named after the user's goal must be valid, runnable
+    pytest. We build header(label=...) + a real assertion step, exec it, and run
+    it against the live page — proving goal-naming doesn't break runnability."""
+    from cli.shared import get_initial_header
+    from common.executor import AssertTextContainsHandler
+
+    live_adapter.driver.goto(_DYNAMIC_PAGE)
+
+    header = get_initial_header(label="登录后看到欢迎语")  # Chinese goal — the common case
+    body = AssertTextContainsHandler().generate_code("web", "css", "#greeting", "Welcome", 30.0)
+    src = "".join(header) + "".join(body)
+
+    # The whole file must parse and define a goal-named test function.
+    ns: dict = {}
+    exec(compile(src, "<generated>", "exec"), ns)  # noqa: S102
+    test_fns = [k for k in ns if k.startswith("test_")]
+    assert test_fns, "no test_ function emitted"
+    assert test_fns[0] != "test_auto_generated_case", "goal label did not name the test"
+    # And it runs green against the live page.
+    ns[test_fns[0]](live_adapter.driver)
+
+
+def test_real_coordinate_fallback_recovers_locator_not_pixels(live_adapter):
+    """Coordinate-honesty: a ref locatable only by name/role (id+text both miss)
+    must be recovered to a STABLE locator at runtime — the persisted code_lines
+    must contain a get_by_role/get_by_label/[name=] click, NOT a mouse.click,
+    and that emitted locator must actually run green on the live page."""
+    import json
+
+    from common.executor import UIExecutor
+    from utils.utils_web import compress_web_dom
+
+    live_adapter.driver.goto(_NAMELESS_BUTTON_PAGE)
+    live_adapter.driver.wait_for_timeout(200)
+
+    tree = json.loads(compress_web_dom(live_adapter.driver))
+    elements = tree.get("ui_elements", [])
+    # Find the aria-label button ref — it has `desc` but no id and no direct text.
+    btn = next((e for e in elements if e.get("desc") == "Save document"), None)
+    assert btn is not None, "aria-label button not captured"
+    assert not btn.get("id"), "fixture button unexpectedly has an id"
+
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    ex.set_ui_elements(elements)
+    result = ex.execute_and_record(
+        {"action": "click", "locator_type": "ref", "locator_value": btn["ref"], "extra_value": ""}
+    )
+    assert result["success"] is True
+    emitted = "".join(result["code_lines"])
+    assert "mouse.click" not in emitted, "coordinate click leaked into persisted test"
+    assert ("get_by_role" in emitted or "get_by_label" in emitted), \
+        f"expected a recovered semantic locator, got:\n{emitted}"
+
+    # The recovered locator must itself run green on the live page.
+    src = "import allure\nfrom common.logs import log\n\ndef _gen(d):\n" + emitted
+    ns: dict = {}
+    exec(compile(src, "<generated>", "exec"), ns)  # noqa: S102
+    ns["_gen"](live_adapter.driver)
+
+
+def test_real_ref_input_recovers_locator_not_misclicked(live_adapter):
+    """Regression for the non-click-through-fallback bug: an `input` on a ref
+    that resolves only by `name` (id+text both miss) must TYPE the text via a
+    recovered [name=] locator — NOT get silently mis-executed as a click with
+    the text dropped. Verifies both the live effect and the emitted code."""
+    import json
+
+    from common.executor import UIExecutor
+    from utils.utils_web import compress_web_dom
+
+    # The token input has a name but no id; aria-label button gives it no text.
+    live_adapter.driver.goto(_NAMELESS_BUTTON_PAGE)
+    live_adapter.driver.wait_for_timeout(200)
+    tree = json.loads(compress_web_dom(live_adapter.driver))
+    elements = tree.get("ui_elements", [])
+    field = next((e for e in elements if e.get("name") == "token"), None)
+    assert field is not None and not field.get("id"), "name-only token input not captured"
+
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    ex.set_ui_elements(elements)
+    result = ex.execute_and_record(
+        {"action": "input", "locator_type": "ref", "locator_value": field["ref"],
+         "extra_value": "typed-value-xyz"}
+    )
+    assert result["success"] is True
+    emitted = "".join(result["code_lines"])
+    # Must be a real fill via a recovered locator, never a mouse.click, never a skip.
+    assert "mouse.click" not in emitted, "input was mis-executed as a coordinate click"
+    assert "pytest.skip" not in emitted, "name-locatable input wrongly discarded as unreplayable"
+    assert ".fill(" in emitted and "typed-value-xyz" in emitted, f"text not typed:\n{emitted}"
+    # And the live field actually holds the typed value.
+    assert live_adapter.driver.locator('[name="token"]').input_value() == "typed-value-xyz"
+
+
+def test_real_ref_click_label_has_no_stale_at_token(live_adapter):
+    """The allure.step label for a web ref click must show the readable target,
+    not a raw @N (humanize_step_labels wired through execute_and_record)."""
+    import json
+
+    from common.executor import UIExecutor
+    from utils.utils_web import compress_web_dom
+
+    live_adapter.driver.goto(_PAGE)  # has <button id='go'>Click Me</button>
+    live_adapter.driver.wait_for_timeout(200)
+    tree = json.loads(compress_web_dom(live_adapter.driver))
+    elements = tree.get("ui_elements", [])
+    ref = next(e["ref"] for e in elements if e.get("id") == "go")
+
+    ex = UIExecutor(live_adapter.driver, platform="web")
+    ex.set_ui_elements(elements)
+    result = ex.execute_and_record(
+        {"action": "click", "locator_type": "ref", "locator_value": ref, "extra_value": ""}
+    )
+    assert result["success"] is True
+    emitted = "".join(result["code_lines"])
+    assert f"[{ref}]" not in emitted, f"stale ref token {ref} leaked into the allure.step label"

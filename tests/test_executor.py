@@ -183,9 +183,12 @@ class TestLocatorBuilderBuildCode:
         assert "get_by_text" in code
         assert "Cancel" in code
 
-    def test_ref_coordinate_fallback(self):
+    def test_ref_with_no_attrs_never_emits_coordinate(self):
+        # @3 has only x/y/w/h — no id/name/role/text. Under the coordinate-
+        # honesty policy (P2), codegen must NOT bake a pixel click into a
+        # persisted test; it emits a literal locator that fails loud instead.
         code = LocatorBuilder.build_code("web", "ref", "@3", resolve_ref=self.resolve)
-        assert "mouse.click" in code
+        assert "mouse.click" not in code
 
     def test_ref_without_resolver_falls_back_to_literal(self):
         # No resolver (standalone codegen) → no element data → literal locator.

@@ -46,8 +46,9 @@ def run_default_mode(
 
         _ensure_history_manager()
         _ensure_executor_runtime()
-        history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
-        save_to_disk(output_script_path, get_initial_header())
+        header = get_initial_header(label=str(getattr(args, "goal", "")).strip() or None)
+        history_manager = _shared.StepHistoryManager(initial_content=header)
+        save_to_disk(output_script_path, header)
 
         _ensure_runtime_classes()
         brain = _shared.AutonomousBrain()

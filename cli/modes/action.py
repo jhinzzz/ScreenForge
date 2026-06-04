@@ -85,8 +85,10 @@ def run_action_default_mode(
             history_manager = _shared.StepHistoryManager(initial_content=existing_lines)
             log.info(f"📎 [System] Append mode: continuing on existing script ({output_script_path})")
         else:
-            history_manager = _shared.StepHistoryManager(initial_content=get_initial_header())
-            save_to_disk(output_script_path, get_initial_header())
+            # Name the test after the action so the file is discoverable.
+            header = get_initial_header(label=action_data.get("name") or None)
+            history_manager = _shared.StepHistoryManager(initial_content=header)
+            save_to_disk(output_script_path, header)
 
         if shared_adapter_manager:
             # Reuse the session's shared executor so a `ref @N` action resolves

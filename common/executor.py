@@ -28,6 +28,24 @@ def _escape_python_string(value: str) -> str:
     return _escape_locator_value(value)
 
 
+def _escape_css_ident(value: str) -> str:
+    """Escape a CSS identifier (for an #id selector) per CSS.escape rules: any
+    char that isn't [A-Za-z0-9_-] or non-ASCII is backslash-escaped, and a
+    leading digit is escaped too. Keeps `locator('#weird.id')` from being parsed
+    as id+class."""
+    s = str(value)
+    out = []
+    for ch in s:
+        if ch.isalnum() or ch in "_-" or ord(ch) >= 0x80:
+            out.append(ch)
+        else:
+            out.append("\\" + ch)
+    result = "".join(out)
+    if result and result[0].isdigit():
+        result = "\\3" + result[0] + " " + result[1:]
+    return result
+
+
 def _normalize_ws(value: str) -> str:
     """Collapse all whitespace runs to single spaces and trim ends — matches
     Playwright expect().to_have_text / to_contain_text normalization. Keeping the
@@ -37,6 +55,124 @@ def _normalize_ws(value: str) -> str:
     return " ".join(str(value or "").split())
 
 
+# Map a compressed-DOM element (tag + clickable + type) to an ARIA role, so a
+# coordinate fallback can emit a stable get_by_role locator instead of a pixel.
+def _infer_web_role(el: dict) -> str | None:
+    tag = str(el.get("class", "")).lower()
+    el_type = str(el.get("type", "")).lower()
+    if tag == "a":
+        return "link"
+    if tag == "button" or el_type in ("submit", "button", "reset"):
+        return "button"
+    if el_type == "checkbox":
+        return "checkbox"
+    if el_type == "radio":
+        return "radio"
+    if tag == "select":
+        return "combobox"
+    if tag == "textarea" or (tag == "input" and el_type in ("", "text", "email", "search", "url", "tel", "password")):
+        return "textbox"
+    return None
+
+
+def _fallback_strategy(el: dict) -> tuple | None:
+    """Decide the single most-stable locator strategy for a web element, by
+    uniqueness/stability (architect adc8c2c): id > name attr > role+accessible-
+    name > aria-label(desc) > placeholder > text. Returns a (kind, *args) tuple
+    or None when nothing locatable exists. Shared by build_fallback_locator
+    (codegen string) and get_fallback_element (live handle) so the EMITTED
+    locator and the one we actually click can never diverge.
+
+    `name`/`id` rank above role+name because they're unique by spec; a role+name
+    match can be duplicated on a page (the "wrong element" trap)."""
+    if not el:
+        return None
+    if el.get("id"):
+        # CSS.escape-equivalent for an #id selector; bare ids with special chars
+        # would otherwise build a malformed selector.
+        return ("css", f"#{_escape_css_ident(el['id'])}")
+    if el.get("name"):
+        # Escape backslash+double-quote so a name containing " can't prematurely
+        # close the [name="..."] attribute selector.
+        safe_name = str(el["name"]).replace("\\", "\\\\").replace('"', '\\"')
+        return ("css", f'[name="{safe_name}"]')
+    role = _infer_web_role(el)
+    accessible_name = el.get("desc") or el.get("text")
+    if role and accessible_name:
+        return ("role", role, accessible_name)
+    if el.get("desc"):
+        return ("label", el["desc"])
+    if el.get("placeholder"):
+        return ("placeholder", el["placeholder"])
+    if el.get("text"):
+        return ("text", el["text"])
+    return None
+
+
+def build_fallback_locator(el: dict) -> str | None:
+    """Best-effort STABLE Playwright locator EXPRESSION for a web element when
+    the @N ref chain (id → text) didn't resolve. Returns e.g.
+    "get_by_role('button', name='Save').first", or None when the element has no
+    locatable attribute (the pure-coordinate / visual-fallback shape). A
+    coordinate is NEVER returned — callers that get None must skip, not click a
+    pixel."""
+    strat = _fallback_strategy(el)
+    if strat is None:
+        return None
+    kind = strat[0]
+    if kind == "css":
+        return f"locator('{_escape_locator_value(strat[1])}').first"
+    if kind == "role":
+        return f"get_by_role('{strat[1]}', name='{_escape_locator_value(strat[2])}').first"
+    if kind == "label":
+        return f"get_by_label('{_escape_locator_value(strat[1])}').first"
+    if kind == "placeholder":
+        return f"get_by_placeholder('{_escape_locator_value(strat[1])}').first"
+    if kind == "text":
+        return f"get_by_text('{_escape_locator_value(strat[1])}').first"
+    return None
+
+
+def get_fallback_element(d, el: dict):
+    """Live Playwright locator for the SAME strategy build_fallback_locator
+    emits, so the runtime block can click the element it will write into the
+    test (not a pixel) and prove the locator actually resolves. Returns a
+    locator handle or None."""
+    strat = _fallback_strategy(el)
+    if strat is None:
+        return None
+    kind = strat[0]
+    if kind == "css":
+        return d.locator(strat[1]).first
+    if kind == "role":
+        return d.get_by_role(strat[1], name=strat[2]).first
+    if kind == "label":
+        return d.get_by_label(strat[1]).first
+    if kind == "placeholder":
+        return d.get_by_placeholder(strat[1]).first
+    if kind == "text":
+        return d.get_by_text(strat[1]).first
+    return None
+
+
+def readable_ref_target(el: dict | None) -> str:
+    """Human-readable label for a web @N element (text → desc → name → id),
+    falling back to the ref token itself so a label is never empty."""
+    if not el:
+        return ""
+    return el.get("text") or el.get("desc") or el.get("name") or el.get("id") or el.get("ref", "")
+
+
+def humanize_step_labels(code_lines: list, ref_token: str, readable: str) -> list:
+    """Replace a raw `[@N]` ref token with a human-readable target inside the
+    generated allure.step / log lines. Pure transform: only rewrites the bracket
+    token `[@N]`, never the resolved locator call (which already uses real
+    text/id). No-op when the token isn't present or `readable` is empty."""
+    if not ref_token or not readable or f"[{ref_token}]" not in "".join(code_lines):
+        return code_lines
+    return [line.replace(f"[{ref_token}]", f"[{readable}]") for line in code_lines]
+
+
 class LocatorBuilder:
     @staticmethod
     def build_code(platform: str, u2_key: str, l_value: str, resolve_ref=None) -> str:
@@ -44,14 +180,16 @@ class LocatorBuilder:
         if platform == "web":
             if u2_key == "ref":
                 el_data = resolve_ref(l_value) if resolve_ref else None
-                if el_data and el_data.get("id"):
-                    return f"locator('#{_escape_locator_value(el_data['id'])}').first"
-                if el_data and el_data.get("text"):
-                    return f"get_by_text('{_escape_locator_value(el_data['text'])}').first"
                 if el_data:
-                    cx = el_data.get("x", 0) + el_data.get("w", 0) // 2
-                    cy = el_data.get("y", 0) + el_data.get("h", 0) // 2
-                    return f"mouse.click({cx}, {cy})  # ref {l_value} coordinate fallback"
+                    # Stable-locator chain (id → name → role → label → placeholder
+                    # → text). NEVER a coordinate: a pixel click baked into a
+                    # persisted test rots silently on any layout shift.
+                    fragment = build_fallback_locator(el_data)
+                    if fragment:
+                        return fragment
+                    # No locatable attribute at all → a literal that fails loud
+                    # at replay (better than a silently-rotting coordinate).
+                    return f"locator('{safe_val}').first"
                 return f"locator('{safe_val}').first"
             elif u2_key in ["resourceId", "id"]:
                 return f"locator('#{safe_val}').first"
@@ -923,26 +1061,77 @@ class UIExecutor:
 
             if element is None and u2_key == "ref" and self.platform == "web":
                 el_data = self.resolve_ref(l_value)
-                if el_data and el_data.get("w", 0) > 0:
+                # The id→text chain in get_actual_element missed this ref, but the
+                # element dict may still carry name/role/desc/placeholder. Recover
+                # the SAME stable locator we'd emit (build_fallback_locator) as a
+                # LIVE handle and re-drive the action's own handler on it — so an
+                # input stays an input, a hover stays a hover, etc. The handler's
+                # execute() validates the locator resolves (discharges the "locator
+                # points at a different element than the pixel" trap) and its
+                # generate_code() persists that stable locator — never a pixel.
+                fb_element = get_fallback_element(self.d, el_data) if el_data else None
+                if fb_element is not None and build_fallback_locator(el_data):
+                    try:
+                        if handler.execute(self.d, fb_element, self.platform, extra_value):
+                            # generate_code with u2_key="ref" + the live resolve_ref
+                            # rebuilds the SAME stable fragment build_fallback_locator
+                            # produced (build_code's ref branch calls it) — so the
+                            # persisted locator exactly matches the handle we just
+                            # acted on. Then humanize the [@N] labels to readable.
+                            code_lines = handler.generate_code(
+                                self.platform, "ref", l_value, extra_value,
+                                config.DEFAULT_TIMEOUT, resolve_ref=self.resolve_ref,
+                            )
+                            readable = readable_ref_target(el_data)
+                            if readable and readable != l_value:
+                                code_lines = humanize_step_labels(code_lines, l_value, readable)
+                            result["success"] = True
+                            result["code_lines"] = code_lines
+                            result["action_description"] = (
+                                f"🔁 [Ref] {action} {l_value} via recovered locator"
+                            )
+                            return result
+                        log.warning(f"⚠️ [Ref] Recovered locator did not satisfy {action}")
+                    except Exception as e:
+                        log.warning(f"⚠️ [Ref] Recovered locator failed to act: {e}")
+                # No stable locator. Act LIVE via coordinate ONLY for click (the
+                # sole action a bare coordinate can perform) so a recording session
+                # still advances; persist an honest, non-passing skip rather than a
+                # silently-rotting coordinate. For non-click actions there is
+                # nothing a coordinate can do — report a real engine failure.
+                if action == "click" and el_data and el_data.get("w", 0) > 0:
                     cx = el_data["x"] + el_data["w"] // 2
                     cy = el_data["y"] + el_data["h"] // 2
-                    log.info(f"🎯 [Ref] {l_value} using coordinate fallback: ({cx}, {cy})")
                     try:
                         self.d.mouse.click(cx, cy)
-                        code_lines = [
-                            f"    with allure.step('Click: [{l_value}] (coordinate)'):\n",
-                            f"        log.info('Action: click [{l_value}] at ({cx}, {cy})')\n",
-                            f"        d.mouse.click({cx}, {cy})  # ref {l_value} coordinate fallback\n",
-                        ]
-                        result["success"] = True
-                        result["code_lines"] = code_lines
-                        result["action_description"] = f"🎯 [Ref] Click {l_value} at ({cx}, {cy})"
-                        return result
+                        log.info(f"🎯 [Ref] {l_value} clicked at ({cx}, {cy}) live (not persisted)")
                     except Exception as e:
                         log.error(f"❌ [Error] Coordinate click failed: {e}")
                         return result
+                    log.warning(
+                        f"[E036] Ref {l_value} has no stable locator (only coordinates). "
+                        f"Emitting pytest.skip so the test isn't silently green."
+                    )
+                    code_lines = [
+                        f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE)'):\n",
+                        "        import pytest\n",
+                        f"        # Ref {l_value} could only be located by coordinate at record time;\n",
+                        "        # no durable selector exists. Provide one before treating this as real.\n",
+                        f"        pytest.skip('Ref {l_value} has no durable locator (coordinate-only at record time)')\n",
+                    ]
+                    result["success"] = True
+                    result["code_lines"] = code_lines
+                    result["action_description"] = f"⏭️ [Ref] {l_value} unreplayable — skip emitted"
+                    return result
+                log.error(
+                    f"[E037] Ref {l_value} could not be located for action '{action}' "
+                    f"(no id/name/role/text and not a click). Fix: re-inspect_ui or use a css/text locator."
+                )
+                return result
 
-            if element is None and self.platform == "web":
+            # Visual fallback can only CLICK (a VLM returns a point, nothing
+            # else) — never engage it for input/hover/assert/etc.
+            if element is None and self.platform == "web" and action == "click":
                 try:
                     from common.visual_fallback import visual_locate
                     screenshot_bytes = self.d.screenshot()
@@ -953,15 +1142,23 @@ class UIExecutor:
                     if coords:
                         cx, cy = coords
                         log.info(f"👁️ [Visual Fallback] Using VLM coordinates: ({cx}, {cy})")
+                        # Click live so the session advances, but the visual
+                        # fallback has NO DOM node — only a VLM screenshot hit —
+                        # so there is no durable locator to emit. Persist a skip
+                        # (with the coordinate kept as a comment hint) rather than
+                        # a coordinate that will rot and pass green against the
+                        # wrong pixel later.
                         self.d.mouse.click(cx, cy)
                         code_lines = [
-                            f"    with allure.step('Click: [{l_value}] (visual)'):\n",
-                            f"        log.info('Action: click [{l_value}] at ({cx}, {cy})')\n",
-                            f"        d.mouse.click({cx}, {cy})  # visual fallback\n",
+                            f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE: visual)'):\n",
+                            "        import pytest\n",
+                            f"        # Located only via VLM screenshot at ({cx}, {cy}); no DOM locator exists.\n",
+                            f"        # d.mouse.click({cx}, {cy})  # original visual hit, reference only\n",
+                            f"        pytest.skip('Visual-fallback step for [{l_value}] has no durable locator; add a selector to make it replayable')\n",
                         ]
                         result["success"] = True
                         result["code_lines"] = code_lines
-                        result["action_description"] = f"👁️ [Visual Fallback] Click {l_value} at ({cx}, {cy})"
+                        result["action_description"] = f"⏭️ [Visual Fallback] {l_value} unreplayable — skip emitted"
                         return result
                 except Exception as e:
                     log.warning(f"⚠️ [Visual Fallback] Attempt failed: {e}")
@@ -1002,6 +1199,15 @@ class UIExecutor:
                 self.platform, safe_u2_key, l_value, extra_value, timeout,
                 resolve_ref=self.resolve_ref,
             )
+
+            # Single choke point for readable allure.step labels: when a web ref
+            # (@N) was used, the locator line already carries the resolved
+            # text/id, but the step/log labels still say "[@N]". Swap the bracket
+            # token for the human-readable target so reports read cleanly.
+            if self.platform == "web" and safe_u2_key == "ref":
+                readable = readable_ref_target(self.resolve_ref(l_value))
+                if readable and readable != l_value:
+                    code_lines = humanize_step_labels(code_lines, l_value, readable)
 
             result["success"] = True
             result["code_lines"] = code_lines
