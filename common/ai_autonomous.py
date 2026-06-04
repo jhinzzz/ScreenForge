@@ -162,8 +162,13 @@ class AutonomousBrain(AIBrain):
         - "input": 在输入框中输入内容 (需通过 extra_value 参数提供内容)
         - "swipe": 滑动屏幕寻找不在视口内的元素。必须在 extra_value 填入 "up", "down", "left" 或 "right"。此时 locator_type 填 "global"。
         - "press": 模拟键盘或物理系统按键。必须在 extra_value 填入按键名 (如 "Enter", "Back")。此时 locator_type 填 "global"。
+        - "wait_for": 显式等待元素出现或消失 (替代死等)。extra_value 填 "visible"(默认) 或 "hidden"。
         - "assert_exist": 校验某个元素是否在页面上出现
-        - "assert_text_equals": 校验某个元素的文本是否与期望值一致
+        - "assert_not_exist": 校验某个元素已消失/不存在 (如加载动画消失、弹窗关闭)
+        - "assert_text_equals": 校验某个元素的文本是否与期望值【完全相等】
+        - "assert_text_contains": 校验某个元素的文本【包含】指定子串 (动态文本首选)。extra_value 填子串。
+        - "assert_value": 校验输入框/表单字段的当前值。extra_value 填期望值。
+        - "assert_url": (仅 Web) 校验当前页面 URL 包含子串。locator_type/value 填 "global"，extra_value 填 URL 子串。
 
         定位器 (locator_type) 优先级: css > resourceId > text > description
         🚨 警告: 若 resourceId 是动态随机的，必须降级使用 text 或 description！
@@ -171,7 +176,7 @@ class AutonomousBrain(AIBrain):
         【思考与状态决策】
         你需要先思考 (thought)，然后评估当前状态 (status)：
         - "running": 目标尚未完成，需要执行下一步动作。
-        - "success": 目标已达到最终校验阶段。⚠️ 强烈要求：宣告成功时，你必须在 result 中提供一个断言动作 (`assert_exist` 或 `assert_text_equals`)，底层引擎会执行该断言并固化到测试脚本中。
+        - "success": 目标已达到最终校验阶段。⚠️ 强烈要求：宣告成功时，你必须在 result 中提供一个断言动作 (`assert_exist` / `assert_text_contains` / `assert_text_equals` / `assert_value` / `assert_url` 之一)，底层引擎会执行该断言并固化到测试脚本中。优先选择最能证明"目标已达成"的断言 (如登录成功后断言 URL 含 "/dashboard"，或断言欢迎文本包含用户名)。
         - "failed": 遇到了无法克服的阻塞性错误，无法继续。
 
         【强制输出格式】

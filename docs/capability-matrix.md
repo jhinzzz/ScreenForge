@@ -60,8 +60,15 @@
 | `input` | 支持 | 基础支持 | 支持 | |
 | `swipe` | 支持 | 依赖底层能力 | 支持 | Web 通过滚轮模拟 |
 | `press` | 支持 | 基础支持 | 支持 | |
-| `assert_exist` | 支持 | 基础支持 | 支持 | |
-| `assert_text_equals` | 支持 | 基础支持 | 支持 | |
+| `wait_for` | 支持 | 基础支持 | 支持 | 显式同步：等待元素出现/消失，替代死等。`extra_value` = `visible`(默认)/`hidden` |
+| `assert_exist` | 支持 | 基础支持 | 支持 | 元素出现（Web 端 `wait_for(visible)` 自动轮询） |
+| `assert_not_exist` | 支持 | 基础支持 | 支持 | 元素消失/不存在（Web `to_be_hidden`、Android `wait_gone`） |
+| `assert_text_equals` | 支持 | 基础支持 | 支持 | 文本完全相等（Web 端用 `expect().to_have_text` 自动重试） |
+| `assert_text_contains` | 支持 | 基础支持 | 支持 | 文本包含子串（动态文本首选，Web `expect().to_contain_text`） |
+| `assert_value` | 支持 | 基础支持 | 支持 | 表单字段值（Web `expect().to_have_value`、移动端取 text） |
+| `assert_url` | 不适用 | 不适用 | 支持 | 仅 Web：页面 URL 含子串（global 动作，`expect().to_have_url` 自动重试） |
+
+> ℹ️ **Web 断言采用 Playwright `expect()` 自动重试**：生成的测试代码对文本/值/可见性断言使用 `expect(locator).to_*(..., timeout=...)`，会轮询至条件满足或超时，消除异步 UI 上"读一次就比较"的 flaky。`execute()` 实时裁决路径保持有界轮询返回布尔值，供自治循环与 `--json` 区分"断言失败"与"引擎错误"。`goto/press/swipe` 生成代码不再写入固定 `wait_for_timeout` 死等——`goto` 用 `wait_until='load'` 同步，后续动作依赖定位器自身的 auto-wait。
 
 ## 自愈引擎
 

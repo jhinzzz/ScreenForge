@@ -163,8 +163,13 @@ class AIBrain:
         - "input": 在输入框中输入内容 (必须在 extra_value 字段提供输入内容)
         - "swipe": 滑动屏幕以寻找不在视口内的元素。必须在 extra_value 填入 "up", "down", "left" 或 "right"。此时 locator_type 填 "global"。
         - "press": 模拟键盘或物理系统按键。必须在 extra_value 填入按键名 (如 "Enter", "Back", "Home")。此时 locator_type 填 "global"。
+        - "wait_for": 显式等待元素出现或消失 (替代死等)。extra_value 填 "visible"(默认) 或 "hidden"。用于等待异步加载完成。
         - "assert_exist": 校验某个元素是否在页面上出现
-        - "assert_text_equals": 校验某个元素的文本是否与期望值一致
+        - "assert_not_exist": 校验某个元素已消失/不存在 (如加载动画消失、弹窗关闭)
+        - "assert_text_equals": 校验某个元素的文本是否与期望值【完全相等】
+        - "assert_text_contains": 校验某个元素的文本【包含】指定子串 (动态文本首选，比完全相等更稳健)。在 extra_value 填子串。
+        - "assert_value": 校验输入框/表单字段的当前值等于期望值。在 extra_value 填期望值。
+        - "assert_url": (仅 Web) 校验当前页面 URL 包含指定子串。locator_type/value 填 "global"，extra_value 填 URL 子串 (如 "/dashboard")。
         - "not_found": 如果在提供的 UI 树中完全找不到符合用户意图的元素，且必须通过视觉验证，请务必返回此 action！
 
         ### 定位器选择铁律

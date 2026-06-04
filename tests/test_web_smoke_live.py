@@ -37,6 +37,21 @@ _PAGE = (
     "<p>present paragraph</p>"
 )
 
+# A page with a deferred element + a pre-filled input + a removable node, so the
+# P1 assertions (contains/value/not_exist) and wait_for can be exercised against
+# REAL async DOM behavior — the only way to prove auto-retry actually polls.
+_DYNAMIC_PAGE = (
+    "data:text/html,"
+    "<input id='email' value='admin@test.com'>"
+    "<p id='greeting'>Welcome back, Alice</p>"
+    "<div id='doomed'>temporary</div>"
+    "<span id='late'></span>"
+    "<script>"
+    "setTimeout(function(){document.getElementById('late').textContent='loaded-late';}, 700);"
+    "setTimeout(function(){document.getElementById('doomed').remove();}, 700);"
+    "</script>"
+)
+
 
 def _chromium_available() -> bool:
     try:
@@ -152,3 +167,103 @@ def test_real_web_stop_kills_live_browser(live_adapter):
     time.sleep(0.5)
     assert not wa._is_process_alive(pid), "Chromium still alive after --web-stop (leak!)"
     assert wa._read_session() is None, "session file not cleared after --web-stop"
+
+
+# ---------------------------------------------------------------------------
+# P1: richer assertion vocabulary + wait_for, exercised on a REAL browser.
+# ---------------------------------------------------------------------------
+
+def test_real_new_assertions_execute_verdicts(live_adapter):
+    """assert_text_contains / assert_value / assert_url / assert_not_exist must
+    return the correct live verdict against a real DOM (the execute() path that
+    feeds the autonomous loop and --json)."""
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_DYNAMIC_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+
+    # text_contains: substring present
+    r = ex.execute_and_record({"action": "assert_text_contains", "locator_type": "css",
+                               "locator_value": "#greeting", "extra_value": "Welcome"})
+    assert r["success"] is True and not r.get("assertion_failed")
+
+    # text_contains: substring absent → assertion verdict (not engine error)
+    r = ex.execute_and_record({"action": "assert_text_contains", "locator_type": "css",
+                               "locator_value": "#greeting", "extra_value": "Goodbye"})
+    assert r["success"] is False and r.get("assertion_failed") is True
+
+    # value: pre-filled input matches
+    r = ex.execute_and_record({"action": "assert_value", "locator_type": "css",
+                               "locator_value": "#email", "extra_value": "admin@test.com"})
+    assert r["success"] is True and not r.get("assertion_failed")
+
+    # url: the data: URL contains our markup verbatim (Chromium keeps literal
+    # spaces in data: URLs, so assert on a space-free token that is reliably
+    # present — the element id). Global action, no locator.
+    r = ex.execute_and_record({"action": "assert_url", "locator_type": "global",
+                               "locator_value": "global", "extra_value": "greeting"})
+    assert r["success"] is True and not r.get("assertion_failed")
+
+
+def test_real_wait_for_polls_until_visible(live_adapter):
+    """wait_for must POLL: #late gets its text 700ms after load. A read-once
+    check would miss it; a real auto-retry wait catches it. Proves the polling
+    behavior that kills magic-sleep flakiness."""
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_DYNAMIC_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+
+    # Immediately after load #late is empty; wait_for(visible) + text_contains
+    # must still succeed because expect/wait_for poll until the script fires.
+    r = ex.execute_and_record({"action": "wait_for", "locator_type": "css",
+                               "locator_value": "#late", "extra_value": "visible"})
+    assert r["success"] is True
+
+    r = ex.execute_and_record({"action": "assert_text_contains", "locator_type": "css",
+                               "locator_value": "#late", "extra_value": "loaded-late"})
+    assert r["success"] is True, "expect() did not poll until the late text arrived"
+
+
+def test_real_assert_not_exist_waits_for_removal(live_adapter):
+    """assert_not_exist must pass once #doomed is removed (700ms after load) —
+    proving to_be_hidden polls rather than reading once."""
+    from common.executor import UIExecutor
+
+    live_adapter.driver.goto(_DYNAMIC_PAGE)
+    ex = UIExecutor(live_adapter.driver, platform="web")
+
+    r = ex.execute_and_record({"action": "assert_not_exist", "locator_type": "css",
+                               "locator_value": "#doomed", "extra_value": ""})
+    assert r["success"] is True, "assert_not_exist did not wait for the node to be removed"
+
+
+def test_real_generated_assertions_are_runnable(live_adapter):
+    """THE headline contract: the pytest code we EMIT must actually run green on
+    a real page. We generate the body for several P1 assertions, wrap it in a
+    function whose only fixture `d` is the live page, exec it, and call it. If
+    the emitted expect()/wait_for lines are malformed or wrong, this raises."""
+    from common.executor import (
+        AssertNotExistHandler,
+        AssertTextContainsHandler,
+        AssertUrlHandler,
+        AssertValueHandler,
+        WaitForHandler,
+    )
+
+    live_adapter.driver.goto(_DYNAMIC_PAGE)
+
+    body = []
+    body += WaitForHandler().generate_code("web", "css", "#late", "visible", 30.0)
+    body += AssertTextContainsHandler().generate_code("web", "css", "#greeting", "Welcome", 30.0)
+    body += AssertValueHandler().generate_code("web", "css", "#email", "admin@test.com", 30.0)
+    body += AssertUrlHandler().generate_code("web", "global", "global", "greeting", 30.0)
+    body += AssertNotExistHandler().generate_code("web", "css", "#doomed", "", 30.0)
+
+    # Build a real, importable function: `def _gen(d):` + the emitted step lines.
+    src = "import allure\nfrom common.logs import log\n\ndef _gen(d):\n" + "".join(body)
+    ns: dict = {}
+    exec(compile(src, "<generated>", "exec"), ns)  # noqa: S102 — exercising our own codegen
+    # Run the generated steps against the real page. Any malformed/failing
+    # assertion raises here and fails the test.
+    ns["_gen"](live_adapter.driver)

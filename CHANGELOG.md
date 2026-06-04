@@ -4,6 +4,25 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Richer assertion vocabulary for real test generation: `assert_text_contains`
+  (substring), `assert_not_exist` (element gone/hidden), `assert_value` (form
+  field value), and `assert_url` (web page URL contains substring, a global
+  no-locator action). Plus `wait_for` — an explicit synchronization action
+  (`extra_value` = `visible`/`hidden`) to replace blind waits.
+- Generated web tests now use Playwright's auto-retrying `expect()` assertions
+  (`to_have_text` / `to_contain_text` / `to_be_hidden` / `to_have_value` /
+  `to_have_url`) instead of read-once comparisons — eliminates the async-UI
+  flakiness where a value is read before it settles.
+
+### Changed
+- `goto` no longer emits a hardcoded `wait_for_timeout(2000)`; it synchronizes
+  via `goto(wait_until='load')` and relies on the next action's locator
+  auto-wait (Playwright's recommended readiness strategy). `press`/`swipe`
+  generated code likewise drop their fixed sleeps.
+- Generated test files no longer carry an unused `import pytest` (was F401-dirty
+  under ruff).
+
 ## [0.3.0] - 2026-06-04
 
 ### Changed (BREAKING)

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 import config.config as config
+from common.capabilities import ASSERTION_ACTIONS, GLOBAL_ACTIONS
 from common.logs import log
 
 # NOTE: the web ref cache (@N -> element) lives on the UIExecutor INSTANCE
@@ -25,6 +26,15 @@ def _escape_locator_value(value: str) -> str:
 
 def _escape_python_string(value: str) -> str:
     return _escape_locator_value(value)
+
+
+def _normalize_ws(value: str) -> str:
+    """Collapse all whitespace runs to single spaces and trim ends — matches
+    Playwright expect().to_have_text / to_contain_text normalization. Keeping the
+    live execute() verdict on the SAME normalization as the generated expect()
+    code means the autonomous loop never accepts a step the emitted test would
+    reject (or vice-versa) over internal whitespace differences."""
+    return " ".join(str(value or "").split())
 
 
 class LocatorBuilder:
@@ -296,7 +306,6 @@ class SwipeHandler(ActionHandler):
                 f"    with allure.step('Swipe: [{direction}]'):\n",
                 f"        log.info('Action: swipe [{direction}]')\n",
                 f"        {scroll_code}\n",
-                "        d.wait_for_timeout(1000)\n",
             ]
         elif platform == "ios":
             return [
@@ -356,11 +365,13 @@ class PressHandler(ActionHandler):
         key = extra_value if extra_value else "Enter"
         safe_key = _escape_python_string(key)
         if platform == "web":
+            # No trailing sleep in generated code: the next action's locator
+            # auto-waits. (The live execute() path keeps a brief settle because
+            # it feeds a screenshot to the LLM before any next action exists.)
             return [
                 f"    with allure.step('Press key: [{safe_key}]'):\n",
                 f"        log.info('Action: press key [{safe_key}]')\n",
                 f"        d.keyboard.press('{safe_key}')\n",
-                "        d.wait_for_timeout(500)\n",
             ]
         elif platform == "ios":
             key_lower = key.lower()
@@ -446,7 +457,7 @@ class AssertTextEqualsHandler(ActionHandler):
         try:
             if platform == "web":
                 element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
-                actual_text = element.inner_text().strip()
+                actual_text = element.inner_text()
             else:
                 if not element.wait(timeout=config.DEFAULT_TIMEOUT):
                     log.warning("❌ [Assert] Element not found — text assertion FAILED")
@@ -456,7 +467,9 @@ class AssertTextEqualsHandler(ActionHandler):
             log.warning("❌ [Assert] Failed to read element text — assertion FAILED")
             return False
 
-        if actual_text != extra_value:
+        # Normalize whitespace so this live verdict matches the generated
+        # expect().to_have_text (which normalizes) — see _normalize_ws.
+        if _normalize_ws(actual_text) != _normalize_ws(extra_value):
             log.warning(f"❌ [Assert] Expected '{extra_value}', got '{actual_text}' — assertion FAILED")
             return False
         log.info("[Assert] Passed")
@@ -469,28 +482,292 @@ class AssertTextEqualsHandler(ActionHandler):
         safe_expected = _escape_python_string(extra_value)
         loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
         if platform == "web":
+            # Playwright's expect(...).to_have_text auto-retries until the text
+            # matches or the timeout elapses — eliminates the read-once race the
+            # old inner_text() comparison had on async-updating UIs.
             return [
                 f"    with allure.step('Assert: text equals [{safe_expected}]'):\n",
                 f"        log.info('Assert: check [{l_value}] text == [{safe_expected}]')\n",
-                f"        actual_text = d.{loc_str}.inner_text().strip()\n",
-                f"        if actual_text != '{safe_expected}':\n",
-                f"            log.error(f'Assertion failed: expected [{safe_expected}], got [{{actual_text}}]')\n",
-                f"        assert actual_text == '{safe_expected}', f'Assertion failed: expected {safe_expected}, got {{actual_text}}'\n",
-                f"        log.info(f'Assertion passed: text is [{safe_expected}]')\n",
+                "        from playwright.sync_api import expect\n",
+                f"        expect(d.{loc_str}).to_have_text('{safe_expected}', timeout={timeout * 1000})\n",
+                f"        log.info('Assertion passed: text is [{safe_expected}]')\n",
             ]
         else:
             return [
                 f"    with allure.step('Assert: text equals [{safe_expected}]'):\n",
                 f"        log.info('Assert: check [{l_value}] text == [{safe_expected}]')\n",
+                f"        assert d({loc_str}).wait(timeout={timeout}), 'Assertion failed: element {l_value} not found'\n",
                 f"        actual_text = d({loc_str}).get_text()\n",
-                f"        if actual_text != '{safe_expected}':\n",
-                f"            log.error(f'Assertion failed: expected [{safe_expected}], got [{{actual_text}}]')\n",
                 f"        assert actual_text == '{safe_expected}', f'Assertion failed: expected {safe_expected}, got {{actual_text}}'\n",
                 f"        log.info(f'Assertion passed: text is [{safe_expected}]')\n",
             ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
         return f"[Assert] Text equals: {l_type}='{l_value}', expected='{extra_value}'"
+
+
+class AssertTextContainsHandler(ActionHandler):
+    """Assert an element's text CONTAINS a substring (not exact equality)."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        try:
+            if platform == "web":
+                element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
+                actual_text = element.inner_text()
+            else:
+                if not element.wait(timeout=config.DEFAULT_TIMEOUT):
+                    log.warning("❌ [Assert] Element not found — text-contains assertion FAILED")
+                    return False
+                actual_text = element.get_text()
+        except Exception:
+            log.warning("❌ [Assert] Failed to read element text — assertion FAILED")
+            return False
+
+        # Normalize whitespace on both sides so this matches the generated
+        # expect().to_contain_text (which normalizes) — see _normalize_ws.
+        if _normalize_ws(extra_value) not in _normalize_ws(actual_text):
+            log.warning(f"❌ [Assert] '{extra_value}' not found in '{actual_text}' — assertion FAILED")
+            return False
+        log.info("[Assert] Passed")
+        return True
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
+    ) -> list:
+        safe_expected = _escape_python_string(extra_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        if platform == "web":
+            return [
+                f"    with allure.step('Assert: text contains [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] text contains [{safe_expected}]')\n",
+                "        from playwright.sync_api import expect\n",
+                f"        expect(d.{loc_str}).to_contain_text('{safe_expected}', timeout={timeout * 1000})\n",
+                f"        log.info('Assertion passed: text contains [{safe_expected}]')\n",
+            ]
+        else:
+            return [
+                f"    with allure.step('Assert: text contains [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] text contains [{safe_expected}]')\n",
+                f"        assert d({loc_str}).wait(timeout={timeout}), 'Assertion failed: element {l_value} not found'\n",
+                f"        actual_text = d({loc_str}).get_text()\n",
+                f"        assert '{safe_expected}' in (actual_text or ''), f'Assertion failed: [{safe_expected}] not in [{{actual_text}}]'\n",
+                f"        log.info('Assertion passed: text contains [{safe_expected}]')\n",
+            ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Assert] Text contains: {l_type}='{l_value}', substring='{extra_value}'"
+
+
+class AssertNotExistHandler(ActionHandler):
+    """Assert an element is absent / hidden (the negative of assert_exist)."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if platform == "web":
+            try:
+                element.wait_for(state="hidden", timeout=config.DEFAULT_TIMEOUT * 1000)
+                log.info("[Assert] Passed (element hidden/absent)")
+                return True
+            except Exception:
+                log.warning("❌ [Assert] Element still visible — assert_not_exist FAILED")
+                return False
+        else:
+            # uiautomator2's UiObject exposes wait_gone (verified present).
+            if element.wait_gone(timeout=config.DEFAULT_TIMEOUT):
+                log.info("[Assert] Passed (element gone)")
+                return True
+            log.warning("❌ [Assert] Element still present — assert_not_exist FAILED")
+            return False
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
+    ) -> list:
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        if platform == "web":
+            return [
+                f"    with allure.step('Assert: element [{l_value}] absent'):\n",
+                f"        log.info('Assert: check element [{l_value}] is hidden/absent')\n",
+                "        from playwright.sync_api import expect\n",
+                f"        expect(d.{loc_str}).to_be_hidden(timeout={timeout * 1000})\n",
+                f"        log.info('Assertion passed: element [{l_value}] absent')\n",
+            ]
+        else:
+            return [
+                f"    with allure.step('Assert: element [{l_value}] absent'):\n",
+                f"        log.info('Assert: check element [{l_value}] is gone')\n",
+                f"        gone = d({loc_str}).wait_gone(timeout={timeout})\n",
+                f"        assert gone, 'Assertion failed: element {l_value} still present'\n",
+                f"        log.info('Assertion passed: element [{l_value}] absent')\n",
+            ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Assert] Element absent: {l_type}='{l_value}'"
+
+
+class AssertValueHandler(ActionHandler):
+    """Assert a form field's value.
+
+    Web reads the true field value via Playwright `input_value()`. On mobile
+    there is no generic "field value" accessor, so this asserts the element's
+    `text` — which for an Android `EditText` IS the entered value, but for other
+    widgets (or an empty field showing a hint) may be the placeholder/label. Use
+    `assert_value` for input fields on mobile; for arbitrary text use
+    `assert_text_equals` / `assert_text_contains`."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        try:
+            if platform == "web":
+                element.wait_for(state="visible", timeout=config.DEFAULT_TIMEOUT * 1000)
+                actual = element.input_value()
+            else:
+                if not element.wait(timeout=config.DEFAULT_TIMEOUT):
+                    log.warning("❌ [Assert] Element not found — value assertion FAILED")
+                    return False
+                actual = element.get_text()
+        except Exception:
+            log.warning("❌ [Assert] Failed to read element value — assertion FAILED")
+            return False
+
+        if actual != extra_value:
+            log.warning(f"❌ [Assert] Expected value '{extra_value}', got '{actual}' — assertion FAILED")
+            return False
+        log.info("[Assert] Passed")
+        return True
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
+    ) -> list:
+        safe_expected = _escape_python_string(extra_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        if platform == "web":
+            return [
+                f"    with allure.step('Assert: value equals [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] value == [{safe_expected}]')\n",
+                "        from playwright.sync_api import expect\n",
+                f"        expect(d.{loc_str}).to_have_value('{safe_expected}', timeout={timeout * 1000})\n",
+                f"        log.info('Assertion passed: value is [{safe_expected}]')\n",
+            ]
+        else:
+            return [
+                f"    with allure.step('Assert: value equals [{safe_expected}]'):\n",
+                f"        log.info('Assert: check [{l_value}] value == [{safe_expected}]')\n",
+                f"        assert d({loc_str}).wait(timeout={timeout}), 'Assertion failed: element {l_value} not found'\n",
+                f"        actual_value = d({loc_str}).get_text()\n",
+                f"        assert actual_value == '{safe_expected}', f'Assertion failed: expected {safe_expected}, got {{actual_value}}'\n",
+                f"        log.info(f'Assertion passed: value is [{safe_expected}]')\n",
+            ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Assert] Value equals: {l_type}='{l_value}', expected='{extra_value}'"
+
+
+class AssertUrlHandler(ActionHandler):
+    """Global web assertion: the page URL contains the expected substring."""
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        if platform != "web":
+            log.warning("[Assert] assert_url is only supported on Web platform")
+            return False
+        try:
+            actual_url = d.url
+        except Exception:
+            log.warning("❌ [Assert] Failed to read page URL — assertion FAILED")
+            return False
+        if extra_value not in (actual_url or ""):
+            log.warning(f"❌ [Assert] '{extra_value}' not in URL '{actual_url}' — assertion FAILED")
+            return False
+        log.info("[Assert] Passed")
+        return True
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
+    ) -> list:
+        import re as _re
+        safe_expected = _escape_python_string(extra_value)
+        # to_have_url accepts a regex; embed the substring as an escaped pattern
+        # so it matches anywhere in the URL and auto-retries until navigation lands.
+        pattern = _re.escape(extra_value)
+        safe_pattern = _escape_python_string(pattern)
+        return [
+            f"    with allure.step('Assert: URL contains [{safe_expected}]'):\n",
+            f"        log.info('Assert: check URL contains [{safe_expected}]')\n",
+            "        import re\n",
+            "        from playwright.sync_api import expect\n",
+            f"        expect(d).to_have_url(re.compile('{safe_pattern}'), timeout={timeout * 1000})\n",
+            f"        log.info('Assertion passed: URL contains [{safe_expected}]')\n",
+        ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Assert] URL contains: '{extra_value}'"
+
+
+class WaitForHandler(ActionHandler):
+    """Explicit synchronization: wait until an element is visible (default) or
+    hidden. extra_value selects the state: "" / "visible" / "appear" → visible;
+    "hidden" / "gone" / "disappear" → hidden. Replaces magic sleeps."""
+
+    _HIDDEN_WORDS = ("hidden", "gone", "disappear", "absent")
+    _VISIBLE_WORDS = ("", "visible", "appear", "shown", "present")
+
+    def _wants_hidden(self, extra_value: str) -> bool:
+        token = str(extra_value or "").strip().lower()
+        if token in self._HIDDEN_WORDS:
+            return True
+        if token not in self._VISIBLE_WORDS:
+            log.debug(
+                f"[Wait] Unrecognized state '{extra_value}', defaulting to 'visible' "
+                f"(use one of {self._HIDDEN_WORDS} for a hidden-wait)"
+            )
+        return False
+
+    def execute(self, d, element, platform: str, extra_value: str) -> bool:
+        hidden = self._wants_hidden(extra_value)
+        if platform == "web":
+            state = "hidden" if hidden else "visible"
+            try:
+                element.wait_for(state=state, timeout=config.DEFAULT_TIMEOUT * 1000)
+                log.info(f"[Wait] Condition met (state={state})")
+                return True
+            except Exception:
+                log.warning(f"❌ [Wait] Timed out waiting for state={state}")
+                return False
+        else:
+            if hidden:
+                ok = element.wait_gone(timeout=config.DEFAULT_TIMEOUT)
+            else:
+                ok = element.wait(timeout=config.DEFAULT_TIMEOUT)
+            if ok:
+                log.info("[Wait] Condition met")
+                return True
+            log.warning("❌ [Wait] Timed out")
+            return False
+
+    def generate_code(
+        self, platform: str, u2_key: str, l_value: str, extra_value: str, timeout: float,
+        resolve_ref=None,
+    ) -> list:
+        hidden = self._wants_hidden(extra_value)
+        loc_str = build_locator_code(platform, u2_key, l_value, resolve_ref=resolve_ref)
+        if platform == "web":
+            state = "hidden" if hidden else "visible"
+            return [
+                f"    with allure.step('Wait for [{l_value}] ({state})'):\n",
+                f"        log.info('Wait: [{l_value}] -> {state}')\n",
+                f"        d.{loc_str}.wait_for(state='{state}', timeout={timeout * 1000})\n",
+            ]
+        else:
+            call = f"wait_gone(timeout={timeout})" if hidden else f"wait(timeout={timeout})"
+            return [
+                f"    with allure.step('Wait for [{l_value}]'):\n",
+                f"        log.info('Wait: [{l_value}]')\n",
+                f"        assert d({loc_str}).{call}, 'Wait condition not met for {l_value}'\n",
+            ]
+
+    def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
+        return f"[Wait] {l_type}='{l_value}', state='{extra_value or 'visible'}'"
 
 
 class GotoHandler(ActionHandler):
@@ -502,8 +779,7 @@ class GotoHandler(ActionHandler):
         url = extra_value.strip()
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        d.goto(url, wait_until="domcontentloaded", timeout=config.DEFAULT_TIMEOUT * 1000)
-        d.wait_for_timeout(2000)
+        d.goto(url, wait_until="load", timeout=config.DEFAULT_TIMEOUT * 1000)
         return True
 
     def generate_code(
@@ -514,11 +790,14 @@ class GotoHandler(ActionHandler):
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         safe_url = _escape_python_string(url)
+        # goto(wait_until='load') is itself a synchronization point (it waits for
+        # the load event). No trailing sleep: the NEXT action's locator
+        # auto-waits, which is Playwright's recommended readiness strategy.
+        # (networkidle is explicitly discouraged by Playwright for testing.)
         return [
             f"    with allure.step('Navigate to: [{safe_url}]'):\n",
             f"        log.info('Action: navigate to [{safe_url}]')\n",
-            f"        d.goto('{safe_url}', wait_until='domcontentloaded')\n",
-            "        d.wait_for_timeout(2000)\n",
+            f"        d.goto('{safe_url}', wait_until='load')\n",
         ]
 
     def get_log_message(self, l_type: str, l_value: str, extra_value: str) -> str:
@@ -545,8 +824,13 @@ class UIExecutor:
                 "swipe": SwipeHandler(),
                 "press": PressHandler(),
                 "goto": GotoHandler(),
+                "wait_for": WaitForHandler(),
                 "assert_exist": AssertExistHandler(),
+                "assert_not_exist": AssertNotExistHandler(),
                 "assert_text_equals": AssertTextEqualsHandler(),
+                "assert_text_contains": AssertTextContainsHandler(),
+                "assert_value": AssertValueHandler(),
+                "assert_url": AssertUrlHandler(),
             }
 
     @classmethod
@@ -586,7 +870,8 @@ class UIExecutor:
 
         handler = self._handlers.get(action)
         if not handler:
-            log.error(f"[E031] Unsupported action type: '{action}'. Supported: click, input, swipe, press, assert_exist, assert_text_equals, goto, hover, long_click")
+            supported = ", ".join(sorted(self._handlers.keys()))
+            log.error(f"[E031] Unsupported action type: '{action}'. Supported: {supported}")
             return result
 
         element = None
@@ -695,9 +980,9 @@ class UIExecutor:
             # the handler must still run (e.g. assert_exist needs to wait and then
             # report a real failure). Keying on `element` (truthy) would skip
             # execution for an absent android element and wrongly report success.
-            if element is not None or action in ("goto", "swipe", "press"):
+            if element is not None or action in GLOBAL_ACTIONS:
                 if not handler.execute(self.d, element, self.platform, extra_value):
-                    if action in ("assert_exist", "assert_text_equals"):
+                    if action in ASSERTION_ACTIONS:
                         # A failed assertion is a verification verdict (the SUT
                         # did not meet the assertion), NOT an engine error. Tag
                         # it so callers / --json can tell the two apart.

@@ -26,8 +26,13 @@ class WorkflowStep(BaseModel):
         "input",
         "swipe",
         "press",
+        "wait_for",
         "assert_exist",
+        "assert_not_exist",
         "assert_text_equals",
+        "assert_text_contains",
+        "assert_value",
+        "assert_url",
     ]
     locator_type: str = "global"
     locator_value: str = "global"

@@ -29,8 +29,11 @@ class TestCapabilitiesPayload:
         assert payload["supported_actions"] == list(SUPPORTED_ACTIONS)
 
     def test_global_actions_sorted(self):
+        # assert_url joined the global (no-locator) actions: it reads page.url,
+        # not an element. The payload must still be emitted sorted.
         payload = get_capabilities_payload()
-        assert payload["global_actions"] == ["goto", "press", "swipe"]
+        assert payload["global_actions"] == ["assert_url", "goto", "press", "swipe"]
+        assert payload["global_actions"] == sorted(GLOBAL_ACTIONS)
 
     def test_supports_has_core_features(self):
         payload = get_capabilities_payload()

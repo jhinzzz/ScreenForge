@@ -9,11 +9,35 @@ SUPPORTED_ACTIONS = (
     "input",
     "swipe",
     "press",
+    "wait_for",
     "assert_exist",
+    "assert_not_exist",
     "assert_text_equals",
+    "assert_text_contains",
+    "assert_value",
+    "assert_url",
 )
-GLOBAL_ACTIONS = {"goto", "swipe", "press"}
-ACTIONS_REQUIRING_EXTRA_VALUE = {"goto", "input", "assert_text_equals"}
+# Assertions produce a verification VERDICT (the system-under-test did/did not
+# meet the condition) rather than an engine error — execute_and_record tags
+# their failures with assertion_failed so callers/--json can disambiguate.
+ASSERTION_ACTIONS = {
+    "assert_exist",
+    "assert_not_exist",
+    "assert_text_equals",
+    "assert_text_contains",
+    "assert_value",
+    "assert_url",
+}
+# assert_url reads page.url, not an element — it needs no locator (web-global).
+GLOBAL_ACTIONS = {"goto", "swipe", "press", "assert_url"}
+ACTIONS_REQUIRING_EXTRA_VALUE = {
+    "goto",
+    "input",
+    "assert_text_equals",
+    "assert_text_contains",
+    "assert_value",
+    "assert_url",
+}
 CONTROL_PLANES = ("goal", "workflow", "action", "doctor")
 EXECUTION_MODES = (MODE_RUN, MODE_DOCTOR, MODE_PLAN_ONLY, MODE_DRY_RUN)
 
