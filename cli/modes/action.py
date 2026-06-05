@@ -19,26 +19,13 @@ from cli.shared import (
     _ensure_history_manager,
     _ensure_ui_compressors,
     _SharedAdapterManager,
+    current_url,
     get_initial_header,
     log,
     save_to_disk,
 )
 from common.failure_diagnosis import diagnose
 from common.runtime_modes import MODE_RUN
-
-
-def _current_url(adapter, platform: str) -> str:
-    """Web page URL for the success/failure payload; "" elsewhere or on error.
-
-    `adapter.driver` is the Playwright page (it exposes `.url`/`.mouse`); mobile
-    adapters have no URL concept, so we honestly return "".
-    """
-    if platform != "web":
-        return ""
-    try:
-        return adapter.driver.url or ""
-    except Exception:
-        return ""
 
 
 def build_failure_payload(
@@ -188,7 +175,7 @@ def run_action_default_mode(
                 # Capture the URL at the moment of failure, BEFORE compress_web_dom
                 # traverses the DOM (a mid-redirect click could otherwise settle the
                 # navigation and report the post-redirect URL).
-                current_url = _current_url(adapter, args.platform)
+                page_url = current_url(adapter, args.platform)
                 ui_tree = {}
                 if not assertion_failed:
                     _ensure_ui_compressors()
@@ -210,7 +197,7 @@ def run_action_default_mode(
                     error_code=error_code,
                     locator_value=getattr(args, "locator_value", "") or "",
                     ui_tree=ui_tree,
-                    current_url=current_url,
+                    current_url=page_url,
                 )
                 json.dump(payload, sys.stdout, ensure_ascii=False)
                 sys.stdout.write("\n")
@@ -249,7 +236,7 @@ def run_action_default_mode(
                 "ui_tree": ui_tree,
                 "element_count": len(ui_tree.get("ui_elements", [])),
                 "output_script": output_script_path,
-                "current_url": _current_url(adapter, args.platform),
+                "current_url": current_url(adapter, args.platform),
             }, sys.stdout, ensure_ascii=False)
             sys.stdout.write("\n")
             sys.stdout.flush()
