@@ -713,3 +713,25 @@ def test_plain_page_unchanged(page):
     assert "Go" in txts
     assert any(e.get("name") == "q" for e in els)
     assert any(e.get("id") == "go" and e.get("clickable") for e in els)
+
+
+# --- did-you-mean (failure-feedback ergonomics) ---------------------------
+
+
+def test_did_you_mean_offers_close_match_on_typo(page):
+    """A typo'd locator on a real compressed page returns the intended target
+    as a candidate, so the driving agent recovers without a blind re-inspect.
+    Real DOM + real compression + real difflib ranking — the live value-add
+    over the pure-unit diagnoser tests.
+    """
+    from common.failure_diagnosis import diagnose
+
+    els = _compress(page, "<button id='signin'>Log in</button><button>Cancel</button>")
+    diag = diagnose(error_code="E037", locator_value="Logni", ui_elements=els)
+
+    assert diag.candidates, "expected a did-you-mean candidate for the typo 'Logni'"
+    assert any("Log in" in c.text for c in diag.candidates), (
+        "diagnoser should surface 'Log in' as the close match"
+    )
+    # The suggested locator should be a web ref the agent can retry with.
+    assert diag.candidates[0].locator["type"] == "ref"
