@@ -19,6 +19,38 @@ All notable changes to ScreenForge will be documented in this file.
   model would target them and hang on the action timeout. They are now recorded
   (for existence/disabled assertions) but marked `clickable:false` with a
   `disabled:true` flag.
+- `<fieldset disabled>` did not propagate to its descendant controls — only the
+  element's own `disabled` attribute was honored, so controls inside a disabled
+  fieldset were reported `clickable:true` and the model would hang on them.
+  "Actually disabled" is now judged via the `:disabled` CSS pseudo-class (the
+  browser's authoritative implementation), covering fieldset propagation, the
+  first-`<legend>` exemption, and nesting in one shot.
+- Controls inside an `[inert]` subtree (the standard modal-backdrop pattern —
+  everything behind an open `<dialog>`) swallow clicks but were emitted
+  `clickable:true`, so the model would target a dead control behind the modal.
+  They are now `clickable:false`, and the inert state is **inherited across
+  shadow / same-origin iframe boundaries** (threaded through the compressor's
+  recursion like the coordinate offsets). Surfaced as its own `inert:true` field,
+  **not** folded into `disabled` (distinct concepts — blocked-by-overlay vs
+  intrinsically-off — so an `assert disabled` won't wrongly pass).
+- **Android compressor ignored `enabled`** — a control with `clickable="true"
+  enabled="false"` (greyed-out button, empty SIM slot) was reported
+  `clickable:true` and the model would tap a dead control and hang (the same
+  blind spot the web compressor already fixed). Android now suppresses
+  `clickable` and emits `disabled:true` for `enabled="false"`, still recording
+  the control so its existence/disabled state stays assertable. The numeric-noise
+  text filter was reordered so a disabled control with short numeric text (e.g. a
+  disabled "+5" stepper) isn't silently dropped.
+- **`--action --json` failures were a dead string** (`{"result":"engine_error",
+  "error":"Action failed: click:Login"}`) with no page and no guidance, and the
+  useful `[E0xx] Fix:` diagnostics lived only on stderr (which agent examples drop
+  via `2>/dev/null`). An engine-error failure now returns a structured, recoverable
+  payload: `error_code` + `fix` (from a single-source table shared with stderr, so
+  they can't drift), did-you-mean `candidates` (difflib over page element
+  text/desc/name, honest 0.55 threshold — below it returns nothing rather than a
+  fabricated match), `recommended_next_step`, and the current `ui_tree` (so no
+  second `inspect_ui` is needed). A failed assertion stays a bare verdict (no
+  candidates / retry bait — a verdict is not a locate problem).
 
 ### Added
 - Richer web interaction actions (close the "can't automate forms / off-viewport
@@ -37,6 +69,22 @@ All notable changes to ScreenForge will be documented in this file.
   (`to_have_text` / `to_contain_text` / `to_be_hidden` / `to_have_value` /
   `to_have_url`) instead of read-once comparisons — eliminates the async-UI
   flakiness where a value is read before it settles.
+- **Duplicate-named control disambiguation.** N list rows each with an identical
+  "Delete" button compressed to N indistinguishable elements, so codegen could
+  only emit `get_by_text('Delete').first` — silently always hitting row 1
+  regardless of which the model meant. The compressor now flags only *ambiguous*
+  controls (whose role+name collides with a sibling) with `scope` (the row's
+  distinguishing leaf text) and `dup_index`, costing zero tokens on
+  non-ambiguous pages. Codegen emits a scoped locator
+  `get_by_text(scope, exact=True).locator('..').<inner>` — **no `.first`**,
+  strict-mode catches non-uniqueness. When a row can't be disambiguated, an honest
+  `pytest.skip` is emitted rather than a lying `.first`/`.nth`.
+- `current_url` is now included in the `--action --json` success payload and the
+  `inspect_ui` payload (web only; mobile honestly returns `""`) — the one read
+  primitive agents actually needed, without a separate query operation.
+- MCP `execute` failures carry a minimal `failure_diagnosis` (`error_code` +
+  `fix` from the same single-source table; no candidates, as the run-report path
+  has no live element tree).
 
 ### Changed
 - `goto` no longer emits a hardcoded `wait_for_timeout(2000)`; it synchronizes
@@ -57,6 +105,21 @@ All notable changes to ScreenForge will be documented in this file.
   locator exists, an honest `pytest.skip` is emitted (and for the pure VLM
   visual fallback, which has no DOM node) rather than a coordinate that rots
   silently. `allure.step` labels now show the resolved target, not a raw `@N`.
+- iOS compressor unified its disabled key from the legacy `enabled:false` to
+  `disabled:true`, matching Android and Web — the single LLM brain now sees one
+  "can't interact" vocabulary across every platform.
+
+### Docs
+- Documented (and pinned with a live test) that virtualized lists (react-window)
+  only render the viewport slice — the compressor honestly reports what's in the
+  DOM, and a `scroll` + re-inspect surfaces the next slice. Not a bug; not
+  force-rendered (a token blowup would be the regression).
+- `agent_guide.md` shows the enriched failure payload and notes that with `--json`
+  the `error_code` + `fix` ride in stdout, so dropping stderr (`2>/dev/null`) is
+  safe for machine use but hides the human-readable fix hints when debugging.
+- `capability-matrix.md` documents the failure-feedback ergonomics, the
+  did-you-mean honesty boundaries, `current_url`, and the cross-platform
+  `disabled:true` schema.
 
 ## [0.3.0] - 2026-06-04
 
