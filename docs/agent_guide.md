@@ -56,15 +56,36 @@ Instead of separate action + inspect calls, combine them with `--json`:
 screenforge --action click --platform ios --locator-type text --locator-value "Login" --json 2>/dev/null
 ```
 
+> Note: `2>/dev/null` hides the stderr `[E0xx] ... Fix:` diagnostics. With `--json`
+> the same `error_code` + `fix` now ride in the stdout payload, so dropping stderr
+> is safe for machine use — but when debugging by hand, drop the `2>/dev/null` to
+> see the human-readable fix hints.
+
 Returns a single JSON line on stdout:
 ```json
 {"ok": true, "action": "click:Login", "platform": "ios", "ui_tree": {"ui_elements": [...]}, "element_count": 49, "output_script": "test_cases/ios/test_auto_agent_xxx.py"}
 ```
 
-On failure:
+On failure (engine error) — enriched so you can recover without a blind re-inspect:
 ```json
-{"ok": false, "action": "click:Login", "platform": "ios", "result": "engine_error", "assertion_failed": false, "error": "Action failed: click:Login"}
+{"ok": false, "action": "click:Login", "platform": "web", "result": "engine_error",
+ "assertion_failed": false, "error": "Action failed: click:Login",
+ "error_code": "E037", "message": "Element could not be located for the action.",
+ "fix": "Re-inspect, scroll the target into view, or add --vision.",
+ "candidates": [{"text": "Log in", "score": 0.83, "locator": {"type": "ref", "value": "@12"}}],
+ "recommended_next_step": {"action": "retry_with_candidate", "hint": "Try @12 ('Log in')", "locator": {"type": "ref", "value": "@12"}},
+ "ui_tree": {"ui_elements": ["..."]}, "element_count": 23,
+ "current_url": "https://example.com/login"}
 ```
+
+The failure payload includes the current `ui_tree` — **you do not need a second
+`inspect_ui` after a failed action.** Each candidate is `{text, score, locator}`
+(the suggested `locator` is ready to retry with). If `candidates` is non-empty,
+retry with the top candidate's locator; if empty, the target isn't on the page —
+follow `recommended_next_step` (re-inspect, scroll, or `--vision`). Branch on
+`result`: `engine_error` gets this diagnosis; `assertion_failed` is a bare verdict
+(no candidates / ui_tree) — a failed assertion is a verdict, not a locate problem,
+so do NOT retry it.
 
 **Assertion failures are different from engine errors.** When an `assert_exist` /
 `assert_text_equals` step fails, the element/text simply did not match — the SUT
@@ -77,9 +98,11 @@ did not meet the assertion. This is a *verification verdict*, not an engine bug:
 Branch on `assertion_failed` / `result`:
 - `assertion_failed: true` → the assertion did not hold. **Do NOT retry or add
   `--vision`** — surface it as a test failure (the page did not reach the
-  expected state).
-- `result: "engine_error"` (assertion_failed false) → a real failure (locator
-  not found, action blocked, connection). Re-inspect and adjust strategy.
+  expected state). This payload is a bare verdict: no `candidates`, no `ui_tree`,
+  no `current_url`, no `recommended_next_step`.
+- `result: "engine_error"` (`assertion_failed: false`) → a real failure (locator
+  not found, action blocked, connection). Use the enriched payload above to
+  recover without re-inspecting.
 
 This halves the round-trips needed per step — execute and observe in one call.
 

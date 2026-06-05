@@ -108,6 +108,17 @@
 
 > ℹ️ **Web 断言采用 Playwright `expect()` 自动重试**：生成的测试代码对文本/值/可见性断言使用 `expect(locator).to_*(..., timeout=...)`，会轮询至条件满足或超时，消除异步 UI 上"读一次就比较"的 flaky。`execute()` 实时裁决路径保持有界轮询返回布尔值，供自治循环与 `--json` 区分"断言失败"与"引擎错误"。`goto/press/swipe` 生成代码不再写入固定 `wait_for_timeout` 死等——`goto` 用 `wait_until='load'` 同步，后续动作依赖定位器自身的 auto-wait。
 
+> ℹ️ **失败反馈工效（2026-06）**：`--action --json` 失败时，engine_error（非断言失败）
+> 返回结构化诊断：`error_code` + `fix`（与 stderr `[E0xx]` 同一来源，见 `common/error_codes.py`）、
+> did-you-mean `candidates`（`difflib` 对页面元素 text/desc/name 相似度排序，过 0.55 阈值，
+> 每个候选含 `{text, score, locator}`，`locator` 可直接重试）、`recommended_next_step`，以及
+> **当前 `ui_tree`**（agent 无需再发一次 `inspect_ui`）。**诚实边界**：相似度全低于阈值 → 空
+> `candidates` + re-inspect 建议，绝不编造；连接断导致抓不到页面 → `ui_tree` 退化为空、
+> `candidates` 随之为空（payload 形态不变，不编造元素）；`assertion_failed:true`
+> 是裁决不是定位问题 → 不附候选、不给 retry 建议。成功 payload 与 `inspect_ui` 新增 `current_url`
+> （仅 web；移动端无 URL 概念，诚实返回 ""）。MCP `execute` 出口为最小增强（error_code+fix，
+> 无候选——run-report 形态无 live ui_elements）。
+
 ## 自愈引擎
 
 | 能力 | 状态 | 说明 |
