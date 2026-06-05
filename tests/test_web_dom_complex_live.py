@@ -571,8 +571,8 @@ def test_scoped_locator_resolves_to_the_right_row_live(page):
     )
     page.goto("data:text/html," + _quote(html))
     page.wait_for_timeout(200)
-    from utils.utils_web import compress_web_dom
     from common.executor import build_fallback_locator, get_fallback_element
+    from utils.utils_web import compress_web_dom
 
     els = json.loads(compress_web_dom(page)).get("ui_elements", [])
     bob = next(
@@ -610,8 +610,8 @@ def test_substring_row_label_still_disambiguates(page):
     )
     page.goto("data:text/html," + _quote(html))
     page.wait_for_timeout(200)
-    from utils.utils_web import compress_web_dom
     from common.executor import get_fallback_element
+    from utils.utils_web import compress_web_dom
 
     els = json.loads(compress_web_dom(page)).get("ui_elements", [])
     bob = next((e for e in els if (e.get("text") or "") == "Delete" and e.get("scope") == "Bob"), None)
@@ -637,8 +637,8 @@ def test_identical_row_labels_demote_to_skip(page):
     )
     page.goto("data:text/html," + _quote(html))
     page.wait_for_timeout(200)
-    from utils.utils_web import compress_web_dom
     from common.executor import build_fallback_locator
+    from utils.utils_web import compress_web_dom
 
     els = json.loads(compress_web_dom(page)).get("ui_elements", [])
     deletes = [e for e in els if (e.get("text") or "") == "Delete"]
@@ -693,8 +693,8 @@ def test_overlong_row_label_not_used_as_scope(page):
     )
     page.goto("data:text/html," + _quote(html))
     page.wait_for_timeout(200)
-    from utils.utils_web import compress_web_dom
     from common.executor import build_fallback_locator
+    from utils.utils_web import compress_web_dom
 
     els = json.loads(compress_web_dom(page)).get("ui_elements", [])
     deletes = [e for e in els if (e.get("text") or "") == "Delete"]

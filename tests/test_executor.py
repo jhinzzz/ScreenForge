@@ -1,6 +1,5 @@
 """Tests for common/executor.py — ref cache, LocatorBuilder, handlers."""
 
-import pytest
 
 from common.executor import (
     AssertExistHandler,

@@ -12,7 +12,6 @@ import ast
 from cli.shared import get_initial_header
 from common.executor import (
     LocatorBuilder,
-    UIExecutor,
     build_fallback_locator,
 )
 
