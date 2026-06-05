@@ -213,6 +213,67 @@ def test_real_input_into_search(settings_app):
     )
 
 
+def test_real_disabled_control_not_clickable(live_android):
+    """Real-device contract: a control the OS reports enabled=false must be
+    emitted with clickable suppressed + disabled:true, so the LLM brain doesn't
+    tap a dead control and hang on the timeout (the same failure class the web
+    compressor fixes). Self-calibrating: hunts a few Settings screens that
+    commonly carry a naturally-disabled row (e.g. an empty SIM slot, a greyed
+    roaming toggle); skips honestly if this ROM/SIM config has none."""
+    import time
+    import xml.etree.ElementTree as ET
+
+    from utils.utils_xml import compress_android_xml
+
+    d = live_android.driver
+    screens = [
+        "android.settings.DATA_ROAMING_SETTINGS",
+        "android.settings.WIRELESS_SETTINGS",
+        "android.settings.DATE_SETTINGS",
+    ]
+    disabled_label = None
+    raw_xml = None
+    for intent in screens:
+        try:
+            d.shell(f"am start -a {intent}")
+            time.sleep(1.6)
+            raw_xml = d.dump_hierarchy()
+        except Exception:
+            continue
+        try:
+            root = ET.fromstring(raw_xml)
+        except ET.ParseError:
+            continue
+        for n in root.iter():
+            if n.attrib.get("enabled") == "false":
+                label = (n.attrib.get("text") or n.attrib.get("content-desc") or "").strip()
+                if label:
+                    disabled_label = label
+                    break
+        if disabled_label:
+            break
+
+    try:
+        if not disabled_label:
+            pytest.skip("no naturally-disabled control on the probed screens (ROM/SIM-dependent)")
+
+        els = json.loads(compress_android_xml(raw_xml)).get("ui_elements", [])
+        match = [e for e in els if disabled_label in (e.get("text") or e.get("desc") or "")]
+        assert match, f"disabled control {disabled_label!r} dropped from compressed tree"
+        # It must be reported, but never clickable, and flagged disabled.
+        assert all(e.get("clickable") is not True for e in match), (
+            f"disabled control {disabled_label!r} reported clickable — LLM would tap a dead control"
+        )
+        assert any(e.get("disabled") is True for e in match), (
+            f"disabled control {disabled_label!r} missing disabled flag"
+        )
+    finally:
+        try:
+            d.press("home")
+        except Exception:
+            pass
+
+
 def test_real_click_navigates_then_back(settings_app):
     """click: tap a Settings row by text, verify navigation, then go Back."""
     adapter, executor = settings_app

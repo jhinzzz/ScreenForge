@@ -71,8 +71,11 @@ def compress_ios_xml(raw_xml: str) -> str:
             el_info["value"] = value
         if accessible:
             el_info["accessible"] = True
+        # Unified cross-platform key: a disabled control is `disabled: true`,
+        # matching Android (utils_xml.py) and Web (utils_web.py), so the LLM brain
+        # sees one vocabulary for "can't interact" on every platform.
         if not enabled:
-            el_info["enabled"] = False
+            el_info["disabled"] = True
 
         elements.append(el_info)
 

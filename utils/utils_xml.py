@@ -56,7 +56,12 @@ def compress_android_xml(raw_xml: str) -> str:
         text = attrib.get("text", "").strip()
         desc = attrib.get("content-desc", "").strip()
         res_id = attrib.get("resource-id", "").strip()
-        clickable = attrib.get("clickable") == "true"
+        # `enabled` defaults to true in Android; only an explicit "false" disables.
+        # A disabled control must not be reported clickable (the LLM would tap it
+        # and hang on the timeout) but is still emitted so its existence/disabled
+        # state stays assertable — mirrors the web compressor's disabled contract.
+        disabled = attrib.get("enabled") == "false"
+        clickable = attrib.get("clickable") == "true" and not disabled
         node_class = attrib.get("class", "").split(".")[-1]
 
         if _should_filter_by_id(res_id):
@@ -65,14 +70,18 @@ def compress_android_xml(raw_xml: str) -> str:
         if _should_filter_by_desc(desc):
             continue
 
-        if _should_filter_by_text(text, clickable):
+        # Pass `clickable or disabled`: the numeric-noise filter must not drop a
+        # disabled control (clickable is False for it), or its disabled state
+        # could never be seen/asserted — the filter runs before emission.
+        if _should_filter_by_text(text, clickable or disabled):
             continue
 
-        if text or desc or clickable:
+        if text or desc or clickable or disabled:
             el_info = {"class": node_class}
             if text: el_info["text"] = text
             if desc: el_info["desc"] = desc
             if clickable: el_info["clickable"] = True
+            if disabled: el_info["disabled"] = True
 
             if res_id:
                 # Emit the FULL resource-id (pkg:id/name) — this is what

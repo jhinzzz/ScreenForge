@@ -35,6 +35,13 @@
 > 实在消歧不了（同名行标识相同 / 超长 / 无行标识）→ 只留 `dup_index`，codegen 走诚实
 > `pytest.skip`，绝不写 `.first`（点第一行的谎）或 `.nth(k)`（位置坐标式脆弱）。
 
+> ℹ️ **禁用控件统一 schema（三端一致，2026-06）**：被禁用 / 不可交互的控件在三端压缩器都用
+> **同一个 `disabled: true` 字段**上报（Web `:disabled`/`aria-disabled`，Android `enabled="false"`，
+> iOS WDA `enabled="false"`），且都**仍收录**控件（便于断言存在/禁用态）但不标 `clickable`，避免
+> LLM 去点死控件卡超时。早期 iOS 曾用相反的 `enabled:false` 键，已统一到 `disabled:true`，让单个
+> LLM 大脑跨端只需认一种「不可交互」词汇。Android 真机验证：数据漫游页空 SIM 卡槽（天然禁用）已正确
+> 标 `disabled` 且不可点。
+
 ## 元素定位能力
 
 > ⚠️ **ref / bbox / 截图标注 / 视觉 fallback 仅 Web 端可用。** 移动端的 UI 树压缩器
