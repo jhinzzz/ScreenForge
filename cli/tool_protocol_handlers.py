@@ -327,6 +327,13 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
     run_assets = loaded_assets["run_assets"]
     summary_path = run_assets.get("summary_path", "")
 
+    # Minimal MCP-execute enrichment: error_code + fix from the single-source
+    # table (NO did-you-mean candidates — this run-report path has no live
+    # ui_elements). NOTE: this stays {} until the autonomous run reporter
+    # propagates the executor's error_code into summary.json; today
+    # run_reporter writes category/stage/last_error but not error_code, so the
+    # `if code:` guard is the honest no-op — never a fabricated code. Wiring it
+    # live is a follow-up (propagate error_code through the run summary).
     failure_diagnosis = {}
     if exit_code != 0:
         from common.error_codes import lookup

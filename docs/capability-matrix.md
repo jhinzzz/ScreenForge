@@ -116,8 +116,9 @@
 > `candidates` + re-inspect 建议，绝不编造；连接断导致抓不到页面 → `ui_tree` 退化为空、
 > `candidates` 随之为空（payload 形态不变，不编造元素）；`assertion_failed:true`
 > 是裁决不是定位问题 → 不附候选、不给 retry 建议。成功 payload 与 `inspect_ui` 新增 `current_url`
-> （仅 web；移动端无 URL 概念，诚实返回 ""）。MCP `execute` 出口为最小增强（error_code+fix，
-> 无候选——run-report 形态无 live ui_elements）。
+> （仅 web；移动端无 URL 概念，诚实返回 ""）。MCP `execute` 出口为最小增强（`failure_diagnosis`
+> = `{error_code, message, fix}`，无候选——run-report 形态无 live ui_elements；且需运行报告把
+> executor 的 error_code 透传进 summary 后才生效，当前为诚实空对象）。
 
 ## 自愈引擎
 
