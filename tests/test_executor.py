@@ -568,3 +568,38 @@ class TestExecuteAndRecordAssertionTag:
         )
         assert result["success"] is False, "falsy android element wrongly reported success"
         assert result.get("assertion_failed") is True
+
+
+class TestErrorCodeBubbling:
+    """execute_and_record must surface a machine-readable error_code on the
+    failure paths an agent hits, so the --action --json layer can diagnose
+    without re-parsing stderr. The device-free early returns (E031/E035) are
+    unit tested here; locate/action-time codes (E033/E037/E038) need a real
+    page and are covered by the live suite and the diagnoser's own tests.
+    """
+
+    def _executor(self):
+        from common.executor import UIExecutor
+
+        return UIExecutor(object(), platform="web")
+
+    def test_unsupported_action_bubbles_e031(self):
+        ex = self._executor()
+        result = ex.execute_and_record({"action": "teleport"})
+        assert result["success"] is False
+        assert result["error_code"] == "E031"
+
+    def test_empty_action_bubbles_e035(self):
+        ex = self._executor()
+        result = ex.execute_and_record({"action": ""})
+        assert result["success"] is False
+        assert result["error_code"] == "E035"
+
+    def test_failure_result_always_carries_error_code_key(self):
+        # Even on the empty-action early return, the key is present (defaulted
+        # to "" in the initializer, set to a real code on failure) so the
+        # --action --json layer can read result["error_code"] unconditionally.
+        ex = self._executor()
+        result = ex.execute_and_record({"action": ""})
+        assert "error_code" in result
+        assert result["error_code"] == "E035"
