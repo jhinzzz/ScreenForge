@@ -309,6 +309,20 @@ def _connect_adapter(args, reporter):
         raise
 
 
+def current_url(adapter, platform: str) -> str:
+    """Web page URL for agent-facing payloads; "" off-web or on error.
+
+    `adapter.driver` is the Playwright page (exposes `.url`); mobile adapters
+    have no URL concept, so we honestly return "".
+    """
+    if platform != "web":
+        return ""
+    try:
+        return adapter.driver.url or ""
+    except Exception:
+        return ""
+
+
 def _wait_for_platform_idle(platform: str, device) -> None:
     try:
         if platform == "android":

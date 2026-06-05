@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 
 import config.config as config
 from common.capabilities import ASSERTION_ACTIONS, GLOBAL_ACTIONS
+from common.error_codes import format_log
 from common.logs import log
 
 # NOTE: the web ref cache (@N -> element) lives on the UIExecutor INSTANCE
@@ -1269,6 +1270,7 @@ class UIExecutor:
             "success": False,
             "code_lines": [],
             "action_description": "",
+            "error_code": "",
             "action_info": {
                 "action_type": action,
                 "locator_type": l_type,
@@ -1278,13 +1280,14 @@ class UIExecutor:
         }
 
         if not action:
-            log.warning("[E035] AI returned empty action type, skipping execution. This usually means the model failed to parse the UI tree correctly.")
+            log.warning(format_log("E035"))
+            result["error_code"] = "E035"
             return result
 
         handler = self._handlers.get(action)
         if not handler:
-            supported = ", ".join(sorted(self._handlers.keys()))
-            log.error(f"[E031] Unsupported action type: '{action}'. Supported: {supported}")
+            log.error(format_log("E031"))
+            result["error_code"] = "E031"
             return result
 
         element = None
@@ -1296,7 +1299,8 @@ class UIExecutor:
         )
         if needs_locator:
             if not str(l_type).strip():
-                log.error("[E032] Element action missing locator_type. Fix: provide --locator-type (css/text/resourceId/description)")
+                log.error(format_log("E032"))
+                result["error_code"] = "E032"
                 return result
 
             u2_locator_map = {
@@ -1398,10 +1402,8 @@ class UIExecutor:
                     result["code_lines"] = code_lines
                     result["action_description"] = f"⏭️ [Ref] {l_value} unreplayable — skip emitted"
                     return result
-                log.error(
-                    f"[E037] Ref {l_value} could not be located for action '{action}' "
-                    f"(no id/name/role/text and not a click). Fix: re-inspect_ui or use a css/text locator."
-                )
+                log.error(format_log("E037") + f" (ref={l_value}, action='{action}')")
+                result["error_code"] = "E037"
                 return result
 
             # Visual fallback can only CLICK (a VLM returns a point, nothing
@@ -1439,7 +1441,8 @@ class UIExecutor:
                     log.warning(f"⚠️ [Visual Fallback] Attempt failed: {e}")
 
             if element is None:
-                log.error("[E033] Element locator is empty after resolution. Fix: verify that the target element exists on the current page via inspect_ui")
+                log.error(format_log("E033"))
+                result["error_code"] = "E033"
                 return result
 
         timeout = config.DEFAULT_TIMEOUT
@@ -1464,9 +1467,8 @@ class UIExecutor:
                             f"{l_type}='{l_value}'"
                         )
                     else:
-                        log.error(
-                            f"❌ [Error] Action blocked or dependent element not found within {timeout}s"
-                        )
+                        log.error(format_log("E038"))
+                        result["error_code"] = "E038"
                     return result
 
             safe_u2_key = u2_key if needs_locator else ""

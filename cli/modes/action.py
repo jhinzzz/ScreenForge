@@ -19,11 +19,59 @@ from cli.shared import (
     _ensure_history_manager,
     _ensure_ui_compressors,
     _SharedAdapterManager,
+    current_url,
     get_initial_header,
     log,
     save_to_disk,
 )
+from common.failure_diagnosis import diagnose
 from common.runtime_modes import MODE_RUN
+
+
+def build_failure_payload(
+    *,
+    action_name: str,
+    platform: str,
+    assertion_failed: bool,
+    error_code: str,
+    locator_value: str,
+    ui_tree: dict,
+    current_url: str,
+) -> dict:
+    """Assemble the --action --json failure payload.
+
+    A failed assertion is a verdict: keep the original bare shape (no diagnosis,
+    no page, no retry bait). An engine_error is where the agent needs help, so
+    enrich it with the did-you-mean diagnosis, the current ui_tree, and the URL.
+
+    Note: ui_tree, element_count, and current_url are emitted ONLY for
+    engine_error — the assertion_failed path returns the bare verdict above.
+    """
+    payload = {
+        "ok": False,
+        "action": action_name,
+        "platform": platform,
+        "result": "assertion_failed" if assertion_failed else "engine_error",
+        "assertion_failed": assertion_failed,
+        "error": (
+            f"Assertion failed: {action_name}"
+            if assertion_failed
+            else f"Action failed: {action_name}"
+        ),
+    }
+    if assertion_failed:
+        return payload
+
+    diag = diagnose(
+        error_code=error_code or "E037",
+        locator_value=locator_value or "",
+        ui_elements=ui_tree.get("ui_elements", []) or [],
+    )
+    payload.update(diag.to_dict())
+    payload["ui_tree"] = ui_tree
+    payload["element_count"] = len(ui_tree.get("ui_elements", []) or [])
+    payload["current_url"] = current_url
+    return payload
 
 
 def run_action_default_mode(
@@ -119,16 +167,39 @@ def run_action_default_mode(
             log.error(f"❌ [Action] Failed: {action_data['name']}")
             if json_mode:
                 # Distinguish a verification verdict (assertion_failed=true: the
-                # SUT did not meet the assertion — do NOT retry, report as test
-                # failure) from a real engine error (result="engine_error").
-                json.dump({
-                    "ok": False,
-                    "action": action_data["name"],
-                    "platform": args.platform,
-                    "result": "assertion_failed" if assertion_failed else "engine_error",
-                    "assertion_failed": assertion_failed,
-                    "error": final_error,
-                }, sys.stdout, ensure_ascii=False)
+                # SUT did not meet the assertion — do NOT retry) from a real
+                # engine error. Only engine errors get the did-you-mean
+                # diagnosis + current ui_tree (the agent needs the page to
+                # recover); a verdict stays a bare result so we never bait a
+                # retry on a legitimately-failed assertion.
+                # Capture the URL at the moment of failure, BEFORE compress_web_dom
+                # traverses the DOM (a mid-redirect click could otherwise settle the
+                # navigation and report the post-redirect URL).
+                page_url = current_url(adapter, args.platform)
+                ui_tree = {}
+                if not assertion_failed:
+                    _ensure_ui_compressors()
+                    try:
+                        ui_json, _ = _capture_ui_state(args, adapter, reporter, 1)
+                        ui_tree = json.loads(ui_json)
+                    except Exception as e:
+                        # Degrade (connection lost / non-JSON) but don't hide it:
+                        # a silent empty tree yields empty candidates with no signal.
+                        log.warning(f"⚠️ [Action] Failed to capture post-failure UI state: {e}")
+                        ui_tree = {}
+                error_code = result.get("error_code", "") or ""
+                if not error_code and not assertion_failed:
+                    log.warning("⚠️ [Action] executor returned no error_code; defaulting to E037")
+                payload = build_failure_payload(
+                    action_name=action_data["name"],
+                    platform=args.platform,
+                    assertion_failed=assertion_failed,
+                    error_code=error_code,
+                    locator_value=getattr(args, "locator_value", "") or "",
+                    ui_tree=ui_tree,
+                    current_url=page_url,
+                )
+                json.dump(payload, sys.stdout, ensure_ascii=False)
                 sys.stdout.write("\n")
                 sys.stdout.flush()
             return 1
@@ -165,6 +236,7 @@ def run_action_default_mode(
                 "ui_tree": ui_tree,
                 "element_count": len(ui_tree.get("ui_elements", [])),
                 "output_script": output_script_path,
+                "current_url": current_url(adapter, args.platform),
             }, sys.stdout, ensure_ascii=False)
             sys.stdout.write("\n")
             sys.stdout.flush()

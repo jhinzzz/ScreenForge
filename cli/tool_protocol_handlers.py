@@ -17,6 +17,7 @@ from cli.shared import (
     _connect_adapter,
     _SharedAdapterManager,
     config,
+    current_url,
     log,
 )
 from common.run_resume import RunContextLoadError, load_run_bundle
@@ -191,6 +192,8 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Annotated screenshot generation failed: {e}")
 
+        page_url = current_url(adapter, request.platform)
+
         return {
             "ok": True,
             "operation": "inspect_ui",
@@ -202,6 +205,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "element_count": len(ui_tree.get("ui_elements", []) or []),
             "screenshot_base64": screenshot_base64 or "",
             "annotated_screenshot_base64": annotated_screenshot_base64,
+            "current_url": page_url,
         }
     except Exception as e:
         return {
@@ -211,6 +215,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "platform": request.platform,
             "env": request.env,
             "error": str(e),
+            "current_url": "",
         }
     finally:
         if owns_adapter and adapter:
@@ -322,6 +327,22 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
     run_assets = loaded_assets["run_assets"]
     summary_path = run_assets.get("summary_path", "")
 
+    # Minimal MCP-execute enrichment: error_code + fix from the single-source
+    # table (NO did-you-mean candidates — this run-report path has no live
+    # ui_elements). NOTE: this stays {} until the autonomous run reporter
+    # propagates the executor's error_code into summary.json; today
+    # run_reporter writes category/stage/last_error but not error_code, so the
+    # `if code:` guard is the honest no-op — never a fabricated code. Wiring it
+    # live is a follow-up (propagate error_code through the run summary).
+    failure_diagnosis = {}
+    if exit_code != 0:
+        from common.error_codes import lookup
+
+        code = str(summary.get("error_code", "") or "").strip()
+        if code:
+            msg, fix = lookup(code)
+            failure_diagnosis = {"error_code": code, "message": msg, "fix": fix}
+
     return {
         "ok": exit_code == 0,
         "operation": "execute",
@@ -334,6 +355,7 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
         "case_memory_hit": bool(case_memory_hit),
         "case_memory_entry": summary.get("case_memory_entry") or case_memory_hit,
         "recommended_next_step": run_assets.get("recommended_next_step"),
+        "failure_diagnosis": failure_diagnosis,
     }
 
 
