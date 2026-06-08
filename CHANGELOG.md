@@ -4,6 +4,8 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-08
+
 ### Fixed
 - **Web DOM compressor was blind to shadow DOM and iframes** — the LLM's "eyes"
   (`compress_web_dom`) used a flat `querySelectorAll('*')` that doesn't pierce
