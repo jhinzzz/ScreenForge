@@ -1412,15 +1412,23 @@ function escapeHtml(s) {
    dropped in as playground/index.html. Matches playground/app.py:
      GET  /api/events       → SSE stream of {type, ts, ...}
      GET  /api/screenshot   → { b64 }
-     GET  /api/actions      → { actions: [...] }   (backfill on load)
+     GET  /api/actions      → { actions: [...] }   (legacy 'action' events only)
    NOTE: current backend emits type:'action'+'screenshot'; the richer
    type:'step' (with code_lines/step_index) is the target contract this UI
    is built for. Both branches are handled below.
+   BACKFILL CAVEAT: /api/actions only replays legacy 'action' events — the
+   live-mirror sink emits 'step' events, which the server does NOT add to its
+   action log, so a browser that connects mid-run does NOT backfill prior steps
+   (it goes live from the next step). Seed replay via /api/run/{id}/steps is a
+   deferred phase-2 feature; see playground/app.py post_step.
    ====================================================================== */
 function connectLiveBackend() {
   setStatus('connecting');
 
-  // 1) Backfill any history already accumulated before this client connected.
+  // 1) Backfill legacy 'action' history accumulated before this client connected.
+  //    NOTE: this only replays 'action' events; live-mirror 'step' events are not
+  //    in the server's action log, so mid-run reconnects start live from the next
+  //    step (seed replay via /api/run/{id}/steps is deferred — see header comment).
   fetch('/api/actions').then(r => r.json()).then(d => {
     (d.actions || []).forEach(a => routeLiveEvent(a, /*backfill*/ true));
   }).catch(() => {});

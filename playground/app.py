@@ -85,9 +85,10 @@ async def post_step(request: Request):
 
     The base64 frame goes to the single live-frame slot + SSE for real-time
     display; it is deliberately NOT retained in _step_log (arch#2: bounded memory).
-    _step_log keeps only step metadata (+ screenshot_path when the sink supplies
-    one), so a long run can't balloon RAM and the seed survives a restart by
-    re-reading frames from disk.
+    _step_log keeps only step metadata (code_lines + action/locator), so a long
+    run can't balloon RAM. Note the seed therefore carries no frame reference yet:
+    a future phase that wants replay would add a screenshot_path here (the sink
+    sends no such field today — see PlaygroundStepEvent in cli/playground_sink.py).
     """
     global _screenshot_b64
     body = await request.json()
