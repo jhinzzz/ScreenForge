@@ -4,6 +4,27 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-08
+
+### Fixed
+- **PyPI project page was blank** — `pyproject.toml` declared no `readme`, so the
+  built distribution carried an empty long-description and PyPI showed nothing
+  (no README, no overview). Added `readme = "README.md"`. Because a published
+  version is immutable, 0.4.0's page stays blank; this lands the page content
+  from 0.4.1 on.
+- **README links/images broke on PyPI** — the README used repo-relative paths
+  (`docs/assets/demo.gif`, `docs/*.md`, `LICENSE`, …) that only resolve on GitHub;
+  rendered on PyPI they 404 / show a broken hero image. Rewrote them to absolute
+  GitHub URLs (`raw.githubusercontent.com/.../main/...` for images,
+  `github.com/.../blob/main/...` for files, `.../tree/main/...` for the workflows
+  dir) — identical rendering on GitHub, working links on PyPI.
+
+### Packaging
+- The release pipeline's `pypa/gh-action-pypi-publish` was bumped `v1.11.0` →
+  `v1.14.0` (during the 0.4.0 release) so its bundled twine can parse
+  `Metadata-Version: 2.4` wheels emitted by modern setuptools; the older pin
+  rejected a valid wheel with `InvalidDistribution: missing field Name`.
+
 ## [0.4.0] - 2026-06-08
 
 ### Fixed

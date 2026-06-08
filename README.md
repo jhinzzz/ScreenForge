@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/jhinzzz/ScreenForge/actions/workflows/ci.yml/badge.svg)](https://github.com/jhinzzz/ScreenForge/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/jhinzzz/ScreenForge/blob/main/LICENSE)
 
-**[中文](./README_CN.md)** | English
+**[中文](https://github.com/jhinzzz/ScreenForge/blob/main/README_CN.md)** | English
 
 > Describe what to test. Watch it happen. Get a pytest script.
 
 ScreenForge is an AI-driven UI automation engine that turns natural language into executable test scripts. Unlike record-and-replay tools, you don't perform the actions yourself — the AI does it for you.
 
-![ScreenForge Demo](docs/assets/demo.gif)
+![ScreenForge Demo](https://raw.githubusercontent.com/jhinzzz/ScreenForge/main/docs/assets/demo.gif)
 
 ## Why ScreenForge?
 
@@ -108,9 +108,9 @@ Add ScreenForge to your CI pipeline:
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
 ```
 
-Results are auto-uploaded as Allure artifacts. See [action.yml](action.yml) for all inputs.
+Results are auto-uploaded as Allure artifacts. See [action.yml](https://github.com/jhinzzz/ScreenForge/blob/main/action.yml) for all inputs.
 
-See [Agent Integration Guide](docs/agent_guide.md) for the complete protocol.
+See [Agent Integration Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/agent_guide.md) for the complete protocol.
 
 ## Installation (from source)
 
@@ -156,17 +156,17 @@ If ScreenForge generates tests for your project, add this badge to your README:
 
 | Resource | Description |
 |----------|-------------|
-| [Mobile Setup](docs/mobile-setup.md) | Android & iOS device connection guide |
-| [MCP Setup (3 min)](docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
-| [Agent Guide](docs/agent_guide.md) | Integration protocol for AI Agents |
-| [Capability Matrix](docs/capability-matrix.md) | Supported platforms, actions, and locators |
-| [Workflow Examples](docs/workflows/) | YAML workflow templates |
-| [CHANGELOG](CHANGELOG.md) | Version history |
+| [Mobile Setup](https://github.com/jhinzzz/ScreenForge/blob/main/docs/mobile-setup.md) | Android & iOS device connection guide |
+| [MCP Setup (3 min)](https://github.com/jhinzzz/ScreenForge/blob/main/docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
+| [Agent Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/agent_guide.md) | Integration protocol for AI Agents |
+| [Capability Matrix](https://github.com/jhinzzz/ScreenForge/blob/main/docs/capability-matrix.md) | Supported platforms, actions, and locators |
+| [Workflow Examples](https://github.com/jhinzzz/ScreenForge/tree/main/docs/workflows) | YAML workflow templates |
+| [CHANGELOG](https://github.com/jhinzzz/ScreenForge/blob/main/CHANGELOG.md) | Version history |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Issues and PRs welcome!
+See [CONTRIBUTING.md](https://github.com/jhinzzz/ScreenForge/blob/main/CONTRIBUTING.md) for guidelines. Issues and PRs welcome!
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/jhinzzz/ScreenForge/blob/main/LICENSE)
