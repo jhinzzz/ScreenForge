@@ -7,7 +7,7 @@
 | 平台 | 连接能力 | 页面结构采集 | 截图 | 物理动作执行 | 视频/状态产物 | 当前成熟度 |
 |---|---|---|---|---|---|---|
 | Android | `uiautomator2` | XML 压缩 | 支持 | 支持 | `scrcpy` 录像 | 高 |
-| iOS | `facebook-wda` | 暂未实现结构压缩 | 支持 | 基础支持 | 暂无原生录像 | 低 |
+| iOS | `facebook-wda` | XML 压缩（行内标签去影） | 支持 | 基础支持 | 暂无原生录像 | 低 |
 | Web | Playwright + CDP | DOM 压缩（穿透 open shadow DOM + 同源 iframe） | 支持 | 支持 | Playwright 视频 + storage state | 中 |
 
 > ℹ️ **Web DOM 压缩器穿透能力（2026-06）**：`compress_web_dom` 递归遍历 open shadow
@@ -41,6 +41,18 @@
 > LLM 去点死控件卡超时。早期 iOS 曾用相反的 `enabled:false` 键，已统一到 `disabled:true`，让单个
 > LLM 大脑跨端只需认一种「不可交互」词汇。Android 真机验证：数据漫游页空 SIM 卡槽（天然禁用）已正确
 > 标 `disabled` 且不可点。
+
+> ℹ️ **iOS 列表行标签去影（Cell/Button/Switch，2026-06）**：iOS（WDA）把每个列表行的标签
+> **同时**挂在行内交互控件（`Button`/`Cell`/`Switch`）和一个嵌套的 `StaticText` 上，扁平压缩会
+> 让同一标签每行重复 2-3 次——一个可点目标 + 一个无意义的文本影子（Switch 行更是 `Cell` +
+> `StaticText` + `Switch` 三连）。真机实测（iOS 18.3 / 设置）：键盘页 44 个元素里 14 个（32%）是纯
+> 文本影子，主屏约一半的行如此。除浪费 token 外，还让 `d(label='通用')` 产生歧义（同时命中可点目标
+> 与其文本影子）。压缩器现在把每行折叠为**按标签唯一的那个可操作控件**（优先级 `Switch > Button >
+> Cell`），丢弃 StaticText 影子。**诚实边界（均经真机验证）**：去影**感知可见性**——绝不让一个不可见的
+> 高优先级孪生体顶替掉可见的兄弟（真实在屏元素绝不能凭空消失）；**仅精确同标签**匹配（不同的副标题，
+> 如 Apple 账户行的标题/副标题，保留）；作用域限定在行内、**不跨嵌套 `Cell` 边界**（内层行的独立标签
+> 不会被外层 wrapper 吞掉）；无交互孪生体的独立文案（如 `关`/Off）保留；`Switch` 保留其开/关 `value`。
+> 真机前后对比：设置主屏 31 → 20 个元素，键盘页 44 → 21，且每个可定位行都保留。
 
 > ℹ️ **Android 列表行标签提升（RecyclerView / Preference，2026-06）**：Android 列表行的主导形态是
 > **可点击容器**（LinearLayout/ViewGroup，无自身 text/desc）+ 标签在**不可点击的子 TextView** 里。
@@ -145,7 +157,7 @@
 ## 当前已知边界
 
 1. `APP_ENV_CONFIG` 当前仓库默认只配置了 `dev` 环境，其他环境需用户自行补充。
-2. iOS 目前只具备基础接入能力，尚未实现和 Android / Web 同等级的结构采集、录像和启动流程。
+2. iOS 已具备结构采集（WDA XML 压缩 + 行内标签去影），但录像与启动流程仍弱于 Android / Web，整体成熟度偏低。
 3. Web 当前依赖已启动的 Chrome CDP 会话，使用前需要准备好 `WEB_CDP_URL`。
 4. `plan-only` 和 `dry-run` 是控制面能力，重点是预览与排障，不替代正式 `run` 模式。
 5. `mcp-server` 当前暴露 `ui_agent_capabilities`、`ui_agent_inspect_ui`、`ui_agent_load_case_memory`、`ui_agent_execute` 和 `ui_agent_load_run` 五个 tools。

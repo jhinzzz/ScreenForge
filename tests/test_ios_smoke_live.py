@@ -217,3 +217,137 @@ def test_ios_swipe_all_directions(wda_adapter):
         )
         assert result["success"] is True, f"iOS swipe {direction} failed"
         assert f"d.swipe_{direction}()" in "".join(result["code_lines"])
+
+
+# ---------------------------------------------------------------------------
+# List-row label-shadow suppression — real-device contract.
+# WDA nests a label-carrying StaticText inside each row's interactive control, so
+# a flat walk emits the same label 2-3x per row (a Button/Cell/Switch + an inert
+# StaticText twin). The compressor now keeps ONE actionable element per in-row
+# label. These drive the real Settings app via `simctl` (non-destructive).
+# ---------------------------------------------------------------------------
+
+def _open_settings(udid: str) -> None:
+    """Open Settings at its ROOT on the booted sim. Terminate first so a relaunch
+    resets to the top screen (a bare `launch` only foregrounds wherever it was
+    left), making the test independent of prior navigation."""
+    subprocess.run(["xcrun", "simctl", "terminate", udid, "com.apple.Preferences"],
+                   capture_output=True, timeout=10)
+    time.sleep(1)
+    subprocess.run(["xcrun", "simctl", "launch", udid, "com.apple.Preferences"],
+                   capture_output=True, timeout=10)
+    time.sleep(2)
+
+
+def test_ios_list_rows_have_no_label_shadow_dup(wda_adapter, booted_sim):
+    """On the real Settings list, no in-row label is duplicated across an
+    interactive control AND its StaticText shadow. Before the fix, ~half the rows
+    on the root and 14/44 elements on the keyboard screen were pure shadows."""
+    import xml.etree.ElementTree as ET
+
+    from utils.utils_ios import compress_ios_xml
+
+    _open_settings(booted_sim)
+    raw = wda_adapter.driver.source()
+    els = json.loads(compress_ios_xml(raw)).get("ui_elements", [])
+    if len([e for e in els if e.get("type") in ("Cell", "Button")]) < 5:
+        pytest.skip("Settings root not showing a list (variant/locale)")
+
+    # Build the set of labels that, in the RAW tree, are repeated WITHIN a single
+    # Cell across an interactive element + a StaticText — those are the shadows the
+    # compressor must collapse. Also count each label's RAW VISIBLE occurrences:
+    # the contract is that suppression happened (compressed count < raw count), NOT
+    # that the label is globally unique — a label can legitimately appear once as a
+    # deduped row AND once more outside any Cell (e.g. a NavigationBar title that
+    # repeats the row name), and that second occurrence must survive.
+    # `_INTERACTIVE` = the row types the brain targets. We scope BOTH the shadow set
+    # and the survival invariant to labels carried by one of these — so we never
+    # conflate an in-row StaticText shadow (which the compressor SHOULD collapse) or a
+    # genuinely-erased row (which it must NOT) with deliberately-filtered chrome like a
+    # scroll bar ('垂直滚动条, …', type Other), which the compressor honestly drops.
+    _INTERACTIVE = ("XCUIElementTypeButton", "XCUIElementTypeCell", "XCUIElementTypeSwitch")
+    root = ET.fromstring(raw)
+    shadowed_labels = set()
+    raw_visible_total = {}    # label -> count among ALL visible nodes (for the dup check)
+    interactive_labels = set()  # labels that ride a Button/Cell/Switch in the raw tree
+    for n in root.iter():
+        lbl = (n.attrib.get("label") or "").strip()
+        if lbl and n.attrib.get("visible") == "true":
+            raw_visible_total[lbl] = raw_visible_total.get(lbl, 0) + 1
+            if n.attrib.get("type") in _INTERACTIVE:
+                interactive_labels.add(lbl)
+    for cell in root.iter():
+        if cell.attrib.get("type") != "XCUIElementTypeCell":
+            continue
+        by_label: dict = {}
+        for n in cell.iter():
+            lbl = (n.attrib.get("label") or "").strip()
+            if lbl:
+                t = (n.attrib.get("type") or "").replace("XCUIElementType", "")
+                by_label.setdefault(lbl, set()).add(t)
+        for lbl, types in by_label.items():
+            if "StaticText" in types and types & {"Button", "Cell", "Switch"}:
+                shadowed_labels.add(lbl)
+
+    if not shadowed_labels:
+        pytest.skip("no in-row label shadows on this Settings variant to assert against")
+
+    # Red-line #2 invariant (catches the invisible-winner erase bug ON DEVICE):
+    # every label carried by a VISIBLE interactive control in the raw tree must still
+    # be present in the compressed output. Dedup may reduce a label's COUNT, but never
+    # erase a real, targetable on-screen row entirely.
+    compressed_labels = {e.get("label") for e in els if e.get("label")}
+    for lbl in interactive_labels:
+        assert lbl in compressed_labels, (
+            f"row label {lbl!r} rides a visible Button/Cell/Switch in the raw tree but "
+            "is absent from the compressed output — a real targetable row was erased "
+            "(red-line: never drop an assertable element)"
+        )
+
+    for lbl in shadowed_labels:
+        compressed_count = sum(1 for e in els if e.get("label") == lbl)
+        # Suppression must have dropped at least the in-row StaticText shadow, so the
+        # compressed count is strictly below the raw visible count. (A legitimately
+        # distinct outside-Cell twin survives, so we don't demand count <= 1.) Guard
+        # raw_visible_total with .get: a shadowed label collected from the (possibly
+        # invisible) cell subtree may not be in the visible-only tally.
+        raw_count = raw_visible_total.get(lbl, 0)
+        if raw_count < 2:
+            continue  # not actually duplicated among visible nodes — nothing to assert
+        assert compressed_count < raw_count, (
+            f"label {lbl!r}: compressed {compressed_count}x vs raw-visible "
+            f"{raw_count}x — the in-row StaticText shadow was not suppressed"
+        )
+
+
+def test_ios_deduped_row_label_still_navigates(wda_adapter, booted_sim):
+    """End-to-end: after dedup, tapping a row BY ITS LABEL still navigates — the
+    suppression dropped the inert StaticText shadow, never the actionable control.
+    Non-destructive: open a submenu, assert the screen changed."""
+    from common.executor import UIExecutor
+
+    _open_settings(booted_sim)
+    before = {e.get("label") for e in _ios_tree(wda_adapter).get("ui_elements", []) if e.get("label")}
+
+    tree = _ios_tree(wda_adapter)
+    stable = ("通用", "辅助功能", "隐私与安全性", "General", "Accessibility", "Privacy & Security")
+    target = next(
+        (e.get("label") for e in tree.get("ui_elements", [])
+         if e.get("type") in ("Button", "Cell") and e.get("label") in stable),
+        None,
+    )
+    if not target:
+        pytest.skip("no stable settings row on this variant")
+
+    executor = UIExecutor(wda_adapter.driver, platform="ios")
+    result = executor.execute_and_record(
+        {"action": "click", "locator_type": "text",
+         "locator_value": target, "extra_value": ""}
+    )
+    assert result["success"] is True, f"click on deduped row {target!r} failed"
+    time.sleep(1.5)
+    after = {e.get("label") for e in _ios_tree(wda_adapter).get("ui_elements", []) if e.get("label")}
+    assert after != before, (
+        f"tapping deduped row {target!r} did not navigate — dedup dropped the "
+        "actionable element instead of the shadow"
+    )

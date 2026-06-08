@@ -57,6 +57,24 @@ All notable changes to ScreenForge will be documented in this file.
   id/desc filters stays an honest headless clickable rather than vanishing; an inner
   card's label is never stolen by an outer wrapper. Real-device delta: 18 clickable /
   0 labeled-clickable / 16 unlocatable → 20 / 19 / 0.
+- **iOS list rows were emitted 2-3x each** — WDA nests a label-carrying
+  `StaticText` inside every list row's interactive control, so the flat compressor
+  emitted the same label multiple times per row: a `Button`/`Cell` plus an inert
+  `StaticText` twin (a Switch row yielded `Cell` + `StaticText` + `Switch`, all
+  identically labelled). Measured on a real simulator (iOS 18.3 / Settings): 14 of
+  44 elements on the keyboard screen (32%) were pure StaticText shadows, ~half the
+  rows on the Settings root. The bloat wasted tokens and made `d(label='通用')`
+  ambiguous (it matched the tap target AND its inert text twin). The compressor now
+  collapses each row to the single actionable control per label (priority
+  `Switch > Button > Cell`), dropping the StaticText shadow. **Honesty boundaries
+  (verified on-device):** the suppression is visibility-aware (never lets an
+  invisible higher-priority twin erase a visible row — a real on-screen element must
+  never vanish); exact-label-match only (a distinct subtitle, e.g. the Apple-account
+  row's title/subtitle, survives); scoped to the row, not crossing a nested-`Cell`
+  boundary (an inner row's distinct label is never eaten by its outer wrapper); a
+  standalone caption with no interactive twin (e.g. `关`/Off) survives; a `Switch`
+  keeps its on/off `value`. Real-device delta: Settings root 31 → 20 elements,
+  keyboard 44 → 21, with every targetable row preserved.
 - **`--action --json` failures were a dead string** (`{"result":"engine_error",
   "error":"Action failed: click:Login"}`) with no page and no guidance, and the
   useful `[E0xx] Fix:` diagnostics lived only on stderr (which agent examples drop
