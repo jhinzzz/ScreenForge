@@ -4,6 +4,26 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Playground 实时镜像台（Live Mirror）—— 边写用例边看页面**。`screenforge --playground`
+  起的常驻可视化进程现在能实时显示**正在生成的 pytest 代码**与**被操作的页面**，二者并排联动。
+  根因不是缺数据，是"没把数据接出去那一根线"：每步 `result["code_lines"]` 与三端统一的
+  `take_screenshot()` 早已现成，playground 的 `POST /api/*` 入口却是零调用的死代码。本次接上这根线：
+  - 新增 `cli/playground_sink.py`——一个 **fire-and-forget 旁路观察者**，挂在 `save_to_disk` 之后，
+    每步把代码 + 截图 POST 给常驻 playground。daemon 线程推送 + 分离超时 `(0.3, 0.5)`，playground
+    没开/拒连/卡死一律静默 skip。**红线**：绝不因推送失败改变 `--action` 的 `0/1` 退出码或耗时
+    （`--playground-sink` 默认关 = 零开销，连截图都不抓）。
+  - 三个执行入口同构接入（共用 `build_step_event` 单一构造点 + `maybe_push_step` 单一守卫入口）：
+    `--action` 单步、`workflow` YAML 多步、`main.py` 人类录制。
+  - playground 新增 `POST /api/step`（按 `run_id` 命名空间累积**步骤元数据**，`OrderedDict` LRU
+    ≤20 run × ≤500 步；base64 帧只进实时单槽 + SSE，**不进**累积日志——内存有界）+ 前端只读代码栏
+    （Prism 语法高亮 + 最新行 ember 高亮 + 平滑滚底）+ 三区布局（截图 ｜ 代码近等宽并列 ｜ 动作历史）。
+  - ⭐ **"时间旅行"seed**：数据按 `step_index` 持久累积 + `GET /api/run/{run_id}/steps` 只读端点 +
+    底部 filmstrip 时间轴骨架（选中跨高亮代码/历史/截图）。完整回溯交互留作未来迭代。
+  - 新增 CLI 旗标 `--playground-sink`（opt-in）/ `--playground-url`。依赖 `screenforge[playground]` extra，
+    零新增基础依赖（`requests` 早已在 `requirements.txt`）。
+  - **诚实边界**：移动端"实时"是步进式刷新（每步 0.5–2s，设备物理上限），前端如实呈现离散快照，不假装连续流。
+
 ## [0.4.1] - 2026-06-08
 
 ### Fixed

@@ -5,6 +5,7 @@ import os
 import sys
 
 import cli.shared as _shared
+from cli.playground_sink import build_sink_from_args, maybe_push_step
 from cli.reporter import (
     _apply_resume_summary,
     _build_action_summary,
@@ -206,6 +207,17 @@ def run_action_default_mode(
 
         history_manager.add_step(result["code_lines"], result["action_description"])
         save_to_disk(output_script_path, history_manager.get_current_file_content())
+        # ★ Live-mirror bypass (opt-in --playground-sink). join_on_exit=True: a bare
+        # --action exits right after, so wait briefly for the last frame to land.
+        maybe_push_step(
+            build_sink_from_args(args, join_on_exit=True),
+            args=args,
+            reporter=reporter,
+            adapter=adapter,
+            action_data=action_data,
+            result=result,
+            step_index=None,  # resolver picks: session counter, or 1 for a bare action
+        )
         reporter.emit_event(
             "action_executed",
             step=1,

@@ -1,109 +1,1721 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ScreenForge Playground</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ScreenForge Playground — Live Mirror</title>
+
+<!--
+  ScreenForge Playground · Live Mirror (high-fidelity prototype)
+  ──────────────────────────────────────────────────────────────
+  Single file. Zero build. Double-click to open in a browser.
+
+  WHAT THIS IS
+  - A design blueprint for playground/index.html (the live test-mirror).
+  - Three regions: live screenshot (left) · live pytest code (right-top) · action history (right-bottom).
+  - A bottom filmstrip is the visual SEED for future "time travel" (Trace-Viewer style scrubbing).
+
+  DATA SHAPE (matches the target SSE contract — see backend notes at bottom of this file)
+    step event:        { type:"step", ts, run_id, step_index, code_lines:[...],
+                         action_description, action, locator_type, locator_value,
+                         extra_value, success, screenshot_b64? }
+    screenshot event:  { type:"screenshot", ts, size }   // client then GETs /api/screenshot
+
+  HOW THE PROTOTYPE FAKES IT
+  - A scripted 6-step login story is replayed on a timer (PrototypeFeed) that emits events
+    of the EXACT shape above into the same handlers the production EventSource path uses.
+  - Flip USE_LIVE_BACKEND = true to swap the fake feed for a real EventSource('/api/events').
+    The live wiring is written out in full (connectLiveBackend) so this file can ship as-is.
+-->
+
+<!-- Prism.js (Python syntax highlight) — REQUIRED dependency, CDN only -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+<!-- JetBrains Mono (code) + Sora (UI display) — optional, graceful fallback to system stacks -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
 <style>
+/* ============================================================
+   DESIGN TOKENS
+   Base palette continues the existing playground (#0f0f0f / #1a1a2e / blue / green / purple / amber).
+   Added: an "ember" forge accent + an elevation/surface scale for depth.
+   ============================================================ */
+:root {
+  /* Surfaces — near-black, layered for depth (Trace-Viewer / VSCode feel) */
+  --bg-0: #0b0b0d;            /* app void (behind everything) */
+  --bg-1: #0f0f12;           /* primary background */
+  --bg-2: #131318;           /* panels */
+  --bg-3: #1a1a21;           /* raised cards / rows */
+  --bg-4: #21212b;           /* hover */
+  --bg-header: #15151f;      /* top bar (evolves #1a1a2e) */
+
+  /* Hairlines */
+  --line: #26262f;
+  --line-soft: #1d1d24;
+  --line-strong: #34343f;
+
+  /* Text */
+  --text-hi: #ecedf1;
+  --text: #c4c6cf;
+  --text-dim: #8a8c98;
+  --text-faint: #7f8294;    /* WCAG AA: ~4.5:1 on dark surfaces (was #5a5c68 @ 2.8:1) */
+
+  /* Brand + semantic accents (kept consistent with existing palette) */
+  --blue: #60a5fa;           /* title / links */
+  --blue-deep: #1e3a5f;
+  --green: #34d399;          /* action type */
+  --purple: #a5b4fc;         /* target / locator */
+  --amber: #fbbf24;          /* value */
+  --live: #6ee7b7;           /* connected */
+  --red: #fca5a5;            /* disconnected / fail */
+  --red-deep: #3a1e1e;
+
+  /* Ember — the "Forge" signature accent (molten metal). Used sparingly: the live rail,
+     the active step, the run pulse. This is the one thing you remember. */
+  --ember: #ff7849;
+  --ember-soft: #ffb38a;
+  --ember-glow: rgba(255, 120, 73, 0.55);
+
+  /* Radii + shadow */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
+  --shadow-img: 0 18px 50px -12px rgba(0, 0, 0, 0.75), 0 4px 14px -6px rgba(0, 0, 0, 0.6);
+  --shadow-panel: 0 1px 0 rgba(255,255,255,0.02) inset;
+
+  /* Fonts */
+  --font-ui: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
+
+  --gap: 12px;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-header { padding: 12px 20px; background: #1a1a2e; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; }
-header h1 { font-size: 18px; font-weight: 600; color: #60a5fa; }
-header .status { font-size: 12px; padding: 3px 8px; border-radius: 4px; background: #1e3a5f; color: #93c5fd; }
-.container { flex: 1; display: grid; grid-template-columns: 1fr 380px; overflow: hidden; }
-.screenshot-panel { display: flex; align-items: center; justify-content: center; padding: 20px; background: #111; }
-.screenshot-panel img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.5); }
-.screenshot-panel .placeholder { color: #666; font-size: 14px; text-align: center; }
-.actions-panel { border-left: 1px solid #333; display: flex; flex-direction: column; }
-.actions-header { padding: 12px 16px; border-bottom: 1px solid #333; font-size: 13px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
-.actions-list { flex: 1; overflow-y: auto; padding: 8px; }
-.action-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 6px; background: #1a1a1a; border: 1px solid #2a2a2a; font-size: 13px; }
-.action-item .action-type { color: #34d399; font-weight: 600; margin-right: 6px; }
-.action-item .action-target { color: #a5b4fc; }
-.action-item .action-time { color: #666; font-size: 11px; float: right; }
-.action-item .action-value { color: #fbbf24; font-size: 12px; margin-top: 2px; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-1);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Atmosphere: faint ember bloom top-left + cool bloom right, over a subtle grid. */
+  background-image:
+    radial-gradient(900px 460px at 8% -8%, rgba(255, 120, 73, 0.07), transparent 60%),
+    radial-gradient(820px 520px at 102% 8%, rgba(96, 165, 250, 0.06), transparent 62%),
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: auto, auto, 46px 46px, 46px 46px;
+  background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+}
+
+/* Fine grain overlay for texture (developer-tool tactility), non-interactive. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  z-index: 9999;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+header {
+  flex: 0 0 auto;
+  height: 52px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, var(--bg-header), #121219);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+  z-index: 5;
+}
+/* Hot filament line under the header — subtle ember signature. */
+header::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ember-glow) 18%, transparent 42%);
+  opacity: 0.5;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .mark {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  display: grid; place-items: center;
+  background: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 0 1px rgba(255,120,73,0.12), 0 0 14px -4px var(--ember-glow);
+  position: relative;
+  overflow: hidden;
+}
+.brand .mark svg { width: 15px; height: 15px; display: block; }
+.brand h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text-hi);
+  white-space: nowrap;
+}
+.brand h1 b { color: var(--blue); font-weight: 700; }
+.brand .tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ember-soft);
+  border: 1px solid rgba(255,120,73,0.28);
+  background: rgba(255,120,73,0.06);
+  padding: 2px 6px;
+  border-radius: 5px;
+  margin-left: 2px;
+}
+
+.bar-spacer { flex: 1; }
+.bar-divider { width: 1px; height: 22px; background: var(--line); }
+
+/* Connection status badge */
+.status {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 500;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-3);
+  white-space: nowrap;
+  transition: background .25s, color .25s, border-color .25s;
+}
+.status .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+}
+.status[data-state="live"]        { color: var(--live);  border-color: rgba(110,231,183,0.35); background: rgba(110,231,183,0.08); }
+.status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(96,165,250,0.35);  background: rgba(96,165,250,0.08); }
+.status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(252,165,165,0.35);  background: rgba(252,165,165,0.08); }
+.status[data-state="live"] .dot       { animation: pulse-dot 1.9s ease-out infinite; }
+.status[data-state="connecting"] .dot { animation: blink 1s steps(2, start) infinite; }
+@keyframes pulse-dot {
+  0%   { box-shadow: 0 0 0 0 rgba(110,231,183,0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(110,231,183,0); }
+  100% { box-shadow: 0 0 0 0 rgba(110,231,183,0); }
+}
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* Platform segmented control */
+.platform-seg {
+  display: inline-flex;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.platform-seg button {
+  font-family: var(--font-ui);
+  font-size: 11.5px; font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 0;
+  padding: 4px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: color .15s, background .15s;
+}
+.platform-seg button:hover { color: var(--text); }
+.platform-seg button[aria-pressed="true"] {
+  color: var(--text-hi);
+  background: var(--bg-4);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04), 0 -1px 0 rgba(0,0,0,0.3) inset;
+}
+.platform-seg button .glyph { font-size: 12px; opacity: 0.9; }
+.platform-seg button[aria-pressed="true"] .glyph { color: var(--blue); }
+
+/* run id + file chips */
+.meta-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+.meta-chip .k { color: var(--text-faint); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.meta-chip .v { color: var(--text); }
+.meta-chip.file .v { color: var(--green); }
+
+/* "Open in VSCode" button (visual only in prototype) */
+.btn-vscode {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-ui);
+  font-size: 12px; font-weight: 500;
+  color: var(--text-hi);
+  background: linear-gradient(180deg, #1f2a3d, #18222f);
+  border: 1px solid #2c3b52;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.btn-vscode:hover { border-color: #3a5a85; box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.btn-vscode:active { transform: translateY(1px); }
+.btn-vscode svg { width: 14px; height: 14px; }
+.btn-vscode .kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 2px;
+}
+
+/* ============================================================
+   MAIN GRID  — left screenshot | right (code over history)
+   ============================================================ */
+.workspace {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(380px, 1fr);
+  grid-template-rows: 1fr;
+  gap: var(--gap);
+  padding: var(--gap);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.right-stack {
+  display: grid;
+  grid-template-rows: minmax(0, 1.18fr) minmax(0, 0.82fr);
+  gap: var(--gap);
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Shared panel chrome */
+.panel {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+.panel-head {
+  flex: 0 0 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border-bottom: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent);
+}
+.panel-head .title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.panel-head .title .ico { color: var(--text-faint); display: inline-flex; }
+.panel-head .title .ico svg { width: 13px; height: 13px; display: block; }
+.panel-head .spacer { flex: 1; }
+.panel-head .hint {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* ---------- LEFT: live screenshot ---------- */
+.shot-panel .panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background:
+    radial-gradient(80% 80% at 50% 40%, rgba(255,255,255,0.018), transparent 70%),
+    var(--bg-0);
+  position: relative;
+}
+/* viewport frame that adapts to web (landscape) vs phone (portrait) */
+.shot-frame {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-img);
+  transition: max-width .45s cubic-bezier(.4,0,.2,1), aspect-ratio .45s cubic-bezier(.4,0,.2,1);
+  background: #0e0e12;
+  overflow: hidden;
+  outline: 1px solid var(--line-strong);
+}
+.shot-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* web: wide, capped by width */
+.shot-frame.web   { aspect-ratio: 16 / 10; width: min(100%, 980px); }
+/* phone: tall, capped by HEIGHT so it never overflows; centered by flex parent.
+   We cap height via the frame's max-height (inherited) and let width follow aspect-ratio. */
+.shot-frame.phone {
+  aspect-ratio: 9 / 19.5;
+  width: auto;
+  height: min(100%, 660px);
+  border-radius: 26px;
+  outline: none;
+  border: 7px solid #1c1c24;
+  box-shadow: var(--shadow-img), 0 0 0 1px #000 inset;
+}
+.shot-frame.phone::before { /* notch */
+  content: "";
+  position: absolute;
+  top: 7px; left: 50%; transform: translateX(-50%);
+  width: 34%; height: 16px;
+  background: #0a0a0d;
+  border-radius: 0 0 11px 11px;
+  z-index: 3;
+}
+
+/* live-edge glow + scanline so the screenshot reads as a video feed, not a static png */
+.shot-frame::after {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(110,231,183,0.0) inset;
+  transition: box-shadow .3s;
+}
+.shot-panel.is-fresh .shot-frame::after { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.5) inset; }
+
+/* subtle moving scanline overlay on the live feed */
+.scanline {
+  position: absolute; left: 0; right: 0; height: 64px;
+  pointer-events: none; z-index: 2;
+  background: linear-gradient(180deg, transparent, rgba(110,231,183,0.05), transparent);
+  animation: scan 5.5s linear infinite;
+  opacity: 0.6;
+}
+@keyframes scan { 0% { top: -64px; } 100% { top: 100%; } }
+
+/* live label chip on the frame corner */
+.shot-live-tag {
+  position: absolute; top: 10px; left: 10px; z-index: 4;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: .08em;
+  color: var(--live);
+  background: rgba(8,16,12,0.72);
+  border: 1px solid rgba(110,231,183,0.3);
+  backdrop-filter: blur(6px);
+  padding: 3px 8px; border-radius: 6px;
+}
+.shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse-dot 1.9s ease-out infinite; }
+/* step caption: which step this frame corresponds to */
+.shot-step-tag {
+  position: absolute; bottom: 10px; left: 10px; z-index: 4;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: rgba(8,8,12,0.7);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(6px);
+  padding: 4px 9px; border-radius: 6px;
+  max-width: calc(100% - 20px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.shot-step-tag b { color: var(--ember-soft); font-weight: 500; }
+
+/* placeholder (waiting for first frame) */
+.shot-placeholder {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  text-align: center; color: var(--text-faint);
+  max-width: 360px;
+}
+.shot-placeholder .glyph {
+  width: 64px; height: 64px; border-radius: 16px;
+  display: grid; place-items: center;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  position: relative;
+}
+.shot-placeholder .glyph::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 16px;
+  background: conic-gradient(from 0deg, transparent, var(--ember-glow), transparent 60%);
+  animation: spin 2.6s linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
+          mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.shot-placeholder .glyph svg { width: 26px; height: 26px; color: var(--text-dim); }
+.shot-placeholder h2 { font-size: 15px; color: var(--text); font-weight: 600; }
+.shot-placeholder p { font-size: 12.5px; line-height: 1.6; }
+.shot-placeholder code {
+  font-family: var(--font-mono); font-size: 11.5px;
+  color: var(--ember-soft); background: rgba(255,120,73,0.07);
+  border: 1px solid rgba(255,120,73,0.18);
+  padding: 1px 6px; border-radius: 5px;
+}
+
+/* ---------- RIGHT-TOP: live test code ---------- */
+.code-panel .panel-head .filetab {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11.5px; color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  padding: 5px 11px 7px;
+  margin-bottom: -1px;
+  border-radius: 7px 7px 0 0;
+}
+.code-panel .panel-head .filetab .py { color: var(--blue); }
+.code-panel .panel-head .filetab .name { color: var(--text-hi); }
+.code-panel .panel-head .filetab .live-pip { width: 6px; height: 6px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 8px var(--ember-glow); animation: pulse-dot 1.9s infinite; }
+
+.code-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #0c0c10;       /* slightly deeper than panel so code reads as a "buffer" */
+  scroll-behavior: smooth;
+}
+/* Custom scrollbars (webkit) — thin, dark, dev-tool style */
+.code-scroll::-webkit-scrollbar,
+.history-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.code-scroll::-webkit-scrollbar-thumb,
+.history-scroll::-webkit-scrollbar-thumb { background: #2a2a33; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+.code-scroll::-webkit-scrollbar-thumb:hover,
+.history-scroll::-webkit-scrollbar-thumb:hover { background: #3a3a46; background-clip: padding-box; }
+.code-scroll, .history-scroll { scrollbar-width: thin; scrollbar-color: #2a2a33 transparent; }
+
+pre.code-pre {
+  margin: 0;
+  padding: 10px 0 40px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.62;
+  background: transparent !important;
+  counter-reset: ln;
+  min-width: max-content;
+}
+pre.code-pre code { font-family: var(--font-mono) !important; background: transparent !important; text-shadow: none !important; }
+
+/* each emitted code line is a row with a gutter number + an ember rail */
+.cl {
+  display: block;
+  position: relative;
+  padding: 0 16px 0 50px;
+  /* Long locators (e.g. d.get_by_text('合约').first.click(timeout=30000.0)) wrap
+     instead of scrolling off-panel; the 50px left padding + absolute gutter make
+     wrapped continuation lines hang-indent to the code column. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  counter-increment: ln;
+}
+.cl::before { /* line number gutter */
+  content: counter(ln);
+  position: absolute;
+  left: 0; top: 0;
+  width: 38px;
+  text-align: right;
+  padding-right: 10px;
+  color: var(--text-faint);
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.cl::after { /* ember rail (left edge), lit briefly on append, persists on selected step */
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--ember);
+  opacity: 0;
+  transition: opacity .5s ease;
+}
+/* the freshly-appended lines: fade-in + lit rail (no full-block repaint flash) */
+.cl.fresh {
+  animation: line-in .42s cubic-bezier(.2,.7,.2,1) both;
+}
+.cl.fresh::after { opacity: 1; animation: rail-fade 1.5s ease forwards; }
+@keyframes line-in {
+  from { opacity: 0; transform: translateX(6px); background: rgba(255,120,73,0.1); }
+  to   { opacity: 1; transform: none; background: transparent; }
+}
+@keyframes rail-fade { 0%,55% { opacity: 1; } 100% { opacity: 0; } }
+
+/* a step's lines stay grouped; hovering / selecting a step in history lights its rail */
+.cl[data-step].hot::after { opacity: 0.9 !important; animation: none; }
+.cl[data-step].hot { background: rgba(255,120,73,0.05); }
+/* failing step lines get a red rail tint */
+.cl[data-fail="1"].hot::after { background: var(--red); }
+.cl[data-fail="1"].hot { background: rgba(252,165,165,0.05); }
+
+/* code-panel empty state */
+.code-empty {
+  padding: 22px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.7;
+}
+.code-empty .c { color: #7c8a72; }   /* WCAG AA: ~5:1 (was #5f6b57 @ 3.3:1) */
+
+/* ---------- RIGHT-BOTTOM: action history ---------- */
+.history-panel .panel-head .count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.history-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 7px;
+}
+.action-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px 8px 9px;
+  margin-bottom: 5px;
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  cursor: pointer;                  /* clickable — time-travel seed */
+  transition: background .15s, border-color .15s, transform .08s;
+  animation: row-in .35s ease both;
+}
+@keyframes row-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.action-item:hover { background: var(--bg-4); border-color: var(--line-strong); }
+.action-item:active { transform: scale(0.995); }
+.action-item:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* selected (time-travel target) state */
+.action-item.selected {
+  background: linear-gradient(90deg, rgba(255,120,73,0.10), rgba(255,120,73,0.03) 60%, transparent);
+  border-color: rgba(255,120,73,0.45);
+}
+.action-item.selected::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0; width: 2.5px;
+  background: var(--ember);
+  border-radius: 2px 0 0 2px;
+  box-shadow: 0 0 10px var(--ember-glow);
+}
+/* the live/current step gets a soft pulsing left marker until selection moves */
+.action-item.current::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0; width: 2.5px;
+  background: var(--live);
+  border-radius: 2px 0 0 2px;
+  animation: pulse-bar 1.9s ease-in-out infinite;
+}
+@keyframes pulse-bar { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* step index bubble */
+.action-item .idx {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-dim);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+}
+.action-item.selected .idx { color: var(--ember-soft); border-color: rgba(255,120,73,0.4); }
+
+.action-item .body { min-width: 0; }
+.action-item .line1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.action-item .a-type {
+  font-family: var(--font-mono);
+  font-weight: 700; font-size: 12px;
+  color: var(--green);
+  flex: 0 0 auto;
+}
+.action-item .a-type.assert { color: #67e8f9; }
+.action-item .a-type.goto   { color: var(--blue); }
+.action-item .a-target {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--purple);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.action-item .a-target .loctype { color: var(--text-faint); }
+.action-item .a-value {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--amber);
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.action-item .a-desc {
+  font-size: 11px; color: var(--text-faint);
+  margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.action-item .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: 0 0 auto; }
+.action-item .a-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-faint); }
+.action-item .a-stat {
+  width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+}
+.action-item .a-stat.ok   { color: var(--live); background: rgba(110,231,183,0.12); }
+.action-item .a-stat.fail { color: var(--red);  background: rgba(252,165,165,0.14); }
+/* failing rows tinted */
+.action-item.is-fail { border-color: rgba(252,165,165,0.3); }
+.action-item.is-fail .a-type { color: var(--red); }
+
+.history-empty {
+  padding: 26px 18px; text-align: center;
+  color: var(--text-faint); font-size: 12.5px; line-height: 1.7;
+}
+
+/* ============================================================
+   BOTTOM FILMSTRIP / TIMELINE  — TIME-TRAVEL SEED (visual only)
+   ============================================================ */
+.timeline {
+  flex: 0 0 auto;
+  height: 92px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, #121218, var(--bg-1));
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  position: relative;
+  z-index: 4;
+}
+.timeline-label {
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: 3px;
+  padding-right: 14px;
+  border-right: 1px solid var(--line);
+}
+.timeline-label .t {
+  font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-dim);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.timeline-label .t .ico svg { width: 13px; height: 13px; display: block; }
+.timeline-label .seed {
+  font-family: var(--font-mono);
+  font-size: 9.5px; letter-spacing: .04em;
+  color: var(--ember-soft);
+  border: 1px dashed rgba(255,120,73,0.4);
+  background: rgba(255,120,73,0.05);
+  padding: 1px 6px; border-radius: 5px;
+  white-space: nowrap;
+}
+
+/* the rail with frames + connecting track */
+.filmstrip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 2px;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a33 transparent;
+}
+.filmstrip::-webkit-scrollbar { height: 7px; }
+.filmstrip::-webkit-scrollbar-thumb { background: #2a2a33; border-radius: 6px; }
+
+.film-node {
+  flex: 0 0 auto;
+  display: flex; align-items: center;
+}
+/* connector track segment */
+.film-node .track {
+  width: 26px; height: 2px;
+  background: var(--line-strong);
+  position: relative;
+}
+.film-node.done .track { background: linear-gradient(90deg, var(--green), var(--green)); opacity: .5; }
+.film-node:first-child .track { display: none; }
+
+.film-frame {
+  position: relative;
+  width: 84px; height: 54px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: transform .14s ease, border-color .15s, box-shadow .15s;
+  flex: 0 0 auto;
+}
+.film-frame img { width: 100%; height: 100%; object-fit: cover; opacity: .82; }
+.film-frame:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: 0 6px 18px -8px rgba(0,0,0,0.7); }
+.film-frame:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* status dot + step badge on each frame */
+.film-frame .badge {
+  position: absolute; top: 4px; left: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px; font-weight: 700;
+  color: var(--text-hi);
+  background: rgba(8,8,12,0.78);
+  padding: 1px 5px; border-radius: 4px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.film-frame .badge .d { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+.film-frame.fail .badge .d { background: var(--red); }
+.film-frame .act {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  font-family: var(--font-mono);
+  font-size: 8.5px; letter-spacing: .03em;
+  color: var(--text);
+  background: linear-gradient(0deg, rgba(8,8,12,0.92), transparent);
+  padding: 9px 5px 3px;
+  text-align: center;
+  text-transform: lowercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* pending (not yet executed) frames are dim placeholders */
+.film-frame.pending { border-style: dashed; opacity: .55; }
+.film-frame.pending img { display: none; }
+.film-frame.pending .shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,0.05) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.film-frame.pending .act { color: var(--text-faint); }
+
+/* selected + current states (parity with history) */
+.film-frame.selected { border-color: var(--ember); box-shadow: 0 0 0 2px var(--ember-glow), 0 8px 20px -8px rgba(0,0,0,0.7); transform: translateY(-3px); }
+.film-frame.selected img { opacity: 1; }
+.film-frame.current { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.55); }
+
+/* playhead pointer to current/selected (decorative seed) */
+.timeline .scrubber-help {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+  max-width: 130px;
+  line-height: 1.4;
+}
+.timeline .scrubber-help b { color: var(--text-dim); font-weight: 500; }
+
+/* ============================================================
+   RESPONSIVE  — narrow screens: stack right panels under screenshot
+   ============================================================ */
+@media (max-width: 1080px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(280px, 1.1fr) minmax(220px, 0.9fr) minmax(180px, 0.7fr);
+  }
+  .right-stack {
+    display: contents;   /* let code + history become direct grid rows */
+  }
+}
+@media (max-width: 720px) {
+  header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 8px; }
+  .bar-divider { display: none; }
+  .timeline { height: 84px; }
+  .timeline .scrubber-help { display: none; }
+}
+
+/* accessibility: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  .code-scroll { scroll-behavior: auto; }
+}
+
+/* visually-hidden helper for screen-reader live regions */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
 </style>
 </head>
+
 <body>
-<header>
-  <h1>ScreenForge Playground</h1>
-  <span class="status" id="status">Connecting...</span>
+
+<!-- ============================ TOP BAR ============================ -->
+<header role="banner">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <!-- anvil / forge mark -->
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M3 9h11l3 3h4l-3 4H9l-2-3H3V9z" fill="url(#g)" stroke="#ff7849" stroke-width="1.1" stroke-linejoin="round"/>
+        <path d="M9 16v3M7 19h4" stroke="#ffb38a" stroke-width="1.2" stroke-linecap="round"/>
+        <defs><linearGradient id="g" x1="3" y1="9" x2="21" y2="16" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#ff7849" stop-opacity=".35"/><stop offset="1" stop-color="#ff7849" stop-opacity=".08"/>
+        </linearGradient></defs>
+      </svg>
+    </span>
+    <h1>Screen<b>Forge</b> Playground</h1>
+    <span class="tag">Live Mirror</span>
+  </div>
+
+  <div class="bar-spacer"></div>
+
+  <!-- platform selector (web / android / ios) -->
+  <div class="platform-seg" role="group" aria-label="Platform">
+    <button data-platform="web" aria-pressed="true"><span class="glyph">◻</span>web</button>
+    <button data-platform="android" aria-pressed="false"><span class="glyph">▤</span>android</button>
+    <button data-platform="ios" aria-pressed="false"><span class="glyph">▢</span>ios</button>
+  </div>
+
+  <span class="bar-divider"></span>
+
+  <!-- run id -->
+  <span class="meta-chip" title="Current run">
+    <span class="k">run</span><span class="v" id="runId">run_8f3a1c</span>
+  </span>
+
+  <!-- current generated file -->
+  <span class="meta-chip file" title="File being generated">
+    <span class="k">file</span><span class="v" id="fileName">test_auto_20260608_142530.py</span>
+  </span>
+
+  <!-- open in vscode (visual only) -->
+  <button class="btn-vscode" id="openVscode" title="Open the generated file in VSCode (visual only in this prototype)">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="#3a5a85" stroke="#60a5fa" stroke-width="1" stroke-linejoin="round"/></svg>
+    Open in VSCode<span class="kbd">⌘E</span>
+  </button>
+
+  <span class="bar-divider"></span>
+
+  <!-- connection status -->
+  <span class="status" id="status" data-state="connecting" role="status" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <span class="label">Connecting</span>
+  </span>
 </header>
-<div class="container">
-  <div class="screenshot-panel">
-    <img id="screenshot" style="display:none" alt="Live screenshot">
-    <div class="placeholder" id="placeholder">Waiting for screenshot...<br><br>Send a screenshot via POST /api/screenshot<br>or run ScreenForge with --playground</div>
+
+<!-- ============================ WORKSPACE ============================ -->
+<main class="workspace" role="main">
+
+  <!-- LEFT: live screenshot -->
+  <section class="panel shot-panel" id="shotPanel" aria-label="Live screenshot">
+    <div class="panel-head">
+      <span class="title"><span class="ico"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/></svg></span>Live View</span>
+      <span class="spacer"></span>
+      <span class="hint" id="shotHint">1280 × 800 · jpeg · 2 fps</span>
+    </div>
+    <div class="panel-body">
+      <!-- placeholder (waiting for first frame) -->
+      <div class="shot-placeholder" id="shotPlaceholder">
+        <div class="glyph">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        </div>
+        <h2>Waiting for the first frame</h2>
+        <p>The live screencast appears here once a test run starts.<br>
+           Run ScreenForge with <code>--playground</code>, or POST a frame to <code>/api/screenshot</code>.</p>
+      </div>
+      <!-- the live frame (hidden until first screenshot) -->
+      <figure class="shot-frame web" id="shotFrame" style="display:none">
+        <div class="scanline" aria-hidden="true"></div>
+        <span class="shot-live-tag" aria-hidden="true"><span class="dot"></span>LIVE</span>
+        <img id="shotImg" alt="Live screenshot of the application under test" />
+        <figcaption class="shot-step-tag" id="shotStepTag">step 0</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- RIGHT STACK -->
+  <div class="right-stack">
+
+    <!-- RIGHT-TOP: live test code -->
+    <section class="panel code-panel" id="codePanel" aria-label="Generated test code">
+      <div class="panel-head">
+        <span class="filetab">
+          <span class="live-pip" aria-hidden="true"></span>
+          <span class="py">PY</span>
+          <span class="name" id="codeFileName">test_auto_20260608_142530.py</span>
+        </span>
+        <span class="spacer"></span>
+        <span class="hint">pytest · playwright · allure</span>
+      </div>
+      <div class="code-scroll" id="codeScroll" tabindex="0" aria-label="Generated pytest code, updates live">
+        <!-- empty state until first step -->
+        <div class="code-empty" id="codeEmpty">
+<span class="c"># ScreenForge will write a real, runnable pytest file here,</span>
+<span class="c"># one step at a time, as the test executes.</span>
+<span class="c">#</span>
+<span class="c"># waiting for step 1 …</span>
+        </div>
+        <pre class="code-pre" id="codePre" style="display:none"><code class="language-python" id="codeCode"></code></pre>
+      </div>
+    </section>
+
+    <!-- RIGHT-BOTTOM: action history -->
+    <section class="panel history-panel" aria-label="Action history">
+      <div class="panel-head">
+        <span class="title"><span class="ico"><svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>Action History</span>
+        <span class="spacer"></span>
+        <span class="count" id="historyCount">0 steps</span>
+      </div>
+      <div class="history-scroll" id="historyScroll" role="list" aria-label="Test step history (click a step to inspect)">
+        <div class="history-empty" id="historyEmpty">
+          No actions yet.<br>Steps appear here as the test runs — click any step to inspect it.
+        </div>
+      </div>
+    </section>
+
   </div>
-  <div class="actions-panel">
-    <div class="actions-header">Action History</div>
-    <div class="actions-list" id="actions"></div>
+</main>
+
+<!-- ============================ TIMELINE / FILMSTRIP (time-travel seed) ============================ -->
+<footer class="timeline" role="region" aria-label="Step timeline (time-travel — UI only in this phase)">
+  <div class="timeline-label">
+    <span class="t"><span class="ico"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10h18M8 6v12M16 6v12" stroke="currentColor" stroke-width="1.1"/></svg></span>Timeline</span>
+    <span class="seed" title="Visual scaffold only — clicking does not yet rewind the view">⏱ time-travel · seed</span>
   </div>
-</div>
+  <div class="filmstrip" id="filmstrip" role="list" aria-label="Step filmstrip">
+    <!-- film nodes injected by JS -->
+  </div>
+  <div class="scrubber-help">
+    <b>Coming soon:</b> click a frame to rewind the screenshot &amp; highlight its code.
+  </div>
+</footer>
+
+<!-- screen-reader live region for step announcements -->
+<div class="sr-only" id="srLive" aria-live="polite"></div>
+
+
+<!-- =====================================================================
+     SCRIPTS  (Prism core + python component, then app logic)
+     ===================================================================== -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+
 <script>
-const screenshotEl = document.getElementById('screenshot');
-const placeholderEl = document.getElementById('placeholder');
-const actionsEl = document.getElementById('actions');
-const statusEl = document.getElementById('status');
+"use strict";
+/* ======================================================================
+   CONFIG — flip this to go from fake feed → real backend SSE.
+   ====================================================================== */
+const USE_LIVE_BACKEND = true;       // PRODUCTION: real EventSource('/api/events') + seed endpoint.
+                                     // (Flip to false to replay the scripted offline demo.)
 
-function formatTime(ts) {
-  return new Date(ts * 1000).toLocaleTimeString();
+/* ----------------------------------------------------------------------
+   DOM refs
+   ---------------------------------------------------------------------- */
+const els = {
+  status:        document.getElementById('status'),
+  statusLabel:   document.querySelector('#status .label'),
+  runId:         document.getElementById('runId'),
+  fileName:      document.getElementById('fileName'),
+  codeFileName:  document.getElementById('codeFileName'),
+
+  shotPanel:     document.getElementById('shotPanel'),
+  shotFrame:     document.getElementById('shotFrame'),
+  shotImg:       document.getElementById('shotImg'),
+  shotPlaceholder: document.getElementById('shotPlaceholder'),
+  shotStepTag:   document.getElementById('shotStepTag'),
+  shotHint:      document.getElementById('shotHint'),
+
+  codeScroll:    document.getElementById('codeScroll'),
+  codeEmpty:     document.getElementById('codeEmpty'),
+  codePre:       document.getElementById('codePre'),
+  codeCode:      document.getElementById('codeCode'),
+
+  historyScroll: document.getElementById('historyScroll'),
+  historyEmpty:  document.getElementById('historyEmpty'),
+  historyCount:  document.getElementById('historyCount'),
+
+  filmstrip:     document.getElementById('filmstrip'),
+  srLive:        document.getElementById('srLive'),
+};
+
+/* ----------------------------------------------------------------------
+   STATE — single source of truth; both fake & live feeds funnel here.
+   ---------------------------------------------------------------------- */
+const state = {
+  platform: 'web',
+  steps: [],            // [{ step_index, action, locator_type, locator_value, extra_value,
+                        //    action_description, success, ts, code_lines, screenshot, lineIds:[] }]
+  totalExpected: 6,     // total planned steps (for filmstrip placeholders)
+  selectedStep: null,   // time-travel selection (seed)
+};
+
+/* ----------------------------------------------------------------------
+   Helpers
+   ---------------------------------------------------------------------- */
+function fmtTime(ts) {
+  // ts is epoch SECONDS (matches backend time.time()); fall back to ms / now.
+  const d = ts ? new Date(ts < 1e12 ? ts * 1000 : ts) : new Date();
+  return d.toLocaleTimeString([], { hour12: false }) + '.' +
+         String(d.getMilliseconds()).padStart(3, '0').slice(0, 2);
+}
+const ACTION_CLASS = a => (a === 'assert_exist' || a === 'assert_text_equals') ? 'assert'
+                        : (a === 'goto') ? 'goto' : '';
+const ACTION_LABEL = a => ({
+  goto: 'goto', click: 'click', long_click: 'long_click', input: 'input',
+  swipe: 'swipe', press: 'press', hover: 'hover',
+  assert_exist: 'assert', assert_text_equals: 'assert_text',
+}[a] || a);
+
+/* ======================================================================
+   RENDER: CODE PANEL
+   Append-only. Each emitted code_line becomes its own .cl row so we can
+   animate JUST the new lines (fade + ember rail) — never repaint the block.
+   We syntax-highlight the new line's text with Prism, then insert it.
+   ====================================================================== */
+let _firstStepSeen = false;
+
+function appendCodeLines(step) {
+  if (!_firstStepSeen) {
+    _firstStepSeen = true;
+    els.codeEmpty.style.display = 'none';
+    els.codePre.style.display = 'block';
+    // Seed the file header once (the real generator writes this preamble).
+    HEADER_LINES.forEach(t => insertCodeLine(t, { step: 0, fresh: false }));
+  }
+  const ids = [];
+  step.code_lines.forEach((raw) => {
+    const id = insertCodeLine(raw, { step: step.step_index, fresh: true, fail: step.success ? 0 : 1 });
+    ids.push(id);
+  });
+  step.lineIds = ids;
+
+  // Smoothly reveal each fresh line, then auto-scroll to the bottom.
+  requestAnimationFrame(() => {
+    els.codeScroll.scrollTo({ top: els.codeScroll.scrollHeight, behavior: 'smooth' });
+  });
+  // strip the .fresh class after the animation so re-highlights don't re-flash
+  setTimeout(() => ids.forEach(id => {
+    const n = document.getElementById(id);
+    if (n) n.classList.remove('fresh');
+  }), 1600);
 }
 
-function addAction(data) {
-  const div = document.createElement('div');
-  div.className = 'action-item';
-  const type = data.action || data.operation || 'event';
-  const target = data.locator_value || data.target || '';
-  const value = data.extra_value || data.value || '';
-  div.innerHTML = `
-    <span class="action-time">${formatTime(data.ts)}</span>
-    <span class="action-type">${type}</span>
-    <span class="action-target">${target}</span>
-    ${value ? `<div class="action-value">${value}</div>` : ''}
-  `;
-  actionsEl.prepend(div);
-  if (actionsEl.children.length > 100) actionsEl.lastChild.remove();
+let _lineSeq = 0;
+function insertCodeLine(rawText, { step, fresh, fail }) {
+  const id = 'cl-' + (_lineSeq++);
+  const span = document.createElement('span');
+  span.className = 'cl' + (fresh ? ' fresh' : '');
+  span.id = id;
+  span.dataset.step = step;
+  if (fail) span.dataset.fail = '1';
+  // Prism highlight of this single physical line (preserves leading indentation).
+  const html = Prism.highlight(rawText.length ? rawText : '​', Prism.languages.python, 'python');
+  span.innerHTML = html || '​';
+  els.codeCode.appendChild(span);
+  return id;
 }
 
-async function loadInitial() {
-  try {
-    const [ssRes, actRes] = await Promise.all([
-      fetch('/api/screenshot'),
-      fetch('/api/actions')
-    ]);
-    const ssData = await ssRes.json();
-    if (ssData.b64) {
-      screenshotEl.src = 'data:image/png;base64,' + ssData.b64;
-      screenshotEl.style.display = 'block';
-      placeholderEl.style.display = 'none';
-    }
-    const actData = await actRes.json();
-    actData.actions.reverse().forEach(addAction);
-  } catch (e) {}
+/* light a step's code lines (hover/selection from history or filmstrip) */
+function setCodeHot(stepIndex, on) {
+  const step = state.steps.find(s => s.step_index === stepIndex);
+  if (!step || !step.lineIds) return;
+  step.lineIds.forEach(id => {
+    const n = document.getElementById(id);
+    if (n) n.classList.toggle('hot', on);
+  });
+  if (on && step.lineIds[0]) {
+    const first = document.getElementById(step.lineIds[0]);
+    if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
-function connectSSE() {
-  const es = new EventSource('/api/events');
-  es.onopen = () => { statusEl.textContent = 'Live'; statusEl.style.background = '#1e3a2e'; statusEl.style.color = '#6ee7b7'; };
-  es.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    if (data.type === 'screenshot') {
-      fetch('/api/screenshot').then(r => r.json()).then(d => {
-        if (d.b64) {
-          screenshotEl.src = 'data:image/png;base64,' + d.b64;
-          screenshotEl.style.display = 'block';
-          placeholderEl.style.display = 'none';
-        }
-      });
-    } else if (data.type === 'action') {
-      addAction(data);
-    }
+/* ======================================================================
+   RENDER: ACTION HISTORY
+   ====================================================================== */
+function addHistoryRow(step) {
+  els.historyEmpty.style.display = 'none';
+  const row = document.createElement('div');
+  row.className = 'action-item current' + (step.success ? '' : ' is-fail');
+  row.setAttribute('role', 'listitem');
+  row.tabIndex = 0;
+  row.dataset.step = step.step_index;
+
+  const loc = step.locator_value
+    ? `<span class="loctype">${step.locator_type || ''}=</span>${escapeHtml(step.locator_value)}`
+    : (step.action === 'goto' ? escapeHtml(step.extra_value) : '');
+
+  row.innerHTML = `
+    <span class="idx">${step.step_index}</span>
+    <span class="body">
+      <span class="line1">
+        <span class="a-type ${ACTION_CLASS(step.action)}">${ACTION_LABEL(step.action)}</span>
+        <span class="a-target">${loc}</span>
+      </span>
+      ${step.extra_value && step.action !== 'goto' ? `<span class="a-value">"${escapeHtml(step.extra_value)}"</span>` : ''}
+      <span class="a-desc">${escapeHtml(step.action_description || '')}</span>
+    </span>
+    <span class="meta">
+      <span class="a-time">${fmtTime(step.ts)}</span>
+      <span class="a-stat ${step.success ? 'ok' : 'fail'}">${step.success ? '✓' : '✗'}</span>
+    </span>`;
+
+  // remove "current" marker from the previously-current row
+  els.historyScroll.querySelectorAll('.action-item.current').forEach(n => n.classList.remove('current'));
+  row.classList.add('current');
+
+  // interactions (TIME-TRAVEL SEED — selection + cross-highlight wired; view-rewind is phase 2)
+  const onSelect = () => selectStep(step.step_index);
+  row.addEventListener('click', onSelect);
+  row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } });
+  row.addEventListener('mouseenter', () => setCodeHot(step.step_index, true));
+  row.addEventListener('mouseleave', () => { if (state.selectedStep !== step.step_index) setCodeHot(step.step_index, false); });
+
+  els.historyScroll.appendChild(row);
+  els.historyScroll.scrollTo({ top: els.historyScroll.scrollHeight, behavior: 'smooth' });
+  els.historyCount.textContent = state.steps.length + (state.steps.length === 1 ? ' step' : ' steps');
+}
+
+/* ======================================================================
+   RENDER: FILMSTRIP (timeline) — placeholders up-front, fill as we go.
+   ====================================================================== */
+function buildFilmstrip() {
+  els.filmstrip.innerHTML = '';
+  for (let i = 1; i <= state.totalExpected; i++) {
+    const node = document.createElement('div');
+    node.className = 'film-node';
+    node.innerHTML = `
+      <span class="track"></span>
+      <div class="film-frame pending" role="listitem" tabindex="0" data-step="${i}" aria-label="Step ${i} (pending)">
+        <span class="shimmer"></span>
+        <span class="badge"><span class="d"></span>${i}</span>
+        <span class="act">pending</span>
+      </div>`;
+    els.filmstrip.appendChild(node);
+  }
+  // wire interactions
+  els.filmstrip.querySelectorAll('.film-frame').forEach(f => {
+    const idx = +f.dataset.step;
+    f.addEventListener('click', () => { if (!f.classList.contains('pending')) selectStep(idx); });
+    f.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !f.classList.contains('pending')) { e.preventDefault(); selectStep(idx); } });
+    f.addEventListener('mouseenter', () => { if (!f.classList.contains('pending')) setCodeHot(idx, true); });
+    f.addEventListener('mouseleave', () => { if (state.selectedStep !== idx) setCodeHot(idx, false); });
+  });
+}
+
+// Live mode has no known step count up front, so the filmstrip grows on demand:
+// if the node for this step_index doesn't exist yet, mint it (and any gap nodes
+// before it). The demo path pre-builds placeholders via buildFilmstrip(); this
+// makes the same fill logic work for both.
+function ensureFilmNode(stepIndex) {
+  while (els.filmstrip.children.length < stepIndex) {
+    const i = els.filmstrip.children.length + 1;
+    const node = document.createElement('div');
+    node.className = 'film-node';
+    node.innerHTML = `
+      <span class="track"></span>
+      <div class="film-frame pending" role="listitem" tabindex="0" data-step="${i}" aria-label="Step ${i} (pending)">
+        <span class="shimmer"></span>
+        <span class="badge"><span class="d"></span>${i}</span>
+        <span class="act">pending</span>
+      </div>`;
+    els.filmstrip.appendChild(node);
+    const f = node.querySelector('.film-frame');
+    f.addEventListener('click', () => { if (!f.classList.contains('pending')) selectStep(i); });
+    f.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !f.classList.contains('pending')) { e.preventDefault(); selectStep(i); } });
+    f.addEventListener('mouseenter', () => { if (!f.classList.contains('pending')) setCodeHot(i, true); });
+    f.addEventListener('mouseleave', () => { if (state.selectedStep !== i) setCodeHot(i, false); });
+  }
+  return els.filmstrip.children[stepIndex - 1];
+}
+
+function fillFilmFrame(step) {
+  const node = ensureFilmNode(step.step_index);
+  if (!node) return;
+  node.classList.add('done');
+  const frame = node.querySelector('.film-frame');
+  frame.classList.remove('pending');
+  frame.classList.add('current');
+  if (!step.success) frame.classList.add('fail');
+  frame.setAttribute('aria-label', `Step ${step.step_index}: ${ACTION_LABEL(step.action)} ${step.locator_value || step.extra_value || ''}`);
+  frame.querySelector('.act').textContent = ACTION_LABEL(step.action);
+  // clear previous "current"
+  els.filmstrip.querySelectorAll('.film-frame.current').forEach(n => { if (n !== frame) n.classList.remove('current'); });
+  // thumbnail = the step's screenshot
+  const img = document.createElement('img');
+  img.src = step.screenshot;
+  img.alt = '';
+  frame.insertBefore(img, frame.querySelector('.badge'));
+  // gentle scroll into view
+  frame.scrollIntoView({ inline: 'end', block: 'nearest', behavior: 'smooth' });
+}
+
+/* ======================================================================
+   TIME-TRAVEL SELECTION (seed)
+   Phase-1 scope: selecting a step cross-highlights history + filmstrip +
+   code, and (bonus) swaps the big screenshot to that step's frame so the
+   three-way linkage is demonstrable. Full scrub timeline arrives in phase 2.
+   ====================================================================== */
+function selectStep(stepIndex) {
+  const step = state.steps.find(s => s.step_index === stepIndex);
+  if (!step) return;
+  state.selectedStep = stepIndex;
+
+  // history selection
+  els.historyScroll.querySelectorAll('.action-item').forEach(n =>
+    n.classList.toggle('selected', +n.dataset.step === stepIndex));
+  // filmstrip selection
+  els.filmstrip.querySelectorAll('.film-frame').forEach(n =>
+    n.classList.toggle('selected', +n.dataset.step === stepIndex));
+  // code highlight (clear others, light this)
+  state.steps.forEach(s => setCodeHot(s.step_index, s.step_index === stepIndex));
+  // screenshot rewind (demonstrates the linkage; harmless in phase 1)
+  if (step.screenshot) {
+    showScreenshot(step.screenshot, step);
+  }
+  els.srLive.textContent = `Selected step ${stepIndex}: ${step.action_description || step.action}`;
+}
+
+/* ======================================================================
+   SCREENSHOT swap (handles web landscape vs phone portrait framing)
+   ====================================================================== */
+function showScreenshot(src, step) {
+  els.shotPlaceholder.style.display = 'none';
+  els.shotFrame.style.display = 'block';
+  els.shotImg.src = src;
+  // aspect class by platform
+  const isPhone = state.platform === 'android' || state.platform === 'ios';
+  els.shotFrame.classList.toggle('phone', isPhone);
+  els.shotFrame.classList.toggle('web', !isPhone);
+  if (step) els.shotStepTag.innerHTML = `<b>step ${step.step_index}</b> · ${escapeHtml(step.action_description || ACTION_LABEL(step.action))}`;
+  // brief "fresh frame" edge glow
+  els.shotPanel.classList.add('is-fresh');
+  setTimeout(() => els.shotPanel.classList.remove('is-fresh'), 320);
+}
+
+/* ======================================================================
+   STATUS / PLATFORM
+   ====================================================================== */
+function setStatus(stateName, label) {
+  els.status.dataset.state = stateName;
+  els.statusLabel.textContent = label || ({ live: 'Live', connecting: 'Connecting', disconnected: 'Disconnected' }[stateName]);
+}
+function setPlatform(p) {
+  state.platform = p;
+  document.querySelectorAll('.platform-seg button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.platform === p)));
+  els.shotHint.textContent = (p === 'web')
+    ? '1280 × 800 · jpeg · 2 fps'
+    : (p === 'ios' ? '1170 × 2532 · jpeg · 2 fps' : '1080 × 2340 · jpeg · 2 fps');
+}
+document.querySelectorAll('.platform-seg button').forEach(b =>
+  b.addEventListener('click', () => restartWithPlatform(b.dataset.platform)));
+
+document.getElementById('openVscode').addEventListener('click', () => {
+  // Prototype: visual only. Real impl would hit a local helper that runs:
+  //   code -g <abs_path>:<line>   (or vscode://file/<path>:<line>)
+  const btn = document.getElementById('openVscode');
+  const orig = btn.querySelector('.kbd').textContent;
+  btn.querySelector('.kbd').textContent = '✓';
+  setTimeout(() => btn.querySelector('.kbd').textContent = orig, 900);
+});
+
+/* ======================================================================
+   EVENT INTAKE — the ONE place both feeds hand off to.
+   Mirrors the target SSE contract:
+     { type:'step',       ... }   → onStepEvent
+     { type:'screenshot', ... }   → onScreenshotEvent (live: triggers GET /api/screenshot)
+   ====================================================================== */
+// Normalize any screenshot value into an <img> src. The offline demo hands us a
+// ready-made data: URI (inline SVG); the live backend sends RAW base64 with no
+// prefix — take_screenshot() returns PNG bytes on all three adapters
+// (base_adapter.take_screenshot -> bytes), so a bare payload gets the PNG prefix.
+function toImgSrc(val) {
+  if (!val) return null;
+  return String(val).startsWith('data:') ? val : 'data:image/png;base64,' + val;
+}
+
+function onStepEvent(ev) {
+  const step = {
+    step_index: ev.step_index,
+    action: ev.action,
+    locator_type: ev.locator_type,
+    locator_value: ev.locator_value,
+    extra_value: ev.extra_value,
+    action_description: ev.action_description,
+    success: ev.success !== false,
+    ts: ev.ts,
+    code_lines: ev.code_lines || [],
+    screenshot: toImgSrc(ev.screenshot_b64 || ev._screenshot || null),
+    lineIds: [],
   };
-  es.onerror = () => { statusEl.textContent = 'Disconnected'; statusEl.style.background = '#3a1e1e'; statusEl.style.color = '#fca5a5'; };
+  state.steps.push(step);
+  // Live mode learns the run identity from the stream (the demo sets it itself).
+  if (USE_LIVE_BACKEND && ev.run_id && els.runId.textContent !== ev.run_id) {
+    els.runId.textContent = ev.run_id;
+    const fname = 'test_' + ev.run_id + '.py';
+    els.fileName.textContent = fname;
+    els.codeFileName.textContent = fname;
+  }
+  appendCodeLines(step);
+  addHistoryRow(step);
+  if (step.screenshot) { showScreenshot(step.screenshot, step); fillFilmFrame(step); }
+  els.srLive.textContent = `Step ${step.step_index}: ${step.action_description}`;
 }
 
-loadInitial();
-connectSSE();
+function onScreenshotEvent(ev, b64) {
+  // Live path passes the b64 it fetched from /api/screenshot (CDP frames are
+  // JPEG; /api/step frames are PNG). update_screenshot stores whatever was
+  // pushed, so detect by prefix and default to jpeg for the CDP screencast.
+  const src = b64 ? (String(b64).startsWith('data:') ? b64 : 'data:image/jpeg;base64,' + b64) : null;
+  const last = state.steps[state.steps.length - 1];
+  if (src) {
+    if (last && !last.screenshot) { last.screenshot = src; fillFilmFrame(last); }
+    showScreenshot(src, last);
+  }
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ======================================================================
+   ============   REAL BACKEND WIRING (production blueprint)   ==========
+   Enabled when USE_LIVE_BACKEND = true. Kept intact so this file can be
+   dropped in as playground/index.html. Matches playground/app.py:
+     GET  /api/events       → SSE stream of {type, ts, ...}
+     GET  /api/screenshot   → { b64 }
+     GET  /api/actions      → { actions: [...] }   (backfill on load)
+   NOTE: current backend emits type:'action'+'screenshot'; the richer
+   type:'step' (with code_lines/step_index) is the target contract this UI
+   is built for. Both branches are handled below.
+   ====================================================================== */
+function connectLiveBackend() {
+  setStatus('connecting');
+
+  // 1) Backfill any history already accumulated before this client connected.
+  fetch('/api/actions').then(r => r.json()).then(d => {
+    (d.actions || []).forEach(a => routeLiveEvent(a, /*backfill*/ true));
+  }).catch(() => {});
+
+  // 2) Open the SSE stream.
+  const es = new EventSource('/api/events');
+  es.onopen  = () => setStatus('live');
+  es.onerror = () => setStatus('disconnected');   // EventSource auto-reconnects
+  es.onmessage = (e) => {
+    let data; try { data = JSON.parse(e.data); } catch { return; }
+    routeLiveEvent(data, false);
+  };
+  return es;
+}
+
+function routeLiveEvent(data, backfill) {
+  if (data.type === 'screenshot') {
+    // Backend tells us a new frame exists → pull the latest PNG/JPEG.
+    fetch('/api/screenshot').then(r => r.json()).then(d => {
+      if (d.b64) onScreenshotEvent(data, d.b64);
+    }).catch(() => {});
+  } else if (data.type === 'step') {
+    onStepEvent(data);
+  } else if (data.type === 'action') {
+    // Compat shim: map the current lean 'action' event onto a 'step'.
+    onStepEvent({
+      type: 'step',
+      ts: data.ts,
+      step_index: (state.steps.length + 1),
+      action: data.action || data.operation,
+      locator_type: data.locator_type,
+      locator_value: data.locator_value || data.target,
+      extra_value: data.extra_value || data.value || '',
+      action_description: data.action_description || '',
+      success: data.success !== false,
+      code_lines: data.code_lines || [],   // older backend may omit; UI still shows the row
+    });
+  }
+}
+
+/* ======================================================================
+   ============   PROTOTYPE FEED (scripted demo — fake data)   ==========
+   A real-feeling 6-step login story. Emits events of the SAME shape the
+   live path consumes, on a timer, so the page is fully animated offline.
+   code_lines mirror ScreenForge's actual generator (common/executor.py):
+     with allure.step('<Verb>: [<arg>]'):
+         log.info('Action: <verb> [<arg>]')
+         d.<locator>.<method>(timeout=...)
+   ====================================================================== */
+
+// File preamble the real generator writes once at the top of the file.
+const HEADER_LINES = [
+  "import allure",
+  "import pytest",
+  "",
+  "from common.logs import log",
+  "",
+  "@allure.feature('核心业务流测试')",
+  "@allure.story('AI 自动录制场景')",
+  "def test_auto_generated_case(d):",
+];
+
+// ---- tiny inline SVG "screenshots" (data URIs) so the prototype needs ZERO assets ----
+function shotWeb(title, opts = {}) {
+  const { url = 'app.example.com/login', fields = [], cta = '', toast = '', fail = false, dash = false } = opts;
+  const W = 1280, H = 800;
+  let body = '';
+  if (dash) {
+    body = `
+      <rect x="0" y="64" width="${W}" height="56" fill="#13131a"/>
+      <text x="40" y="100" fill="#ecedf1" font-size="22" font-family="sans-serif" font-weight="700">Dashboard</text>
+      <text x="${W-180}" y="100" fill="#6ee7b7" font-size="15" font-family="monospace">● signed in</text>
+      ${[0,1,2].map((i)=>`<rect x="${40+i*300}" y="150" width="270" height="150" rx="14" fill="#16161e" stroke="#26262f"/>
+        <text x="${64+i*300}" y="195" fill="#8a8c98" font-size="13" font-family="sans-serif">METRIC ${i+1}</text>
+        <text x="${64+i*300}" y="245" fill="#60a5fa" font-size="34" font-family="monospace" font-weight="700">${[128,42,'99%'][i]}</text>`).join('')}
+      <rect x="40" y="330" width="${W-80}" height="380" rx="14" fill="#16161e" stroke="#26262f"/>
+      <text x="64" y="370" fill="#c4c6cf" font-size="15" font-family="sans-serif" font-weight="600">Welcome back, admin 👋</text>
+      ${[...Array(6)].map((_,i)=>`<rect x="64" y="${398+i*48}" width="${W-128}" height="34" rx="7" fill="#1a1a21"/><text x="80" y="${420+i*48}" fill="#5a5c68" font-size="12" font-family="monospace">row_${i+1}  —  active</text>`).join('')}`;
+  } else {
+    body = `
+      <rect x="${W/2-210}" y="190" width="420" height="${360 + fields.length*0}" rx="18" fill="#16161e" stroke="#26262f"/>
+      <text x="${W/2}" y="245" fill="#ecedf1" font-size="24" font-family="sans-serif" font-weight="700" text-anchor="middle">Sign in</text>
+      <text x="${W/2}" y="275" fill="#8a8c98" font-size="13" font-family="sans-serif" text-anchor="middle">Welcome back — log in to continue</text>
+      ${fields.map((f,i)=>`
+        <text x="${W/2-180}" y="${322+i*78}" fill="#8a8c98" font-size="12" font-family="sans-serif">${f.label}</text>
+        <rect x="${W/2-180}" y="${332+i*78}" width="360" height="40" rx="9" fill="#0e0e12" stroke="${f.active?'#60a5fa':'#2a2a33'}" stroke-width="${f.active?2:1}"/>
+        <text x="${W/2-166}" y="${358+i*78}" fill="${f.value?'#ecedf1':'#4a4a55'}" font-size="14" font-family="${f.mask?'monospace':'sans-serif'}">${f.value || f.ph || ''}</text>`).join('')}
+      ${cta?`<rect x="${W/2-180}" y="${330+fields.length*78+12}" width="360" height="44" rx="9" fill="${fail?'#3a1e1e':'#1f3a5f'}" stroke="${fail?'#fca5a5':'#60a5fa'}"/>
+        <text x="${W/2}" y="${330+fields.length*78+40}" fill="${fail?'#fca5a5':'#bfdbfe'}" font-size="15" font-family="sans-serif" font-weight="600" text-anchor="middle">${cta}</text>`:''}`;
+  }
+  const toastEl = toast ? `<rect x="${W/2-160}" y="120" width="320" height="44" rx="10" fill="${fail?'#2a1414':'#0e2a1c'}" stroke="${fail?'#fca5a5':'#6ee7b7'}"/><text x="${W/2}" y="148" fill="${fail?'#fca5a5':'#6ee7b7'}" font-size="13" font-family="sans-serif" text-anchor="middle">${toast}</text>` : '';
+  return svgURI(W, H, `
+    <rect width="${W}" height="${H}" fill="#0e0e12"/>
+    <rect width="${W}" height="44" fill="#1a1a21"/>
+    <circle cx="22" cy="22" r="6" fill="#fca5a5"/><circle cx="42" cy="22" r="6" fill="#fbbf24"/><circle cx="62" cy="22" r="6" fill="#6ee7b7"/>
+    <rect x="120" y="12" width="${W-260}" height="22" rx="11" fill="#0e0e12" stroke="#2a2a33"/>
+    <text x="138" y="28" fill="#8a8c98" font-size="12" font-family="monospace">🔒 ${url}</text>
+    ${body}${toastEl}`);
+}
+function shotPhone(title, opts = {}) {
+  const { fields = [], cta = '', toast = '', fail = false, dash = false } = opts;
+  const W = 390, H = 844;
+  let body = '';
+  if (dash) {
+    body = `
+      <text x="24" y="150" fill="#ecedf1" font-size="26" font-family="sans-serif" font-weight="700">Dashboard</text>
+      <text x="24" y="178" fill="#6ee7b7" font-size="13" font-family="monospace">● signed in as admin</text>
+      ${[0,1].map(i=>`<rect x="24" y="${210+i*96}" width="${W-48}" height="80" rx="14" fill="#16161e" stroke="#26262f"/>
+        <text x="44" y="${245+i*96}" fill="#8a8c98" font-size="12" font-family="sans-serif">METRIC ${i+1}</text>
+        <text x="44" y="${278+i*96}" fill="#60a5fa" font-size="26" font-family="monospace" font-weight="700">${[128,'99%'][i]}</text>`).join('')}
+      ${[...Array(5)].map((_,i)=>`<rect x="24" y="${410+i*56}" width="${W-48}" height="46" rx="10" fill="#1a1a21"/><text x="40" y="${438+i*56}" fill="#8a8c98" font-size="13" font-family="monospace">row_${i+1}</text>`).join('')}`;
+  } else {
+    body = `
+      <text x="${W/2}" y="220" fill="#ecedf1" font-size="26" font-family="sans-serif" font-weight="700" text-anchor="middle">Sign in</text>
+      <text x="${W/2}" y="250" fill="#8a8c98" font-size="13" font-family="sans-serif" text-anchor="middle">Welcome back</text>
+      ${fields.map((f,i)=>`
+        <text x="36" y="${312+i*90}" fill="#8a8c98" font-size="12" font-family="sans-serif">${f.label}</text>
+        <rect x="36" y="${324+i*90}" width="${W-72}" height="46" rx="11" fill="#0e0e12" stroke="${f.active?'#60a5fa':'#2a2a33'}" stroke-width="${f.active?2:1}"/>
+        <text x="52" y="${353+i*90}" fill="${f.value?'#ecedf1':'#4a4a55'}" font-size="15" font-family="${f.mask?'monospace':'sans-serif'}">${f.value || f.ph || ''}</text>`).join('')}
+      ${cta?`<rect x="36" y="${324+fields.length*90+16}" width="${W-72}" height="50" rx="11" fill="${fail?'#3a1e1e':'#1f3a5f'}" stroke="${fail?'#fca5a5':'#60a5fa'}"/>
+        <text x="${W/2}" y="${324+fields.length*90+48}" fill="${fail?'#fca5a5':'#bfdbfe'}" font-size="16" font-family="sans-serif" font-weight="600" text-anchor="middle">${cta}</text>`:''}`;
+  }
+  const toastEl = toast ? `<rect x="36" y="120" width="${W-72}" height="46" rx="11" fill="${fail?'#2a1414':'#0e2a1c'}" stroke="${fail?'#fca5a5':'#6ee7b7'}"/><text x="${W/2}" y="148" fill="${fail?'#fca5a5':'#6ee7b7'}" font-size="13" font-family="sans-serif" text-anchor="middle">${toast}</text>` : '';
+  return svgURI(W, H, `
+    <rect width="${W}" height="${H}" fill="#0e0e12"/>
+    <rect width="${W}" height="54" fill="#16161e"/>
+    <text x="24" y="34" fill="#ecedf1" font-size="13" font-family="sans-serif" font-weight="600">9:41</text>
+    <text x="${W-70}" y="34" fill="#ecedf1" font-size="13" font-family="sans-serif">▮▮▮ ◗</text>
+    ${body}${toastEl}`);
+}
+function svgURI(w, h, inner) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>${inner}</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+// ---- the scripted story (per platform). Each entry → one 'step' event. ----
+function buildStory(platform) {
+  const isPhone = platform !== 'web';
+  const shot = isPhone ? shotPhone : shotWeb;
+  const url = 'app.example.com/login';
+  // progressive screenshots for each step
+  const F = {
+    empty:   { fields:[{label:'Username',ph:'you@example.com'},{label:'Password',ph:'••••••••',mask:true}], cta:'Log in' },
+    userOn:  { url, fields:[{label:'Username',active:true,ph:'you@example.com'},{label:'Password',ph:'••••••••',mask:true}], cta:'Log in' },
+    userVal: { url, fields:[{label:'Username',value:'qa_admin@example.com'},{label:'Password',active:true,ph:'••••••••',mask:true}], cta:'Log in' },
+    pwVal:   { url, fields:[{label:'Username',value:'qa_admin@example.com'},{label:'Password',value:'••••••••••',mask:true}], cta:'Log in' },
+    submit:  { url, fields:[{label:'Username',value:'qa_admin@example.com'},{label:'Password',value:'••••••••••',mask:true}], cta:'Signing in…' },
+    dash:    { dash:true },
+  };
+  const t = (verb, arg) => `    with allure.step('${verb}: [${arg}]'):`;
+  const log = (msg) => `        log.info('Action: ${msg}')`;
+  const D = isPhone ? 'd' : 'd';
+  // web uses Playwright-style d.get_by_text(...).method ; mobile uses d(text=...).method
+  const loc = (text) => isPhone ? `${D}(text='${text}')` : `${D}.get_by_text('${text}')`;
+
+  return [
+    {
+      action: 'goto', locator_type: '', locator_value: '', extra_value: `https://${url}`,
+      action_description: '打开登录页', success: true, screenshot: shot('login', F.empty),
+      code_lines: [
+        `    with allure.step('Goto: [https://${url}]'):`,
+        `        log.info('Action: goto https://${url}')`,
+        `        ${D}.goto('https://${url}', timeout=15000)`,
+      ],
+    },
+    {
+      action: 'input', locator_type: 'css', locator_value: '#username', extra_value: 'qa_admin@example.com',
+      action_description: '输入用户名', success: true, screenshot: shot('user', F.userVal),
+      code_lines: [
+        `    with allure.step('Input: [qa_admin@example.com] into [#username]'):`,
+        `        log.info('Action: input [qa_admin@example.com] into [#username]')`,
+        `        ${D}.locator('#username').fill('qa_admin@example.com', timeout=15000)`,
+      ],
+    },
+    {
+      action: 'input', locator_type: 'css', locator_value: '#password', extra_value: 'S3cret!Pass',
+      action_description: '输入密码', success: true, screenshot: shot('pw', F.pwVal),
+      code_lines: [
+        `    with allure.step('Input: [S3cret!Pass] into [#password]'):`,
+        `        log.info('Action: input [********] into [#password]')`,
+        `        ${D}.locator('#password').fill('S3cret!Pass', timeout=15000)`,
+      ],
+    },
+    {
+      action: 'click', locator_type: 'text', locator_value: 'Log in', extra_value: '',
+      action_description: '点击登录按钮', success: true, screenshot: shot('submit', F.submit),
+      code_lines: [
+        `    with allure.step('Click: [Log in]'):`,
+        `        log.info('Action: click [Log in]')`,
+        `        ${loc('Log in')}.click(timeout=15000)`,
+      ],
+    },
+    {
+      action: 'assert_exist', locator_type: 'text', locator_value: 'Dashboard', extra_value: '',
+      action_description: '断言进入 Dashboard', success: true, screenshot: shot('dash', F.dash),
+      code_lines: [
+        `    with allure.step('Assert: element [Dashboard] exists'):`,
+        `        log.info('Action: assert exists [Dashboard]')`,
+        `        expect(${loc('Dashboard')}).to_be_visible(timeout=15000)`,
+      ],
+    },
+    {
+      action: 'assert_text_equals', locator_type: 'text', locator_value: 'Welcome back, admin', extra_value: 'Welcome back, admin',
+      action_description: '断言欢迎语文案', success: true, screenshot: shot('dash', F.dash),
+      code_lines: [
+        `    with allure.step('Assert: text equals [Welcome back, admin]'):`,
+        `        log.info('Action: assert text [Welcome back, admin]')`,
+        `        expect(${loc('Welcome back, admin')}).to_have_text('Welcome back, admin', timeout=15000)`,
+      ],
+    },
+  ];
+}
+
+let _feedTimer = null;
+function startPrototypeFeed() {
+  // reset
+  state.steps = [];
+  state.selectedStep = null;
+  _firstStepSeen = false;
+  _lineSeq = 0;
+  els.codeCode.innerHTML = '';
+  els.codePre.style.display = 'none';
+  els.codeEmpty.style.display = 'block';
+  els.historyScroll.querySelectorAll('.action-item').forEach(n => n.remove());
+  els.historyEmpty.style.display = 'block';
+  els.historyCount.textContent = '0 steps';
+  els.shotFrame.style.display = 'none';
+  els.shotPlaceholder.style.display = 'flex';
+
+  const story = buildStory(state.platform);
+  state.totalExpected = story.length;
+  buildFilmstrip();
+
+  // simulate "connecting → live"
+  setStatus('connecting');
+  const runId = 'run_' + Math.random().toString(16).slice(2, 8);
+  const fname = 'test_auto_' + new Date().toISOString().slice(0,10).replace(/-/g,'') +
+                '_' + new Date().toTimeString().slice(0,8).replace(/:/g,'') + '.py';
+  els.runId.textContent = runId;
+  els.fileName.textContent = fname;
+  els.codeFileName.textContent = fname;
+
+  if (_feedTimer) clearTimeout(_feedTimer);
+  let i = 0;
+  const tickFirst = setTimeout(() => {
+    setStatus('live');
+    pump();
+  }, 1100);
+
+  function pump() {
+    if (i >= story.length) {
+      // loop the demo after a pause so the page is always "alive"
+      _feedTimer = setTimeout(() => startPrototypeFeed(), 4200);
+      return;
+    }
+    const s = story[i];
+    // 1) emit a screenshot event first (matches real ordering: frame then step, roughly)
+    //    Here we just attach the screenshot to the step for simplicity.
+    // 2) emit the step event of the canonical shape.
+    onStepEvent({
+      type: 'step',
+      ts: Date.now() / 1000,
+      run_id: runId,
+      step_index: i + 1,
+      code_lines: s.code_lines,
+      action_description: s.action_description,
+      action: s.action,
+      locator_type: s.locator_type,
+      locator_value: s.locator_value,
+      extra_value: s.extra_value,
+      success: s.success,
+      screenshot_b64: s.screenshot,   // prototype: inline data-URI stands in for fetched frame
+    });
+    i++;
+    // pacing: inputs land quicker, asserts/clicks a touch slower for readability
+    const delay = (s.action === 'goto') ? 1300 : (s.action.startsWith('assert') ? 1500 : 1150);
+    _feedTimer = setTimeout(pump, delay);
+  }
+}
+
+function restartWithPlatform(p) {
+  setPlatform(p);
+  if (USE_LIVE_BACKEND) return;       // live mode: platform is server-driven; ignore
+  startPrototypeFeed();
+}
+
+/* ======================================================================
+   BOOT
+   ====================================================================== */
+setPlatform('web');
+if (USE_LIVE_BACKEND) {
+  connectLiveBackend();
+} else {
+  startPrototypeFeed();
+}
 </script>
 </body>
 </html>

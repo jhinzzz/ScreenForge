@@ -4,8 +4,10 @@ import os
 import sys
 import time
 from datetime import datetime
+from types import SimpleNamespace
 
 import config.config as config
+from cli.playground_sink import build_sink_from_args, maybe_push_step
 from common.adapters import AndroidU2Adapter, IosWdaAdapter, WebPlaywrightAdapter
 from common.ai import AIBrain
 from common.executor import UIExecutor
@@ -68,6 +70,17 @@ def main():
         help="目标测试平台",
     )
     parser.add_argument("--env", type=str, default="dev", help="测试环境")
+    parser.add_argument(
+        "--playground-sink",
+        action="store_true",
+        help="将每步代码+截图推送到运行中的 playground（可选；关闭时零开销）",
+    )
+    parser.add_argument(
+        "--playground-url",
+        type=str,
+        default="http://127.0.0.1:7860",
+        help="--playground-sink 的 playground 地址（默认 http://127.0.0.1:7860）",
+    )
     args = parser.parse_args()
 
     if not config.validate_config():
@@ -118,6 +131,12 @@ def main():
 
         brain = AIBrain()
         executor = UIExecutor(device, platform=args.platform)
+
+        # ★ Live-mirror sink (opt-in --playground-sink). main.py has no RunReporter,
+        # so use the script timestamp as a stable cross-step run key; the playground
+        # accumulates this human-recording session as one time-travel timeline.
+        playground_sink = build_sink_from_args(args, join_on_exit=False)
+        _sink_run_ref = SimpleNamespace(run_id=f"main_{timestamp}")
 
         vision_mode = False  # 热插拔视觉多模态开关
 
@@ -288,6 +307,7 @@ def main():
                 if result["code_lines"]:
                     log.debug(f"[Debug] 生成的代码行: {result['code_lines']}")
 
+                effective_action_data = action_data
                 if not result.get("success"):
                     log.warning("⚠️ [Warning] 动作物理执行受阻 (可能是缓存过期或页面发生了微小变动)！")
                     log.warning("⚠️ [Warning] 触发引擎自愈机制，正在强制绕过缓存重新呼叫大模型...")
@@ -303,6 +323,9 @@ def main():
 
                     if action_data_retry:
                         result = executor.execute_and_record(action_data_retry)
+                        # 推送/记录要用真正执行的那份 action_data（重试版），否则 locator
+                        # 元数据会和实际生成的代码对不上（LOW-1 评审发现）。
+                        effective_action_data = action_data_retry
 
                 if result.get("success"):
                     log.debug("[Debug] 执行动作成功，添加到历史记录")
@@ -316,6 +339,16 @@ def main():
                     save_to_disk(current_script_path, history_manager.get_current_file_content())
                     log.debug(
                         f"[Debug] 已保存 {len(result['code_lines'])} 行代码到 {current_script_path}"
+                    )
+                    # ★ 实时镜像旁路：把这一步推给 playground（add_step 后计数即本步序号）
+                    maybe_push_step(
+                        playground_sink,
+                        args=args,
+                        reporter=_sink_run_ref,
+                        adapter=adapter,
+                        action_data=effective_action_data,
+                        result=result,
+                        step_index=history_manager.get_history_count(),
                     )
                 else:
                     log.error("[System] ❌ 执行动作失败")

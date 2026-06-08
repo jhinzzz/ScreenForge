@@ -96,6 +96,41 @@
 | `resume-run-id` | 支持 | 支持 | 支持 | 从已有 run report 恢复最小上下文 |
 | `mcp-server` | 支持 | 支持 | 支持 | 以 stdio 方式暴露最小 MCP tools 接口 |
 
+## Playground 实时镜像台（Live Mirror，2026-06）
+
+`screenforge --playground` 起一个常驻的本地可视化进程（FastAPI，默认 `:7860`）。开启执行侧的
+`--playground-sink`（**默认关，opt-in**）后，短命执行进程每步把**生成的 pytest 代码 + 截图**尽力
+推给 playground，浏览器三区实时联动：**截图 ｜ 只读代码栏（Prism 语法高亮 + 最新行高亮）｜ 动作历史**，
+底部一条 filmstrip 时间轴（"时间旅行" seed）。
+
+| 入口 | 是否接 sink | step_index 来源 | 截图节奏 |
+|---|---|---|---|
+| `--action`（单步） | 支持 | `--session-id` 下取会话计数（一个 session = 一条时间线）；裸单步固定 1 | 每步一帧 |
+| `workflow` YAML（多步） | 支持 | 循环计数器（单进程多步，天然连续，是主战场） | 每步一帧 |
+| `main.py`（人类录制） | 支持 | 历史步数递增（对标 Cypress Studio） | 每步一帧 |
+
+> ℹ️ **架构（路径 A：HTTP Sink）**：短命 CLI 进程与常驻 playground **无共享内存**
+> （`_SharedAdapterManager` 名字误导，实际不跨进程），唯一可行实时通道是网络 IPC。sink 挂在
+> `save_to_disk` **之后**，是纯**旁路观察者**：复用每步已产出的 `result["code_lines"]` 与三端统一的
+> `take_screenshot() -> bytes`（`base_adapter.py` 抽象方法），不改执行流、不改 codegen、不改落盘。
+>
+> **红线（exit code 契约）**：sink 全程 fire-and-forget——daemon 线程推送 + 分离超时 `(0.3, 0.5)`，
+> playground 没开/拒连/卡死一律**静默 skip**（`log.debug`）。**绝不**因推送失败让 `--action` 的
+> `0/1` 退出码或耗时受影响（关闭时连 `take_screenshot` 都不调，零开销）。截图抓取自身抛异常 → 跳过该帧
+> 截图、仍推代码（degrade 不崩）。
+>
+> **移动端"实时"是步进式（诚实边界，非缺陷）**：android `dump_hierarchy`+`take_screenshot`、iOS WDA
+> 截图每步约 0.5–2s，是设备物理上限。前端如实呈现离散快照，不假装连续视频流。Web 另有 CDP screencast
+> 连续帧作"动作间预览"附加层（保留，不删），但主截图事件与代码步骤对齐用 `take_screenshot` 离散快照。
+>
+> **多 run 隔离 + 内存有界（arch#2）**：playground 按 `run_id` 命名空间累积步骤元数据，`OrderedDict`
+> LRU（≤20 run × ≤500 步/run，超限驱逐最旧 / 截断头部）。**base64 帧不进累积日志**——只进单槽实时帧 +
+> SSE 广播；历史帧从 reporter 已落盘的 `screenshots/step_NNN.png` 读，playground 重启不丢。
+>
+> **时间旅行（形态 B）当前只是 seed**：数据按 `step_index` 持久累积 + `GET /api/run/{run_id}/steps`
+> 只读端点 + 前端 filmstrip 骨架（选中可跨高亮代码/历史/截图）已就位，但**完整回溯交互（含历史帧读盘
+> 端点）留作未来独立迭代**。代码栏本轮**只读**（可编辑回写与 codegen 自动落盘冲突，非本轮）。
+
 ## 人类入口与 Agent 入口分工
 
 | 入口 | 面向对象 | 是否允许自然语言直接驱动 | 是否允许内部第三方 LLM 推理 | 推荐用途 |
@@ -163,3 +198,4 @@
 5. `mcp-server` 当前暴露 `ui_agent_capabilities`、`ui_agent_inspect_ui`、`ui_agent_load_case_memory`、`ui_agent_execute` 和 `ui_agent_load_run` 五个 tools。
 6. 视觉 fallback (VLM) 依赖 `VISION_API_KEY` / `VISION_BASE_URL` / `VISION_MODEL_NAME` 配置，未配置时自动降级到纯 DOM/XML 定位。
 7. 真正的 `run` 执行完成后，会自动更新 `memory/case_memory.json`，供后续 Agent 运行复用测试资产。
+8. Playground 实时镜像台依赖 `screenforge[playground]` extra（`fastapi`/`uvicorn`/`websockets`）。`--playground-sink` 默认关——纯 CI/agent 跑测试零开销；只在需要"边写边看"时开启。形态 B（时间旅行回溯）当前仅为 seed，完整交互未落地。
