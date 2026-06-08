@@ -292,3 +292,88 @@ def test_real_click_navigates_then_back(settings_app):
          "locator_value": target, "extra_value": ""}
     )
     assert result["success"] is True, f"click on row {target!r} failed"
+
+
+def test_real_list_rows_are_clickable_and_labeled(settings_app):
+    """Real-device contract for list-row label promotion.
+
+    The dominant Android list shape is a clickable container (LinearLayout /
+    ViewGroup, no own label) whose text lives in a non-clickable child. A flat
+    walk leaves NO element both clickable AND labeled — the LLM brain is told the
+    only labeled thing (e.g. '应用') is clickable:false (= don't tap, P4 contract)
+    and avoids it; the agent sees a pile of unlocatable headless clickables. The
+    compressor now promotes each row's first label child to clickable:true.
+
+    Asserts on the real Settings home that labeled-clickable rows exist and that
+    headless (unlocatable) clickables are the minority — they used to be 16/18.
+    """
+    adapter, _ = settings_app
+    tree = _live_tree(adapter)
+    els = tree.get("ui_elements", [])
+    clickable = [e for e in els if e.get("clickable")]
+    if len(clickable) < 5:
+        pytest.skip("Settings home not showing a list (variant/locale); no rows to assert")
+
+    labeled_clickable = [e for e in clickable if e.get("text") or e.get("desc")]
+    headless = [
+        e for e in clickable
+        if not e.get("text") and not e.get("desc") and not e.get("id")
+    ]
+    # Before promotion this was ZERO; the row labels must now be targetable.
+    assert labeled_clickable, (
+        "no clickable element carries a label — list rows are untargetable "
+        "(label-promotion regressed)"
+    )
+    # Promotion should make labeled rows the majority; a few icon-only headless
+    # clickables (honestly left unlocatable, never fabricated) are expected.
+    assert len(labeled_clickable) > len(headless), (
+        f"labeled-clickable rows ({len(labeled_clickable)}) should outnumber headless "
+        f"unlocatable clickables ({len(headless)}) after row-label promotion"
+    )
+
+
+def test_real_promoted_row_label_navigates(settings_app):
+    """End-to-end proof the promoted label is *effectively* clickable: tapping a
+    row BY ITS PROMOTED LABEL navigates (the tap bubbles to the clickable
+    ancestor). Non-destructive: open a submenu, assert the screen changed, Back."""
+    import time
+
+    adapter, executor = settings_app
+    before = {e.get("text") for e in _live_tree(adapter).get("ui_elements", []) if e.get("text")}
+
+    # A label that is now clickable:true AND was NOT a clickable node itself in the
+    # raw tree (i.e. a genuinely promoted row label), stable across most ROMs.
+    tree = _live_tree(adapter)
+    stable = ("显示与亮度", "声音与振动", "应用", "蓝牙", "连接与共享", "Display", "Sound", "Apps")
+    target = next(
+        (e.get("text") for e in tree.get("ui_elements", [])
+         if e.get("clickable") and e.get("text") in stable),
+        None,
+    )
+    if not target:
+        # Fall back to any short labeled-clickable row.
+        target = next(
+            (e.get("text") for e in tree.get("ui_elements", [])
+             if e.get("clickable") and e.get("text") and len(e.get("text")) <= 8),
+            None,
+        )
+    if not target:
+        pytest.skip("no promoted labeled-clickable row found on this Settings screen")
+
+    try:
+        result = executor.execute_and_record(
+            {"action": "click", "locator_type": "text",
+             "locator_value": target, "extra_value": ""}
+        )
+        assert result["success"] is True, f"click on promoted row {target!r} failed"
+        time.sleep(1.5)
+        after = {e.get("text") for e in _live_tree(adapter).get("ui_elements", []) if e.get("text")}
+        assert after != before, (
+            f"tapping promoted row {target!r} did not navigate — the promoted label "
+            "is not effectively clickable"
+        )
+    finally:
+        try:
+            adapter.driver.press("back")
+        except Exception:
+            pass

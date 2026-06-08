@@ -41,6 +41,117 @@ def _short_resource_id(res_id: str) -> str:
     short = _PATTERN_HASH_SUFFIX.sub('', short)
     return short
 
+def _node_label(node) -> str:
+    """A node's own label (text, falling back to content-desc), stripped."""
+    return node.attrib.get("text", "").strip() or node.attrib.get("content-desc", "").strip()
+
+
+def _is_filtered_node(node) -> bool:
+    """True if the emit loop will drop this node entirely (id / desc filters).
+
+    A clickable/promoted node survives the numeric-noise *text* filter, so only
+    `_should_filter_by_id` / `_should_filter_by_desc` matter — they `continue`
+    past the node regardless of its label. Promotion must consult this so it
+    never suppresses a row container in favor of a label that then vanishes.
+    """
+    res_id = node.attrib.get("resource-id", "").strip()
+    desc = node.attrib.get("content-desc", "").strip()
+    return _should_filter_by_id(res_id) or _should_filter_by_desc(desc)
+
+
+def _emittable_own_label(node) -> bool:
+    """The node carries its own label AND will survive emission — i.e. it is
+    already a locatable control (a Button, a labeled clickable), not a headless
+    container needing promotion. A container whose only own label is itself
+    filtered (e.g. a clickable wrapper with content-desc='VoLTE') is treated as
+    label-less so its real child label can still be promoted."""
+    return bool(_node_label(node)) and not _is_filtered_node(node)
+
+
+def _scope_label_descendants(container) -> list:
+    """Surviving labeled descendants in document order, without crossing a nested
+    clickable boundary (an inner card owns its own labels). Labels the emit loop
+    would drop (filtered id/desc) are skipped, so promotion never targets — nor
+    suppresses a container in favor of — a node that would vanish."""
+    out: list = []
+    for child in container:
+        if child.attrib.get("clickable") == "true":
+            continue  # nested clickable owns its own subtree's labels
+        if _node_label(child) and not _is_filtered_node(child):
+            out.append(child)
+        out.extend(_scope_label_descendants(child))
+    return out
+
+
+def _promotable_label(container):
+    """The label node to promote for a headless clickable container, or None.
+
+    Prefers the standard `:id/title` node when present, else the first surviving
+    label in document order — so a summary/status line that happens to render
+    before the title (e.g. '已连接' above '蓝牙') doesn't become the row's tap
+    label. Returns None for an icon-only container or one whose only labels are
+    all filtered (→ left as an honest headless clickable, never fabricated)."""
+    labels = _scope_label_descendants(container)
+    if not labels:
+        return None
+    for node in labels:
+        if node.attrib.get("resource-id", "").strip().endswith("/title"):
+            return node
+    return labels[0]
+
+
+def _compute_row_promotions(root):
+    """Find list-row label promotions (RecyclerView / Preference rows).
+
+    The dominant Android list shape is a CLICKABLE container with no own label
+    whose text lives in a non-clickable child TextView. A flat walk splits the
+    row into a headless (unlocatable) clickable + a text node marked not-clickable,
+    so NO element is both clickable and labeled. We promote the container's title
+    (or first surviving) label descendant to clickable (a real node with a real id
+    — tapping it bubbles to the clickable ancestor, verified on a real device) and
+    suppress the now-redundant empty container.
+
+    Returns (promote_ids, suppress_ids): sets of id(node) for Pass 2 to apply.
+    Identity keys are safe because `root` (and all its Element nodes) is held
+    alive across both passes within compress_android_xml; do not stream/re-parse
+    between the passes.
+
+    Honesty boundaries:
+      - Disabled container (enabled=false) → not effectively clickable, no promotion.
+      - No promotable, *survivable* label (icon-only, or only filtered labels) →
+        container left as an honest headless clickable; never fabricate a label and
+        never suppress a row in favor of a label that the emit loop would drop.
+      - Label search does NOT cross into a nested clickable — an inner card's label
+        belongs to the inner card, so an outer wrapper can't steal it (an outer
+        wrapper around already-promoted inner cards stays an honest, locator-less
+        clickable rather than being given a borrowed label).
+    """
+    promote_ids: set[int] = set()
+    suppress_ids: set[int] = set()
+
+    for node in root.iter():
+        if node.attrib.get("clickable") != "true":
+            continue
+        if node.attrib.get("enabled") == "false":
+            continue  # disabled row is not effectively clickable — don't promote
+        if _emittable_own_label(node):
+            continue  # already a locatable control (e.g. a Button) — nothing to lift
+
+        label_node = _promotable_label(node)
+        if label_node is None:
+            # Icon-only container, or every candidate label would be filtered out:
+            # leave the container un-suppressed (today's headless-clickable, still
+            # present/assertable) rather than dropping the row entirely.
+            continue
+
+        promote_ids.add(id(label_node))
+        suppress_ids.add(id(node))
+
+    # Never suppress a node we also promote (defensive; can't currently coincide).
+    suppress_ids -= promote_ids
+    return promote_ids, suppress_ids
+
+
 def compress_android_xml(raw_xml: str) -> str:
     try:
         root = ET.fromstring(raw_xml)
@@ -50,8 +161,13 @@ def compress_android_xml(raw_xml: str) -> str:
         return '{"ui_elements": []}'
 
     elements = []
+    promote_ids, suppress_ids = _compute_row_promotions(root)
 
     for node in root.iter():
+        if id(node) in suppress_ids:
+            # Redundant empty row container — its label child carries the row now.
+            continue
+
         attrib = node.attrib
         text = attrib.get("text", "").strip()
         desc = attrib.get("content-desc", "").strip()
@@ -61,7 +177,11 @@ def compress_android_xml(raw_xml: str) -> str:
         # and hang on the timeout) but is still emitted so its existence/disabled
         # state stays assertable — mirrors the web compressor's disabled contract.
         disabled = attrib.get("enabled") == "false"
-        clickable = attrib.get("clickable") == "true" and not disabled
+        # A row label promoted from a headless clickable container is effectively
+        # clickable (tap bubbles to the clickable ancestor — real-device verified);
+        # a disabled node is never promoted (excluded in _compute_row_promotions).
+        promoted = id(node) in promote_ids
+        clickable = (attrib.get("clickable") == "true" or promoted) and not disabled
         node_class = attrib.get("class", "").split(".")[-1]
 
         if _should_filter_by_id(res_id):

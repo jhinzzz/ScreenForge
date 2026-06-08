@@ -41,6 +41,22 @@ All notable changes to ScreenForge will be documented in this file.
   the control so its existence/disabled state stays assertable. The numeric-noise
   text filter was reordered so a disabled control with short numeric text (e.g. a
   disabled "+5" stepper) isn't silently dropped.
+- **Android list rows were untargetable** — the dominant list shape (RecyclerView /
+  Preference) is a *clickable container* (LinearLayout/ViewGroup, no own label)
+  whose text lives in a *non-clickable child* `TextView`. The flat compressor split
+  one row into a headless clickable (no text/desc/id → unlocatable) plus a text node
+  marked `clickable:false`, so **no element was both clickable and labeled**: the LLM
+  brain was told the only labeled thing ("应用") wasn't clickable (P4 contract) and
+  avoided it, while an external agent saw a pile of unlocatable clickable blocks.
+  Measured on a real device (Settings home): 16 of 18 clickable elements unlocatable.
+  The compressor now promotes each row's title (or first surviving) label child to
+  `clickable:true` — a real node with a real id; tapping it bubbles to the clickable
+  ancestor (real-device verified) — and suppresses the now-redundant empty container.
+  **Zero coordinates.** Honesty boundaries: a disabled row isn't promoted; an
+  icon-only container (no label) or one whose only labels would be dropped by the
+  id/desc filters stays an honest headless clickable rather than vanishing; an inner
+  card's label is never stolen by an outer wrapper. Real-device delta: 18 clickable /
+  0 labeled-clickable / 16 unlocatable → 20 / 19 / 0.
 - **`--action --json` failures were a dead string** (`{"result":"engine_error",
   "error":"Action failed: click:Login"}`) with no page and no guidance, and the
   useful `[E0xx] Fix:` diagnostics lived only on stderr (which agent examples drop
