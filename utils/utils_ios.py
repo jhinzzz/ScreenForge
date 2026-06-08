@@ -157,6 +157,16 @@ def compress_ios_xml(raw_xml: str) -> str:
             if label.isdigit() or label in (".", ","):
                 continue
 
+        # Flat exact-dedup (pre-existing): collapse repeated (type, label, name),
+        # except Cells (each Cell is its own row). Note its interaction with the
+        # shadow pass above: two SEPARATE rows whose interactive controls share an
+        # identical (type, label, name) collapse to a single element here, and their
+        # StaticText shadows were already suppressed — so identically-named rows are
+        # not independently targetable. Benign for real WDA, where each row's control
+        # carries a unique name (e.g. com.apple.settings.general); it only affects
+        # synthetic identical-name rows, which d(label=...) could not disambiguate
+        # even before de-shadowing. Pinned by test_duplicate_name_rows_* in
+        # tests/test_utils_ios.py.
         dedup_key = (node_type, label, name)
         if dedup_key in seen_keys and node_type != "Cell":
             continue

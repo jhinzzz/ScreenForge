@@ -261,3 +261,102 @@ def test_nested_cell_distinct_row_not_over_suppressed():
         "nested-Cell boundary and ate the inner row's only label (inner row vanished)"
     )
     assert any(e.get("type") == "Button" and e.get("name") == "more.btn" for e in els)
+
+
+# --- load-bearing-guard pins (constructed minimal cases, not device captures) ----
+# The two cases below are not verbatim WDA slices; they are the smallest inputs that
+# exercise two safety guards in _compute_label_shadows which had no dedicated test.
+# Both guards already work (verified against the live code); these lock them so a
+# future refactor that moved the visibility filter can't silently regress them.
+
+# Boundary #8: a Cell whose only labelled members are StaticTexts (a caption/section
+# row with NO interactive control) must be left wholly untouched — the `top < 1`
+# guard. Two same-label StaticTexts with distinct names: neither the shadow pass
+# (no interactive winner) nor the flat dedup_key (distinct names) may drop either.
+_XML_ALL_STATICTEXT_ROW = """<?xml version='1.0' encoding='UTF-8'?>
+<XCUIElementTypeApplication type="XCUIElementTypeApplication" name="X" label="X" enabled="true" visible="true">
+  <XCUIElementTypeCell type="XCUIElementTypeCell" enabled="true" visible="true">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="a" label="仅文本" value="仅文本" enabled="true" visible="true" accessible="true"/>
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="b" label="仅文本" value="仅文本" enabled="true" visible="true" accessible="true"/>
+  </XCUIElementTypeCell>
+</XCUIElementTypeApplication>"""
+
+
+def test_all_staticext_row_left_untouched():
+    # `top < 1`: with no interactive control in the group, the row must NOT be
+    # suppressed to nothing (red-line #8). The two distinct-name StaticTexts both
+    # survive — the guard leaves an all-text group entirely alone.
+    els = _elements(_XML_ALL_STATICTEXT_ROW)
+    labels = [e.get("label") for e in els]
+    assert "仅文本" in labels, "all-StaticText row erased — the `top < 1` guard failed"
+    assert labels.count("仅文本") == 2, (
+        f"'仅文本' emitted {labels.count('仅文本')}x — the shadow pass wrongly suppressed a "
+        "member of an all-StaticText group (no interactive control = nothing to dedup to)"
+    )
+
+
+# Visibility-inverse of the invisible-winner case: the VISIBLE node is the
+# low-priority StaticText and the higher-priority Button is invisible. visible_nodes
+# has exactly ONE member, so the `len(visible_nodes) < 2` early-out must fire and
+# leave the visible text alone. If suppression judged by ALL nodes (Button beats
+# StaticText), the visible text would be dropped and the invisible Button too — the
+# on-screen row would vanish.
+_XML_VISIBLE_STATICTEXT_INVISIBLE_BUTTON = """<?xml version='1.0' encoding='UTF-8'?>
+<XCUIElementTypeApplication type="XCUIElementTypeApplication" name="X" label="X" enabled="true" visible="true">
+  <XCUIElementTypeCell type="XCUIElementTypeCell" enabled="true" visible="true">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="t" label="可见文本" value="可见文本" enabled="true" visible="true" accessible="true"/>
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="btn" label="可见文本" enabled="true" visible="false" accessible="true"/>
+  </XCUIElementTypeCell>
+</XCUIElementTypeApplication>"""
+
+
+def test_visible_staticext_survives_invisible_higher_priority_twin():
+    # `len(visible_nodes) < 2`: only the StaticText is visible, so there is nothing
+    # to dedup — the visible on-screen text must survive even though an invisible
+    # higher-priority Button shares its label (red-line #3, the inverse direction).
+    els = _elements(_XML_VISIBLE_STATICTEXT_INVISIBLE_BUTTON)
+    same = [e for e in els if e.get("label") == "可见文本"]
+    assert same, (
+        "visible StaticText vanished — suppression judged by all nodes and dropped the "
+        "only on-screen element in favor of an invisible Button the emit loop also drops"
+    )
+    assert len(same) == 1 and same[0]["type"] == "StaticText", (
+        "the surviving element must be the visible StaticText, not the invisible Button"
+    )
+
+
+# Issue 1 (documented, accepted): two SEPARATE rows whose interactive controls share
+# an identical (type, label, name) AND each has a StaticText shadow. The shadow pass
+# drops both StaticTexts; the flat dedup_key then collapses the two identical Buttons
+# to one. So identically-named rows are not independently targetable. Benign for real
+# WDA (each row's control has a unique name, e.g. com.apple.settings.general); only
+# synthetic identical-name rows hit this, which d(label=...) could never disambiguate
+# even before de-shadowing. This pins the accepted behavior the code comment cites.
+_XML_DUPLICATE_NAME_ROWS = """<?xml version='1.0' encoding='UTF-8'?>
+<XCUIElementTypeApplication type="XCUIElementTypeApplication" name="X" label="X" enabled="true" visible="true">
+  <XCUIElementTypeCell type="XCUIElementTypeCell" enabled="true" visible="true">
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="dup" label="重复" enabled="true" visible="true" accessible="true">
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="s1" label="重复" value="重复" enabled="true" visible="true" accessible="true"/>
+    </XCUIElementTypeButton>
+  </XCUIElementTypeCell>
+  <XCUIElementTypeCell type="XCUIElementTypeCell" enabled="true" visible="true">
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="dup" label="重复" enabled="true" visible="true" accessible="true">
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" name="s2" label="重复" value="重复" enabled="true" visible="true" accessible="true"/>
+    </XCUIElementTypeButton>
+  </XCUIElementTypeCell>
+</XCUIElementTypeApplication>"""
+
+
+def test_duplicate_name_rows_collapse_to_one_documented():
+    # Documents the dedup_key × shadow-pass interaction (reviewer Issue 1): identical
+    # (type, label, name) controls collapse to ONE element. This is accepted — the
+    # flat dedup_key already collapsed them before de-shadowing, so the second row was
+    # never distinctly targetable via its control. Asserting it keeps the behavior
+    # visible: if it ever changes, this test forces a conscious decision.
+    els = _elements(_XML_DUPLICATE_NAME_ROWS)
+    same = [e for e in els if e.get("label") == "重复"]
+    assert len(same) == 1, (
+        f"'重复' emitted {len(same)}x — behavior changed from the documented single "
+        "collapse; re-confirm the dedup_key interaction is still intended"
+    )
+    assert same[0]["type"] == "Button", "the surviving element must be the actionable Button"
