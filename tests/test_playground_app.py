@@ -311,3 +311,30 @@ class TestOpenInEditor:
             "file_path": str(f), "line": "not-a-number", "editor": "trae"})
         assert resp.json()["ok"] is True
         assert captured["cmd"] == ["/usr/local/bin/trae", "-g", f"{f}:1"]
+
+
+class TestDomStore:
+    def test_post_dom_persists_and_get_returns_it(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path  # redirect store to a temp dir
+        app_module._dom_index.clear()
+        tree = {"platform": "web", "nodes": [{"ref": "@1", "class": "button", "children": []}]}
+        r = client.post("/api/dom", json={"run_id": "s1", "step_index": 2, "tree": tree})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        got = client.get("/api/run/s1/step/2/dom")
+        assert got.status_code == 200
+        assert got.json()["nodes"][0]["ref"] == "@1"
+
+    def test_get_absent_returns_404(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        assert client.get("/api/run/nope/step/9/dom").status_code == 404
+
+    def test_lru_evicts_oldest_run_dir(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        app_module._MAX_DOM_RUNS = 2
+        for rid in ("a", "b", "c"):  # 3 runs, cap 2 → 'a' evicted
+            client.post("/api/dom", json={"run_id": rid, "step_index": 1,
+                                          "tree": {"platform": "web", "nodes": []}})
+        assert client.get("/api/run/a/step/1/dom").status_code == 404
+        assert client.get("/api/run/c/step/1/dom").status_code == 200
