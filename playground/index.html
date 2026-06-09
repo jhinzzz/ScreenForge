@@ -3037,6 +3037,7 @@ if (USE_LIVE_BACKEND) {
     const catCls  = classCategory(node.class);
     const isLeaf  = !hasChildren;
     const indentPx= 12 + depth * 16;
+    const startExpanded = depth < 2;  // depth 0,1 open by default; 2+ collapsed
 
     // aria-label
     const ariaLabelParts = [node.class || '', label,
@@ -3046,7 +3047,7 @@ if (USE_LIVE_BACKEND) {
       node.ref       ? 'ref ' + node.ref : ''
     ].filter(Boolean).join(', ');
     li.setAttribute('aria-label', ariaLabelParts);
-    if (!isLeaf) li.setAttribute('aria-expanded', 'false');
+    if (!isLeaf) li.setAttribute('aria-expanded', startExpanded ? 'true' : 'false');
     li.setAttribute('aria-level', String(depth + 1));
     li.setAttribute('tabindex', '-1');
 
@@ -3059,6 +3060,7 @@ if (USE_LIVE_BACKEND) {
     // chevron
     const chev = document.createElement('span');
     chev.className = 'tree-chevron' + (isLeaf ? ' is-leaf' : '');
+    if (!isLeaf && startExpanded) chev.classList.add('is-open');
     chev.setAttribute('aria-hidden', 'true');
     chev.innerHTML = `<svg viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     row.appendChild(chev);
@@ -3135,7 +3137,7 @@ if (USE_LIVE_BACKEND) {
       const childUl = document.createElement('ul');
       childUl.className = 'tree-children';
       childUl.setAttribute('role', 'group');
-      childUl.style.display = 'none';
+      childUl.style.display = startExpanded ? '' : 'none';
       li.appendChild(childUl);
     }
 
@@ -3407,25 +3409,59 @@ if (USE_LIVE_BACKEND) {
   }
 
   /* ------------------------------------------------------------------
-     Flat-tree builder: converts the compressor's flat ui_elements array
-     into a depth-annotated list for the reconciler.
-     The compressor output is a FLAT list, not a true tree — we display
-     it flat with depth=0 for all nodes (the DOM info has no parent
-     pointer in the current schema). A future schema with parent_ref
-     can enable real nesting. For now, depth=0 gives a clean flat list.
+     Tree builder: walks the backend's HIERARCHICAL nodes array
+     ({class, text, ..., children:[ ...same shape... ]}) depth-first
+     into a flat, depth-annotated list for the reconciler. Each node is
+     emitted immediately before its descendants, so a parent always
+     precedes its children (the reconciler relies on this ordering to
+     find the parent li when nesting). _key is a ‹›-joined path of
+     stableKey()s, making it globally unique even when sibling subtrees
+     repeat the same local key.
   ------------------------------------------------------------------ */
-  function flattenNodes(nodes) {
-    return nodes.map((n, i) => ({
-      ...n,
-      _depth: 0,
-      _siblingIndex: i,
-      _hasChildren: false,
-    }));
+  function flattenNodes(nodes, platform) {
+    const out = [];
+    (function walk(list, depth, parentKey) {
+      list.forEach((n, i) => {
+        const localKey = stableKey(n, depth, i, platform);
+        const key = parentKey ? parentKey + '›' + localKey : localKey;
+        const kids = Array.isArray(n.children) ? n.children : [];
+        out.push({
+          ...n,
+          _depth: depth,
+          _siblingIndex: i,
+          _hasChildren: kids.length > 0,
+          _parentKey: parentKey || null,
+          _key: key,
+        });
+        if (kids.length) walk(kids, depth + 1, key);
+      });
+    })(nodes, 0, null);
+    return out;
   }
 
   /* ------------------------------------------------------------------
-     Reconciler — keyed diff
+     Reconciler — keyed diff (hierarchical)
   ------------------------------------------------------------------ */
+  // Resolve the <ul> a node's li should live in: its parent's
+  // .tree-children (created on demand if the parent just gained kids),
+  // or the root container for top-level nodes.
+  function _childContainerFor(parentKey) {
+    if (!parentKey) return container;
+    const parentLi = container.querySelector(`li[data-dom-key="${CSS.escape(parentKey)}"]`);
+    if (!parentLi) return container;  // depth-first order should make this unreachable
+    let ul = parentLi.querySelector(':scope > .tree-children');
+    if (!ul) {
+      // parent was a leaf last step, now has children: create the ul + flip to expandable
+      ul = document.createElement('ul');
+      ul.className = 'tree-children';
+      ul.setAttribute('role', 'group');
+      ul.style.display = '';
+      parentLi.appendChild(ul);
+      if (parentLi.getAttribute('aria-expanded') === null) parentLi.setAttribute('aria-expanded', 'true');
+    }
+    return ul;
+  }
+
   function reconcile(newNodes, platform) {
     // Build key→existing li map
     const existing = new Map();
@@ -3433,14 +3469,16 @@ if (USE_LIVE_BACKEND) {
       existing.set(li.dataset.domKey, li);
     });
 
-    const newMap   = new Map();
-    const newOrder = [];
+    const newMap     = new Map();
+    const newOrder   = [];
+    const parentOf   = new Map();   // key → parentKey (from flattened nodes)
     let addedCount = 0, removedCount = 0, changedCount = 0;
 
-    newNodes.forEach((node, i) => {
-      const key = stableKey(node, node._depth, node._siblingIndex, platform);
+    newNodes.forEach((node) => {
+      const key = node._key;
       newMap.set(key, node);
       newOrder.push(key);
+      parentOf.set(key, node._parentKey || null);
     });
 
     // Mark removals
@@ -3451,7 +3489,7 @@ if (USE_LIVE_BACKEND) {
       }
     });
 
-    // Patch existing or create new
+    // Patch existing or create new (depth-first order ⇒ parent exists before child)
     newOrder.forEach(key => {
       const node = newMap.get(key);
       if (existing.has(key)) {
@@ -3467,7 +3505,7 @@ if (USE_LIVE_BACKEND) {
         const li = createNodeLi(node, key, node._depth, node._siblingIndex, platform, node._hasChildren);
         li.dataset.domState = 'added';
         li.classList.add('dom-node-added');
-        container.appendChild(li);
+        _childContainerFor(node._parentKey).appendChild(li);
         addedCount++;
         setTimeout(() => li.classList.remove('dom-node-added'), 300);
       }
@@ -3479,10 +3517,12 @@ if (USE_LIVE_BACKEND) {
       setTimeout(() => li.remove(), 220);
     });
 
-    // Reorder to match newOrder (appendChild moves existing nodes)
+    // Reorder within each node's correct parent container.
+    // Depth-first order guarantees a parent is placed before its children,
+    // and appendChild MOVES (not clones) an existing li with its subtree.
     newOrder.forEach(key => {
-      const li = container.querySelector(`[data-dom-key="${CSS.escape(key)}"]`);
-      if (li) container.appendChild(li);
+      const li = container.querySelector(`li[data-dom-key="${CSS.escape(key)}"]`);
+      if (li) _childContainerFor(parentOf.get(key)).appendChild(li);
     });
 
     return { added: addedCount, removed: removedCount, changed: changedCount };
@@ -3496,7 +3536,7 @@ if (USE_LIVE_BACKEND) {
       showEmpty();
       return;
     }
-    const flat = flattenNodes(nodes);
+    const flat = flattenNodes(nodes, platform);
     const diff = reconcile(flat, platform);
 
     // Update diff badge
@@ -3540,25 +3580,38 @@ if (USE_LIVE_BACKEND) {
 
     if (!targetRef) return;
 
-    // Find the matching node
+    // Find the matching node in the FLATTENED tree so we get its _key
+    // (the path-unique key used as data-dom-key everywhere). Searching the
+    // flat list keeps keys consistent with flattenNodes/reconcile/createNodeLi.
+    const flat = flattenNodes(nodes, platform);
     let targetNode = null;
     if (platform === 'web') {
-      targetNode = nodes.find(n => n.ref === targetRef);
+      targetNode = flat.find(n => n.ref === targetRef);
       if (!targetNode) {
         // try by text/id
-        targetNode = nodes.find(n =>
+        targetNode = flat.find(n =>
           n.text === targetRef || n.id === targetRef || n.desc === targetRef);
       }
     } else {
-      targetNode = nodes.find(n =>
+      targetNode = flat.find(n =>
         n.text === targetRef || n.id === targetRef || n.desc === targetRef);
     }
 
     if (!targetNode) return;
 
-    const key = stableKey(targetNode, targetNode._depth, targetNode._siblingIndex, platform);
-    const li  = container.querySelector(`[data-dom-key="${CSS.escape(key)}"]`);
+    const key = targetNode._key;
+    const li  = container.querySelector(`li[data-dom-key="${CSS.escape(key)}"]`);
     if (!li) return;
+
+    // Force-expand every ancestor so a deep target is actually visible.
+    let ancestorUl = li.parentElement;
+    while (ancestorUl && ancestorUl !== container) {
+      if (ancestorUl.classList.contains('tree-children')) {
+        const ancestorLi = ancestorUl.closest('li[role="treeitem"]');
+        if (ancestorLi) expandLi(ancestorLi);
+      }
+      ancestorUl = ancestorUl.parentElement;
+    }
 
     const row = li.querySelector('.tree-node-row');
     if (row) row.classList.add('is-target');
@@ -3767,40 +3820,54 @@ if (USE_LIVE_BACKEND) {
   ------------------------------------------------------------------ */
   function buildFakeTree(stepIndex, platform) {
     if (platform !== 'web') {
-      // Android/iOS: no ref, no bbox
+      // Android/iOS: no ref, no bbox. A container > rows hierarchy so the
+      // offline feed exercises the nested renderer. Every node has children:[].
       return [
-        { class: 'TextView',    text: 'Sign in',                 clickable: false },
-        { class: 'EditText',    text: '', desc: 'Username',       clickable: true,  id: 'com.example:id/username' },
-        { class: 'EditText',    text: '', desc: 'Password',       clickable: true,  id: 'com.example:id/password',
-          ...(stepIndex >= 3 ? { text: '••••••••••' } : {}) },
-        { class: 'Button',      text: stepIndex >= 4 ? 'Signing in…' : 'Log in', clickable: true,  id: 'com.example:id/submit' },
+        { class: 'LinearLayout', text: '', clickable: false, children: [
+          { class: 'TextView', text: 'Sign in', clickable: false, children: [] },
+          { class: 'EditText', text: '', desc: 'Username', clickable: true,
+            id: 'com.example:id/username', children: [] },
+          { class: 'EditText', text: '', desc: 'Password', clickable: true,
+            id: 'com.example:id/password',
+            ...(stepIndex >= 3 ? { text: '••••••••••' } : {}), children: [] },
+          { class: 'Button', text: stepIndex >= 4 ? 'Signing in…' : 'Log in',
+            clickable: true, id: 'com.example:id/submit', children: [] },
+        ] },
         ...(stepIndex >= 5 ? [
-          { class: 'TextView',  text: 'Dashboard',               clickable: false },
-          { class: 'TextView',  text: 'Welcome back, admin',     clickable: false },
+          { class: 'LinearLayout', text: '', clickable: false, children: [
+            { class: 'TextView', text: 'Dashboard', clickable: false, children: [] },
+            { class: 'TextView', text: 'Welcome back, admin', clickable: false, children: [] },
+          ] },
         ] : []),
       ];
     }
 
-    // Web: full with ref + bbox
+    // Web: full with ref + bbox. The inputs/labels/button nest under a <form>
+    // so the offline feed renders a genuine hierarchy. Every node has children:[].
+    const form = {
+      ref: '@2', class: 'form', text: '', clickable: false, x:435, y:190, w:420, h:360,
+      children: [
+        { ref: '@3', class: 'h2',    text: 'Sign in',  clickable: false, x:440, y:230, w:410, h:40,  children: [] },
+        { ref: '@4', class: 'label', text: 'Username', clickable: false, x:450, y:300, w:360, h:20,  children: [] },
+        { ref: '@5', class: 'input', desc: 'Username', clickable: true,  x:450, y:325, w:360, h:40,
+          id: 'username', type: 'email',
+          ...(stepIndex >= 2 ? { text: 'qa_admin@example.com' } : {}), children: [] },
+        { ref: '@6', class: 'label', text: 'Password', clickable: false, x:450, y:378, w:360, h:20,  children: [] },
+        { ref: '@7', class: 'input', desc: 'Password', clickable: true,  x:450, y:400, w:360, h:40,
+          id: 'password', type: 'password',
+          ...(stepIndex >= 3 ? { text: '••••••••••' } : {}), children: [] },
+        { ref: '@8', class: 'button', text: stepIndex >= 4 ? 'Signing in…' : 'Log in',
+          clickable: stepIndex < 4, x:450, y:452, w:360, h:44,
+          ...(stepIndex >= 4 ? { disabled: false } : {}), children: [] },
+      ],
+    };
     const base = [
-      { ref: '@1',  class: 'html',     text: '',                     clickable: false, x:0,   y:0,   w:1280, h:800 },
-      { ref: '@2',  class: 'div',      text: 'Sign in',              clickable: false, x:435, y:190, w:420,  h:360 },
-      { ref: '@3',  class: 'h2',       text: 'Sign in',              clickable: false, x:440, y:230, w:410,  h:40  },
-      { ref: '@4',  class: 'label',    text: 'Username',             clickable: false, x:450, y:300, w:360,  h:20  },
-      { ref: '@5',  class: 'input',    desc: 'Username',             clickable: true,  x:450, y:325, w:360,  h:40,
-        id: 'username', type: 'email',
-        ...(stepIndex >= 2 ? { text: 'qa_admin@example.com' } : {}) },
-      { ref: '@6',  class: 'label',    text: 'Password',             clickable: false, x:450, y:378, w:360,  h:20  },
-      { ref: '@7',  class: 'input',    desc: 'Password',             clickable: true,  x:450, y:400, w:360,  h:40,
-        id: 'password', type: 'password',
-        ...(stepIndex >= 3 ? { text: '••••••••••' } : {}) },
-      { ref: '@8',  class: 'button',   text: stepIndex >= 4 ? 'Signing in…' : 'Log in',
-                                                                      clickable: stepIndex < 4, x:450, y:452, w:360,  h:44,
-        ...(stepIndex >= 4 ? { disabled: false } : {}) },
+      { ref: '@1', class: 'html', text: '', clickable: false, x:0, y:0, w:1280, h:800, children: [ form ] },
       ...(stepIndex >= 5 ? [
-        { ref: '@9',  class: 'h1',   text: 'Dashboard',             clickable: false, x:40,  y:150, w:300,  h:40 },
-        { ref: '@10', class: 'span', text: '● signed in',           clickable: false, x:40,  y:200, w:200,  h:24 },
-        { ref: '@11', class: 'div',  text: 'Welcome back, admin',   clickable: false, x:64,  y:360, w:500,  h:30 },
+        { ref: '@9',  class: 'h1',   text: 'Dashboard',           clickable: false, x:40, y:150, w:300, h:40, children: [
+          { ref: '@10', class: 'span', text: '● signed in',         clickable: false, x:40, y:200, w:200, h:24, children: [] },
+          { ref: '@11', class: 'div',  text: 'Welcome back, admin', clickable: false, x:64, y:360, w:500, h:30, children: [] },
+        ] },
       ] : []),
     ];
     return base;
