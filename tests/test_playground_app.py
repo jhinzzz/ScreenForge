@@ -355,3 +355,22 @@ class TestDomStore:
         # the file landed under tmp_path (the 'run' fallback), not tmp_path.parent
         assert not (tmp_path.parent / "step_001.json").exists()
         assert (tmp_path / "run" / "step_001.json").exists()
+
+
+class TestHasDomTreePassthrough:
+    def test_step_event_carries_has_dom_tree_to_sse(self, client):
+        import asyncio
+
+        q: asyncio.Queue = asyncio.Queue()
+        app_module._subscribers.append(q)
+        try:
+            body = _step_body(run_id="r1", step_index=1)
+            body["has_dom_tree"] = True
+            resp = client.post("/api/step", json=body)
+            assert resp.status_code == 200
+            evt = q.get_nowait()
+        finally:
+            app_module._subscribers.remove(q)
+
+        assert evt["type"] == "step"
+        assert evt.get("has_dom_tree") is True
