@@ -797,3 +797,25 @@ def test_plain_text_div_not_clickable_in_sidecar(page):
         "plain text div (cursor:auto) wrongly marked clickable — the cursor:pointer "
         "fix over-reached and now flags any text node as clickable"
     )
+
+
+def test_inert_cursor_pointer_div_not_clickable_in_sidecar(page):
+    """Parity at the inert∩cursor:pointer intersection. The compressor gates
+    interactivity on `!isInert` (utils_web.py: `isInteractive = !isDisabled &&
+    !isInert && (… || cursor==='pointer')`), so a cursor:pointer div inside an
+    inert subtree (the open-<dialog> backdrop pattern) is clickable=false to the
+    brain. The sidecar must agree — otherwise the cursor:pointer fix REINTRODUCES
+    the 'panel lies about what the brain saw' bug in the opposite direction
+    (over-reporting a dead control behind a modal as clickable). The node is still
+    captured and carries the inert flag; only `clickable` must be false."""
+    nodes = _web_tree_flat(
+        page, "<div inert><div style='cursor:pointer'>BehindModal</div></div>"
+    )
+    behind = next((n for n in nodes if (n.get("text") or "") == "BehindModal"), None)
+    assert behind is not None, "inert cursor:pointer div should still be captured"
+    assert behind.get("inert") is True, "node inside an inert subtree must carry the inert flag"
+    assert behind.get("clickable") is not True, (
+        "inert cursor:pointer div reported clickable=true in the sidecar — diverges "
+        "from the compressor (which gates isInteractive on !isInert); the panel would "
+        "show a dead control behind a modal as clickable"
+    )

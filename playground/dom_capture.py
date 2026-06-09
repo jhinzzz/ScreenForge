@@ -185,7 +185,12 @@ _WEB_TREE_JS = r"""
     const inert = isInertEl(el, inheritedInert);
 
     refIndex++;
-    const node = { ref: '@' + refIndex, class: tag, clickable: isInteractive && !disabled };
+    // clickable mirrors compress_web_dom: interactive AND not disabled AND not
+    // inert. The compressor folds !isInert into isInteractive; we subtract it here
+    // (inert is computed just above for the badge). Without !inert, a cursor:pointer
+    // control behind an open-<dialog> backdrop would show clickable in the panel
+    // while the brain saw it as dead — the parity bug in reverse.
+    const node = { ref: '@' + refIndex, class: tag, clickable: isInteractive && !disabled && !inert };
     if (el.id) node.id = el.id;
     if (name) node.name = name;
     if (type) node.type = type;

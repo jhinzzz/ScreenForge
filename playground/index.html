@@ -3068,7 +3068,12 @@ function resetTimeline() {
   els.historyCount.textContent = '0 steps';
   els.shotFrame.style.display = 'none';
   els.shotFrame.classList.remove('idle');     // a finished run's amber badge must not bleed into the next
+  els.shotFrame.classList.remove('stale');    // nor a prior disconnect's desaturation
   if (_idleTimer) clearTimeout(_idleTimer);    // and its pending idle-downgrade must not fire mid-new-run
+  // Defensive: a new run starting must never inherit a stale "Connection lost"
+  // overlay. setStatus() normally clears it first (onopen→idle / markActivity→live
+  // both fire before resetTimeline), but don't depend on that call ordering.
+  if (els.connLostOverlay) els.connLostOverlay.hidden = true;
   els.shotPlaceholder.style.display = 'flex';
   if (window.DomTreePanel && window.DomTreePanel.reset) window.DomTreePanel.reset();
 }
