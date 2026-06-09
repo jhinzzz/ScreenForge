@@ -459,6 +459,7 @@ header::after {
    ============================================================ */
 .workspace {
   flex: 1 1 auto;
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(380px, 1fr);
   grid-template-rows: 1fr;
@@ -1059,6 +1060,619 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   .timeline .scrubber-help { display: none; }
 }
 
+/* ============================================================
+   DOM TREE PANEL — Brain's Eye View
+   Collapsible drawer, slides in from the right, overlays
+   the right-stack. Pinnable to a fixed column at ≥1360px.
+   ============================================================ */
+
+/* Wrapper that holds workspace + the tree drawer side-by-side.
+   This replaces the bare .workspace as the flex child of body. */
+.workspace-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* The toggle tab — always visible on the right edge of the workspace-wrap */
+.tree-toggle-tab {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 12px 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+  user-select: none;
+}
+.tree-toggle-tab:hover {
+  background: var(--bg-3);
+  border-color: var(--line-strong);
+  box-shadow: -2px 0 12px rgba(0,0,0,0.3);
+}
+.tree-toggle-tab:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.tree-toggle-tab .tab-icon {
+  color: var(--text-faint);
+  display: flex;
+  transition: color .15s;
+}
+.tree-toggle-tab .tab-icon svg { width: 12px; height: 12px; display: block; }
+.tree-toggle-tab:hover .tab-icon { color: var(--ember-soft); }
+.tree-toggle-tab .tab-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  transition: color .15s;
+}
+.tree-toggle-tab:hover .tab-label { color: var(--ember-soft); }
+/* Ember pip on the tab when the panel is open */
+.tree-toggle-tab[aria-expanded="true"] {
+  background: var(--bg-3);
+  border-color: rgba(255,120,73,0.4);
+}
+.tree-toggle-tab[aria-expanded="true"] .tab-icon,
+.tree-toggle-tab[aria-expanded="true"] .tab-label { color: var(--ember-soft); }
+/* Small live-update dot on the tab — pulses when tree is receiving data */
+.tree-toggle-tab .tab-pip {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--ember);
+  opacity: 0;
+  transition: opacity .3s;
+  box-shadow: 0 0 6px var(--ember-glow);
+}
+.tree-toggle-tab.has-data .tab-pip { opacity: 1; }
+
+/* The drawer itself */
+.tree-drawer {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 292px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-left: 1px solid var(--line);
+  box-shadow: -8px 0 28px rgba(0,0,0,0.4);
+  transform: translateX(100%);
+  transition: transform 220ms cubic-bezier(.4,0,.2,1);
+  will-change: transform;
+  /* slight ember atmosphere on the left edge */
+  border-image: none;
+}
+.tree-drawer.is-open {
+  transform: translateX(0);
+}
+/* Ember left-edge glow when open */
+.tree-drawer.is-open::before {
+  content: "";
+  position: absolute;
+  left: -1px; top: 0; bottom: 0; width: 1px;
+  background: linear-gradient(180deg,
+    transparent 10%,
+    var(--ember-glow) 40%,
+    var(--ember-glow) 60%,
+    transparent 90%);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Pinned mode — drawer becomes a fixed column, workspace shrinks */
+.workspace-wrap.tree-pinned .tree-drawer {
+  position: relative;
+  transform: none !important;
+  box-shadow: none;
+  border-left: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.workspace-wrap.tree-pinned .workspace {
+  /* workspace already fills the remaining flex space */
+}
+/* Dim the right-stack slightly when drawer is overlaying (not pinned) */
+.workspace-wrap.tree-open:not(.tree-pinned) .right-stack {
+  filter: brightness(0.88);
+  transition: filter 200ms ease;
+}
+
+/* Drawer header */
+.tree-drawer-head {
+  flex: 0 0 auto;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 13px;
+  border-bottom: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent);
+}
+.tree-drawer-head .tree-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tree-drawer-head .tree-title svg { width: 12px; height: 12px; color: var(--ember-soft); }
+
+/* diff badge: +N −N ~N */
+.tree-diff-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+.tree-diff-badge .d-add  { color: var(--green); }
+.tree-diff-badge .d-rem  { color: var(--red); }
+.tree-diff-badge .d-chg  { color: var(--amber); }
+.tree-diff-badge .d-add,
+.tree-diff-badge .d-rem,
+.tree-diff-badge .d-chg {
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 4px;
+  transition: background .12s;
+}
+.tree-diff-badge .d-add:hover  { background: rgba(52,211,153,0.12); }
+.tree-diff-badge .d-rem:hover  { background: rgba(252,165,165,0.12); }
+.tree-diff-badge .d-chg:hover  { background: rgba(251,191,36,0.12); }
+
+.tree-drawer-head .dh-spacer { flex: 1; }
+
+/* Pin button */
+.tree-pin-btn {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.tree-pin-btn:hover { color: var(--text-dim); background: var(--bg-3); border-color: var(--line); }
+.tree-pin-btn.pinned { color: var(--ember-soft); border-color: rgba(255,120,73,0.3); background: rgba(255,120,73,0.06); }
+.tree-pin-btn svg { width: 11px; height: 11px; display: block; }
+.tree-pin-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Close button */
+.tree-close-btn {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.tree-close-btn:hover { color: var(--text); background: var(--bg-3); }
+.tree-close-btn svg { width: 11px; height: 11px; display: block; }
+.tree-close-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Search input row */
+.tree-search-row {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tree-search-input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  min-width: 0;
+}
+.tree-search-input::placeholder { color: var(--text-faint); }
+.tree-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(96,165,250,0.15); }
+.tree-search-clear {
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  display: none;
+  place-items: center;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: color .12s;
+}
+.tree-search-clear.visible { display: grid; }
+.tree-search-clear:hover { color: var(--text); }
+
+/* No-bbox notice (android/ios) */
+.tree-nobbox-notice {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(251,191,36,0.05);
+}
+.tree-nobbox-notice span {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+.tree-nobbox-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color .12s;
+}
+.tree-nobbox-dismiss:hover { color: var(--text); }
+
+/* Tree scroll area */
+.tree-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+}
+.tree-scroll::-webkit-scrollbar { width: 6px; }
+.tree-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+.tree-scroll::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* Empty state */
+.tree-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.7;
+}
+
+/* Loading state */
+.tree-loading {
+  padding: 20px 16px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.tree-loading-spinner {
+  width: 12px; height: 12px;
+  border: 1.5px solid var(--line-strong);
+  border-top-color: var(--ember);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ---- TREE NODE ---- */
+.tree-list {
+  list-style: none;
+  margin: 0; padding: 0;
+}
+
+.tree-node {
+  position: relative;
+  display: block;
+}
+
+/* The clickable row */
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px 3px 0;
+  cursor: default;
+  border-left: 2px solid transparent;
+  transition: background .12s, border-color .12s;
+  position: relative;
+  min-width: 0;
+}
+.tree-node-row:hover {
+  background: var(--bg-4);
+}
+
+/* Web platform: blue left-rail on hover; mobile: amber (no bbox available) */
+[data-platform="web"]     .tree-node-row:hover { border-left-color: var(--blue); }
+[data-platform="android"] .tree-node-row:hover,
+[data-platform="ios"]     .tree-node-row:hover { border-left-color: var(--amber); }
+
+/* Target element — ember treatment, matches action-item.selected exactly */
+.tree-node-row.is-target {
+  background: linear-gradient(90deg, rgba(255,120,73,0.13), rgba(255,120,73,0.04) 65%, transparent);
+  border-left-color: var(--ember) !important;
+  box-shadow: inset 2px 0 10px rgba(255,120,73,0.12);
+}
+/* Focus ring */
+.tree-node-row:focus { outline: none; }
+.tree-node-row:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
+
+/* Chevron */
+.tree-chevron {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  display: grid; place-items: center;
+  color: var(--text-faint);
+  transition: transform 150ms ease, color .12s;
+  margin-left: 2px;
+}
+.tree-chevron svg { width: 9px; height: 9px; display: block; }
+.tree-chevron.is-open { transform: rotate(90deg); }
+.tree-chevron.is-leaf { visibility: hidden; }
+.tree-node-row:hover .tree-chevron { color: var(--text-dim); }
+
+/* Class badge */
+.tree-class {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+  transition: border-color .12s;
+}
+/* Color by semantic category */
+.tree-class.cls-interactive { color: var(--blue); }
+.tree-class.cls-text        { color: var(--text-dim); }
+.tree-class.cls-layout      { color: var(--text-faint); }
+.tree-class.cls-other       { color: var(--text-faint); }
+/* shadow-DOM origin marker */
+.tree-class .cls-shadow-mark {
+  color: var(--text-faint);
+  margin-right: 2px;
+  font-size: 8px;
+}
+
+/* Scope prefix (dup disambiguation) */
+.tree-scope-prefix {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 1px;
+}
+
+/* Label text */
+.tree-label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-label.no-label {
+  color: var(--text-faint);
+  font-style: italic;
+}
+/* Search highlight */
+.tree-label mark {
+  background: rgba(251,191,36,0.22);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Dup-index superscript */
+.tree-dup-idx {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  margin-left: 1px;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* Ref badge @N — web only */
+.tree-ref {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--purple);
+  background: rgba(165,180,252,0.08);
+  border: 1px solid rgba(165,180,252,0.20);
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+  white-space: nowrap;
+  position: relative;
+}
+.tree-ref:hover {
+  background: rgba(165,180,252,0.16);
+  border-color: rgba(165,180,252,0.40);
+}
+/* On target row, ref badge gets ember color */
+.tree-node-row.is-target .tree-ref {
+  color: var(--ember-soft);
+  background: rgba(255,120,73,0.08);
+  border-color: rgba(255,120,73,0.30);
+}
+/* Copied feedback tooltip */
+.tree-ref::after {
+  content: "Copied!";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  background: var(--bg-3);
+  color: var(--green);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+  z-index: 30;
+}
+.tree-ref.did-copy::after { opacity: 1; }
+
+/* Flag chips */
+.tree-flags {
+  flex-shrink: 0;
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  margin-right: 4px;
+}
+.tree-flag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  letter-spacing: .03em;
+}
+.tree-flag.flag-disabled {
+  color: var(--amber);
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.22);
+}
+.tree-flag.flag-inert {
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+}
+
+/* Children list — collapsible */
+.tree-children {
+  list-style: none;
+  margin: 0; padding: 0;
+  overflow: hidden;
+  /* height is set by JS (0 when collapsed, measured when expanded) for smooth transition */
+}
+
+/* ---- NODE ANIMATIONS (reconciler states) ---- */
+@keyframes dom-node-in {
+  from { opacity: 0; background: rgba(96,165,250,0.08); }
+  to   { opacity: 1; background: transparent; }
+}
+@keyframes dom-field-pulse {
+  0%,100% { color: inherit; }
+  40%     { color: var(--amber); }
+}
+.dom-node-added .tree-node-row {
+  animation: dom-node-in 250ms cubic-bezier(.2,.7,.2,1) both;
+}
+.dom-node-out {
+  transition: opacity 180ms ease, max-height 200ms ease, padding 200ms ease;
+  opacity: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dom-field-changed {
+  animation: dom-field-pulse 400ms ease both;
+}
+
+/* ---- BBOX OVERLAY on screenshot ---- */
+#domBboxOverlay {
+  position: absolute;
+  pointer-events: none;
+  border: 1.5px solid var(--blue);
+  background: rgba(96,165,250,0.08);
+  border-radius: 3px;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 180ms ease, left .1s ease, top .1s ease, width .1s ease, height .1s ease;
+  box-sizing: border-box;
+}
+#domBboxOverlay.visible { opacity: 1; }
+/* ember variant for the current target node */
+#domBboxOverlay.is-target {
+  border-color: var(--ember);
+  background: rgba(255,120,73,0.10);
+  box-shadow: 0 0 0 1px var(--ember-glow);
+}
+
+/* ---- CHANGES-ONLY FILTER MODE ---- */
+.tree-node.unchanged-hidden {
+  display: none;
+}
+
+/* ---- "Pinned" state: workspace resizes to accommodate drawer ---- */
+@media (min-width: 1360px) {
+  .workspace-wrap.tree-pinned {
+    /* drawer is in normal flow as a flex sibling to workspace */
+  }
+}
+@media (max-width: 1359px) {
+  /* Pin ignored below 1360px — drawer always overlays */
+  .workspace-wrap.tree-pinned .tree-drawer {
+    position: absolute !important;
+    right: 0; top: 0; bottom: 0;
+  }
+  .workspace-wrap.tree-pinned .workspace {
+    /* not shrunk */
+  }
+  .workspace-wrap.tree-pinned .right-stack {
+    filter: brightness(0.88) !important;
+    transition: filter 200ms ease !important;
+  }
+}
+
 /* accessibility: respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
@@ -1147,6 +1761,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   </span>
 </header>
 
+<!-- ============================ WORKSPACE WRAP ============================ -->
+<div class="workspace-wrap" id="workspaceWrap">
+
 <!-- ============================ WORKSPACE ============================ -->
 <main class="workspace" role="main">
 
@@ -1157,7 +1774,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
       <span class="spacer"></span>
       <span class="hint" id="shotHint">1280 × 800 · jpeg · 2 fps</span>
     </div>
-    <div class="panel-body">
+    <div class="panel-body" style="position:relative;">
+      <!-- bbox overlay for DOM tree node hover (web only) -->
+      <div id="domBboxOverlay" aria-hidden="true"></div>
       <!-- placeholder (waiting for first frame) -->
       <div class="shot-placeholder" id="shotPlaceholder">
         <div class="glyph">
@@ -1219,6 +1838,118 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
   </div>
 </main>
+
+<!-- ============================ DOM TREE DRAWER ============================ -->
+
+<!-- Toggle tab — always visible on the right edge -->
+<button class="tree-toggle-tab" id="treeToggleTab"
+        aria-expanded="false"
+        aria-controls="treeDrawer"
+        aria-label="Toggle Brain's Eye View DOM tree panel"
+        title="Brain's Eye View — toggle DOM tree (B)">
+  <span class="tab-icon" aria-hidden="true">
+    <!-- tree/branch icon -->
+    <svg viewBox="0 0 24 24" fill="none">
+      <path d="M6 3v10M6 13a4 4 0 0 0 4 4h2a4 4 0 0 1 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M6 8h5a4 4 0 0 0 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      <circle cx="6" cy="3" r="1.5" fill="currentColor"/>
+      <circle cx="6" cy="21" r="1.5" fill="currentColor"/>
+      <circle cx="15" cy="4" r="1.5" fill="currentColor"/>
+      <circle cx="18" cy="21" r="1.5" fill="currentColor"/>
+    </svg>
+  </span>
+  <span class="tab-label">TREE</span>
+  <span class="tab-pip" aria-hidden="true"></span>
+</button>
+
+<!-- The drawer -->
+<aside class="tree-drawer" id="treeDrawer"
+       role="complementary"
+       aria-label="Brain's Eye View — DOM perception tree">
+
+  <!-- Drawer header -->
+  <div class="tree-drawer-head">
+    <span class="tree-title">
+      <!-- small forge/tree icon -->
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M6 3v10M6 13a4 4 0 0 0 4 4h2a4 4 0 0 1 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M6 8h5a4 4 0 0 0 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="6" cy="3" r="1.5" fill="currentColor"/>
+        <circle cx="6" cy="21" r="1.5" fill="currentColor"/>
+        <circle cx="15" cy="4" r="1.5" fill="currentColor"/>
+        <circle cx="18" cy="21" r="1.5" fill="currentColor"/>
+      </svg>
+      Brain's Eye View
+    </span>
+    <!-- diff badge: added / removed / changed counts -->
+    <span class="tree-diff-badge" id="treeDiffBadge" aria-live="polite" aria-label="Tree diff counts">
+      <span class="d-add" id="treeDiffAdd" title="Added nodes (click to filter)">+0</span>
+      <span class="d-rem" id="treeDiffRem" title="Removed nodes (click to filter)">−0</span>
+      <span class="d-chg" id="treeDiffChg" title="Changed nodes (click to filter)">~0</span>
+    </span>
+    <span class="dh-spacer"></span>
+    <!-- pin button -->
+    <button class="tree-pin-btn" id="treePinBtn"
+            title="Pin panel as fixed column"
+            aria-label="Pin DOM tree panel as fixed column"
+            aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 2v10M8 6l4-4 4 4M8 18l4 4 4-4M12 12v10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <!-- close button -->
+    <button class="tree-close-btn" id="treeCloseBtn"
+            title="Close DOM tree panel"
+            aria-label="Close DOM tree panel">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Search row -->
+  <div class="tree-search-row">
+    <input class="tree-search-input" id="treeSearchInput"
+           type="search"
+           placeholder="Filter elements…"
+           aria-label="Search DOM elements"
+           role="searchbox"
+           aria-controls="treeContainer"
+           autocomplete="off"
+           spellcheck="false" />
+    <button class="tree-search-clear" id="treeSearchClear"
+            aria-label="Clear search" title="Clear (Esc)">✕</button>
+  </div>
+
+  <!-- No-bbox notice for android/ios (hidden by default, shown via JS) -->
+  <div class="tree-nobbox-notice" id="treeNobboxNotice" style="display:none">
+    <span>No bbox on Android/iOS — screenshot overlay unavailable.</span>
+    <button class="tree-nobbox-dismiss" id="treeNobboxDismiss" aria-label="Dismiss">✕</button>
+  </div>
+
+  <!-- Tree container -->
+  <div class="tree-scroll" id="treeScroll">
+    <div class="tree-empty" id="treeEmpty">
+      Waiting for the first step.<br>The AI's perception tree appears here.
+    </div>
+    <div class="tree-loading" id="treeLoading" style="display:none">
+      <span class="tree-loading-spinner"></span>
+      <span>Loading tree…</span>
+    </div>
+    <ul class="tree-list" id="treeContainer"
+        role="tree"
+        aria-label="DOM perception tree"
+        tabindex="0"
+        style="display:none"></ul>
+  </div>
+
+</aside>
+
+<!-- Screen-reader live region for tree updates -->
+<div class="sr-only" id="treeAriaLive" aria-live="polite" aria-atomic="false"></div>
+
+</div><!-- /.workspace-wrap -->
 
 <!-- ============================ TIMELINE / FILMSTRIP (time-travel) ============================ -->
 <footer class="timeline" role="region" aria-label="Step timeline — click a frame to rewind">
@@ -2154,6 +2885,1061 @@ if (USE_LIVE_BACKEND) {
 } else {
   startPrototypeFeed();
 }
+
+/* ======================================================================
+   DOM TREE PANEL — Brain's Eye View
+   Vanilla JS, zero deps beyond the existing file.
+   ====================================================================== */
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     DOM refs
+  ------------------------------------------------------------------ */
+  const wrap       = document.getElementById('workspaceWrap');
+  const drawer     = document.getElementById('treeDrawer');
+  const toggleTab  = document.getElementById('treeToggleTab');
+  const closeBtn   = document.getElementById('treeCloseBtn');
+  const pinBtn     = document.getElementById('treePinBtn');
+  const container  = document.getElementById('treeContainer');
+  const scrollEl   = document.getElementById('treeScroll');
+  const emptyEl    = document.getElementById('treeEmpty');
+  const loadingEl  = document.getElementById('treeLoading');
+  const searchInput= document.getElementById('treeSearchInput');
+  const searchClear= document.getElementById('treeSearchClear');
+  const diffAdd    = document.getElementById('treeDiffAdd');
+  const diffRem    = document.getElementById('treeDiffRem');
+  const diffChg    = document.getElementById('treeDiffChg');
+  const nobboxNote = document.getElementById('treeNobboxNotice');
+  const nobboxDismiss = document.getElementById('treeNobboxDismiss');
+  const bboxOverlay= document.getElementById('domBboxOverlay');
+  const treeAriaLive = document.getElementById('treeAriaLive');
+
+  /* ------------------------------------------------------------------
+     Panel state
+  ------------------------------------------------------------------ */
+  const PANEL_OPEN_KEY   = 'screenforge.playground.domtree.open';
+  const PANEL_PIN_KEY    = 'screenforge.playground.domtree.pinned';
+  const NOBBOX_DISM_KEY  = 'screenforge.playground.domtree.nobboxdismissed';
+  const VIEWPORT_W       = 1280;  // web capture width (matches shotHint)
+
+  let isOpen      = false;
+  let isPinned    = false;
+  let filterQuery = '';
+  let changesOnlyMode = false;
+
+  // Roving tabindex: currently focused treeitem index in the flat visible list
+  let rovingFocusKey = null;
+
+  // bbox hide timer
+  let bboxHideTimer = null;
+  // bbox lock: keeps target bbox visible even when not hovering
+  let bboxLockedNode = null;
+
+  /* ------------------------------------------------------------------
+     djb2 hash (stable key for mobile nodes)
+  ------------------------------------------------------------------ */
+  function djb2(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h) ^ str.charCodeAt(i);
+    return (h >>> 0).toString(16).padStart(8, '0');
+  }
+
+  function stableKey(node, depth, siblingIndex, platform) {
+    if (platform === 'web' && node.ref) return node.ref;
+    const raw = (node.class || 'x')
+      + '|' + (node.text || node.desc || node.id_short || node.id || 'ø').slice(0, 40)
+      + '|d' + depth
+      + '|s' + siblingIndex;
+    return djb2(raw);
+  }
+
+  /* ------------------------------------------------------------------
+     Class category classifier
+  ------------------------------------------------------------------ */
+  const INTERACTIVE_TAGS = new Set([
+    'a','button','input','select','textarea',
+    'Button','ImageButton','CheckBox','RadioButton','Switch','ToggleButton','Spinner'
+  ]);
+  const TEXT_TAGS = new Set([
+    'span','p','h1','h2','h3','h4','h5','h6','label','td','th','li','caption',
+    'TextView','EditText'
+  ]);
+  function classCategory(cls) {
+    if (!cls) return 'cls-other';
+    if (INTERACTIVE_TAGS.has(cls)) return 'cls-interactive';
+    if (TEXT_TAGS.has(cls)) return 'cls-text';
+    if (['div','section','article','nav','main','aside','form',
+         'FrameLayout','LinearLayout','RelativeLayout','ConstraintLayout',
+         'ScrollView','RecyclerView','ListView','ViewGroup'].includes(cls))
+      return 'cls-layout';
+    return 'cls-other';
+  }
+
+  /* ------------------------------------------------------------------
+     Build node label (text → desc → id_short → null)
+  ------------------------------------------------------------------ */
+  function nodeLabel(node) {
+    return (node.text || node.desc || node.id_short || '').trim();
+  }
+
+  /* ------------------------------------------------------------------
+     Best locator string to copy
+  ------------------------------------------------------------------ */
+  function bestLocator(node, platform) {
+    if (platform === 'web') {
+      if (node.id)   return '#' + node.id;
+      if (node.desc) return `[aria-label="${node.desc}"]`;
+      if (node.text) return `text=${node.text}`;
+      if (node.ref)  return node.ref;
+      return node.class || '(no locator)';
+    } else {
+      if (node.id)   return `id=${node.id}`;
+      if (node.text) return `text=${node.text}`;
+      if (node.desc) return `desc=${node.desc}`;
+      return node.class || '(no locator)';
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     Highlight search match in a label string
+  ------------------------------------------------------------------ */
+  function highlightMatch(text, query) {
+    if (!query || !text) return escapeHtml(text || '');
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return escapeHtml(text);
+    return escapeHtml(text.slice(0, idx))
+      + '<mark>' + escapeHtml(text.slice(idx, idx + query.length)) + '</mark>'
+      + escapeHtml(text.slice(idx + query.length));
+  }
+
+  function nodeMatchesQuery(node, query) {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return (node.text  || '').toLowerCase().includes(q)
+        || (node.desc  || '').toLowerCase().includes(q)
+        || (node.id    || '').toLowerCase().includes(q)
+        || (node.class || '').toLowerCase().includes(q)
+        || (node.ref   || '').toLowerCase().includes(q);
+  }
+
+  /* ------------------------------------------------------------------
+     Create a single tree node <li> element
+  ------------------------------------------------------------------ */
+  function createNodeLi(node, key, depth, siblingIndex, platform, hasChildren) {
+    const li = document.createElement('li');
+    li.setAttribute('role', 'treeitem');
+    li.dataset.domKey = key;
+    li.dataset.depth = depth;
+    li.classList.add('tree-node');
+
+    const label   = nodeLabel(node);
+    const catCls  = classCategory(node.class);
+    const isLeaf  = !hasChildren;
+    const indentPx= 12 + depth * 16;
+
+    // aria-label
+    const ariaLabelParts = [node.class || '', label,
+      node.clickable ? 'clickable' : '',
+      node.disabled  ? 'disabled'  : '',
+      node.inert     ? 'inert'     : '',
+      node.ref       ? 'ref ' + node.ref : ''
+    ].filter(Boolean).join(', ');
+    li.setAttribute('aria-label', ariaLabelParts);
+    if (!isLeaf) li.setAttribute('aria-expanded', 'false');
+    li.setAttribute('aria-level', String(depth + 1));
+    li.setAttribute('tabindex', '-1');
+
+    // row
+    const row = document.createElement('div');
+    row.className = 'tree-node-row';
+    row.style.paddingLeft = indentPx + 'px';
+    row.setAttribute('role', 'presentation');
+
+    // chevron
+    const chev = document.createElement('span');
+    chev.className = 'tree-chevron' + (isLeaf ? ' is-leaf' : '');
+    chev.setAttribute('aria-hidden', 'true');
+    chev.innerHTML = `<svg viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    row.appendChild(chev);
+
+    // class badge
+    const cls = document.createElement('span');
+    cls.className = 'tree-class ' + catCls;
+    cls.textContent = node.class || '?';
+    row.appendChild(cls);
+
+    // scope prefix (dup disambiguation)
+    if (node.scope) {
+      const scopeSpan = document.createElement('span');
+      scopeSpan.className = 'tree-scope-prefix';
+      scopeSpan.textContent = '[' + node.scope + ']';
+      scopeSpan.title = 'Scope: ' + node.scope;
+      row.appendChild(scopeSpan);
+    }
+
+    // label
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'tree-label' + (label ? '' : ' no-label');
+    labelSpan.dataset.rawLabel = label || '';
+    if (label) {
+      labelSpan.innerHTML = highlightMatch(label, filterQuery);
+    } else {
+      labelSpan.textContent = '(no label)';
+    }
+    row.appendChild(labelSpan);
+
+    // dup index superscript
+    if (node.dup_index != null) {
+      const dupSpan = document.createElement('sup');
+      dupSpan.className = 'tree-dup-idx';
+      dupSpan.textContent = '#' + node.dup_index;
+      dupSpan.title = 'Duplicate #' + node.dup_index + ' (disambiguation index)';
+      row.appendChild(dupSpan);
+    }
+
+    // ref badge (web only)
+    if (platform === 'web' && node.ref) {
+      const ref = document.createElement('span');
+      ref.className = 'tree-ref';
+      ref.textContent = node.ref;
+      ref.title = 'Click to copy locator';
+      ref.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyLocator(node, platform, ref);
+      });
+      row.appendChild(ref);
+    }
+
+    // flags
+    const flags = document.createElement('span');
+    flags.className = 'tree-flags';
+    if (node.disabled) {
+      const f = document.createElement('span');
+      f.className = 'tree-flag flag-disabled';
+      f.textContent = 'DISABLED';
+      flags.appendChild(f);
+    }
+    if (node.inert) {
+      const f = document.createElement('span');
+      f.className = 'tree-flag flag-inert';
+      f.textContent = 'INERT';
+      flags.appendChild(f);
+    }
+    row.appendChild(flags);
+
+    li.appendChild(row);
+
+    // children placeholder (populated by reconciler)
+    if (!isLeaf) {
+      const childUl = document.createElement('ul');
+      childUl.className = 'tree-children';
+      childUl.setAttribute('role', 'group');
+      childUl.style.display = 'none';
+      li.appendChild(childUl);
+    }
+
+    // --- Row interactions ---
+
+    // hover → bbox overlay (web) / amber rail (mobile)
+    row.addEventListener('mouseenter', function () {
+      if (bboxLockedNode) return;  // target is locked; don't override with hover
+      if (state.platform === 'web' && node.x != null) {
+        showBbox(node, false);
+      }
+    });
+    row.addEventListener('mouseleave', function () {
+      if (bboxLockedNode) return;
+      hideBbox(300);
+    });
+
+    // click → expand/collapse (if has children); also copy for mobile leaf
+    row.addEventListener('click', function (e) {
+      if (e.target.classList.contains('tree-ref')) return;
+      if (!isLeaf) {
+        toggleExpand(li);
+      } else if (platform !== 'web') {
+        // mobile leaf: click row = copy locator
+        copyLocator(node, platform, row);
+      }
+      rovingFocusKey = key;
+      li.setAttribute('tabindex', '0');
+      li.focus();
+    });
+
+    // keyboard on the li itself
+    li.addEventListener('keydown', function (e) {
+      handleTreeKeydown(e, li, isLeaf, node, platform, key);
+    });
+
+    return li;
+  }
+
+  /* ------------------------------------------------------------------
+     Patch an existing li in-place (preserves expand state)
+  ------------------------------------------------------------------ */
+  function patchNodeLi(li, node, platform) {
+    const row = li.querySelector('.tree-node-row');
+    if (!row) return;
+
+    // label
+    const labelSpan = row.querySelector('.tree-label');
+    if (labelSpan) {
+      const newLabel = nodeLabel(node);
+      const oldLabel = labelSpan.dataset.rawLabel || '';
+      if (newLabel !== oldLabel) {
+        labelSpan.dataset.rawLabel = newLabel;
+        if (newLabel) {
+          labelSpan.innerHTML = highlightMatch(newLabel, filterQuery);
+          labelSpan.classList.remove('no-label');
+        } else {
+          labelSpan.textContent = '(no label)';
+          labelSpan.classList.add('no-label');
+        }
+        labelSpan.classList.add('dom-field-changed');
+        setTimeout(() => labelSpan.classList.remove('dom-field-changed'), 450);
+      } else if (filterQuery) {
+        // re-apply highlight even if text unchanged (query may have changed)
+        labelSpan.innerHTML = newLabel ? highlightMatch(newLabel, filterQuery) : '(no label)';
+      }
+    }
+
+    // flags
+    const flagsEl = row.querySelector('.tree-flags');
+    if (flagsEl) {
+      const newHtml = (node.disabled ? '<span class="tree-flag flag-disabled">DISABLED</span>' : '')
+                    + (node.inert   ? '<span class="tree-flag flag-inert">INERT</span>' : '');
+      if (flagsEl.innerHTML !== newHtml) {
+        flagsEl.innerHTML = newHtml;
+        flagsEl.classList.add('dom-field-changed');
+        setTimeout(() => flagsEl.classList.remove('dom-field-changed'), 450);
+      }
+    }
+
+    // target highlight: do NOT set here — set by setTreeTarget()
+  }
+
+  /* ------------------------------------------------------------------
+     Toggle expand/collapse
+  ------------------------------------------------------------------ */
+  function toggleExpand(li) {
+    const childUl = li.querySelector(':scope > .tree-children');
+    if (!childUl) return;
+    const isExpanded = li.getAttribute('aria-expanded') === 'true';
+    const chev = li.querySelector('.tree-chevron');
+    if (isExpanded) {
+      li.setAttribute('aria-expanded', 'false');
+      childUl.style.display = 'none';
+      if (chev) chev.classList.remove('is-open');
+    } else {
+      li.setAttribute('aria-expanded', 'true');
+      childUl.style.display = '';
+      if (chev) chev.classList.add('is-open');
+    }
+  }
+
+  function expandLi(li) {
+    if (li.getAttribute('aria-expanded') === 'true') return;
+    const childUl = li.querySelector(':scope > .tree-children');
+    if (!childUl) return;
+    li.setAttribute('aria-expanded', 'true');
+    childUl.style.display = '';
+    const chev = li.querySelector('.tree-chevron');
+    if (chev) chev.classList.add('is-open');
+  }
+
+  /* ------------------------------------------------------------------
+     Keyboard navigation — ARIA tree pattern
+  ------------------------------------------------------------------ */
+  function getVisibleNodes() {
+    // returns all currently visible (not display:none) treeitems in DOM order
+    return Array.from(container.querySelectorAll('li[role="treeitem"]')).filter(li => {
+      // check li is not inside a collapsed subtree
+      let el = li.parentElement;
+      while (el && el !== container) {
+        if (el.classList.contains('tree-children') && el.style.display === 'none') return false;
+        el = el.parentElement;
+      }
+      return true;
+    });
+  }
+
+  function handleTreeKeydown(e, li, isLeaf, node, platform, key) {
+    const nodes = getVisibleNodes();
+    const idx   = nodes.indexOf(li);
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        if (idx < nodes.length - 1) focusNode(nodes[idx + 1]);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        if (idx > 0) focusNode(nodes[idx - 1]);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (!isLeaf && li.getAttribute('aria-expanded') !== 'true') {
+          expandLi(li);
+        } else if (!isLeaf && li.getAttribute('aria-expanded') === 'true') {
+          // move to first child
+          const childUl = li.querySelector(':scope > .tree-children');
+          if (childUl) {
+            const firstChild = childUl.querySelector(':scope > li[role="treeitem"]');
+            if (firstChild) focusNode(firstChild);
+          }
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (!isLeaf && li.getAttribute('aria-expanded') === 'true') {
+          toggleExpand(li);
+        } else {
+          // move to parent
+          const parentUl = li.parentElement;
+          if (parentUl && parentUl.classList.contains('tree-children')) {
+            const parentLi = parentUl.closest('li[role="treeitem"]');
+            if (parentLi) focusNode(parentLi);
+          }
+        }
+        break;
+      case 'Home':
+        e.preventDefault();
+        if (nodes.length) focusNode(nodes[0]);
+        break;
+      case 'End':
+        e.preventDefault();
+        if (nodes.length) focusNode(nodes[nodes.length - 1]);
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        copyLocator(node, platform, li.querySelector('.tree-ref') || li);
+        break;
+    }
+  }
+
+  function focusNode(li) {
+    // roving tabindex
+    container.querySelectorAll('li[tabindex="0"]').forEach(n => n.setAttribute('tabindex', '-1'));
+    li.setAttribute('tabindex', '0');
+    li.focus();
+    rovingFocusKey = li.dataset.domKey;
+  }
+
+  /* ------------------------------------------------------------------
+     container-level keydown (when focus is on the container ul itself)
+  ------------------------------------------------------------------ */
+  container.addEventListener('keydown', function (e) {
+    if (e.target !== container) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const nodes = getVisibleNodes();
+      if (nodes.length) focusNode(nodes[e.key === 'ArrowDown' ? 0 : nodes.length - 1]);
+    }
+    if (e.key === '/') {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  /* ------------------------------------------------------------------
+     Bbox overlay
+  ------------------------------------------------------------------ */
+  function showBbox(node, isTarget) {
+    if (!bboxOverlay || state.platform !== 'web') return;
+    const frame = document.getElementById('shotFrame');
+    if (!frame || frame.style.display === 'none') return;
+
+    const frameRect = frame.getBoundingClientRect();
+    const panelBody = frame.parentElement;
+    const panelRect = panelBody.getBoundingClientRect();
+
+    // The shot-frame itself may be smaller than the panel body (centered).
+    // We position relative to panelBody (which has position:relative).
+    const scaleX = frameRect.width  / VIEWPORT_W;
+    const scaleY = frameRect.height / (VIEWPORT_W * (10/16)); // 16:10 web aspect
+    const scale  = Math.min(scaleX, scaleY);
+
+    // offset of frame inside panel body
+    const offX = frameRect.left - panelRect.left;
+    const offY = frameRect.top  - panelRect.top;
+
+    bboxOverlay.style.left   = (offX + node.x * scale) + 'px';
+    bboxOverlay.style.top    = (offY + node.y * scale) + 'px';
+    bboxOverlay.style.width  = (node.w * scale) + 'px';
+    bboxOverlay.style.height = (node.h * scale) + 'px';
+
+    bboxOverlay.className = isTarget ? 'is-target visible' : 'visible';
+
+    if (bboxHideTimer) { clearTimeout(bboxHideTimer); bboxHideTimer = null; }
+  }
+
+  function hideBbox(delayMs) {
+    if (bboxHideTimer) clearTimeout(bboxHideTimer);
+    bboxHideTimer = setTimeout(() => {
+      if (bboxOverlay) bboxOverlay.classList.remove('visible');
+    }, delayMs || 0);
+  }
+
+  /* ------------------------------------------------------------------
+     Copy locator to clipboard
+  ------------------------------------------------------------------ */
+  function copyLocator(node, platform, anchorEl) {
+    const loc = bestLocator(node, platform);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(loc).catch(() => {});
+    } else {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = loc;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch(e) {}
+      document.body.removeChild(ta);
+    }
+    // Show tooltip on the ref badge or nearby element
+    if (anchorEl) {
+      anchorEl.classList.add('did-copy');
+      setTimeout(() => anchorEl.classList.remove('did-copy'), 1200);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     Flat-tree builder: converts the compressor's flat ui_elements array
+     into a depth-annotated list for the reconciler.
+     The compressor output is a FLAT list, not a true tree — we display
+     it flat with depth=0 for all nodes (the DOM info has no parent
+     pointer in the current schema). A future schema with parent_ref
+     can enable real nesting. For now, depth=0 gives a clean flat list.
+  ------------------------------------------------------------------ */
+  function flattenNodes(nodes) {
+    return nodes.map((n, i) => ({
+      ...n,
+      _depth: 0,
+      _siblingIndex: i,
+      _hasChildren: false,
+    }));
+  }
+
+  /* ------------------------------------------------------------------
+     Reconciler — keyed diff
+  ------------------------------------------------------------------ */
+  function reconcile(newNodes, platform) {
+    // Build key→existing li map
+    const existing = new Map();
+    container.querySelectorAll('li[data-dom-key]').forEach(li => {
+      existing.set(li.dataset.domKey, li);
+    });
+
+    const newMap   = new Map();
+    const newOrder = [];
+    let addedCount = 0, removedCount = 0, changedCount = 0;
+
+    newNodes.forEach((node, i) => {
+      const key = stableKey(node, node._depth, node._siblingIndex, platform);
+      newMap.set(key, node);
+      newOrder.push(key);
+    });
+
+    // Mark removals
+    existing.forEach((li, key) => {
+      if (!newMap.has(key)) {
+        li.dataset.domState = 'removing';
+        removedCount++;
+      }
+    });
+
+    // Patch existing or create new
+    newOrder.forEach(key => {
+      const node = newMap.get(key);
+      if (existing.has(key)) {
+        const li = existing.get(key);
+        // detect changes before patching
+        const labelSpan = li.querySelector('.tree-label');
+        const prevLabel = labelSpan ? (labelSpan.dataset.rawLabel || '') : '';
+        const newLabel  = nodeLabel(node);
+        if (prevLabel !== newLabel) changedCount++;
+        patchNodeLi(li, node, platform);
+        li.dataset.domState = 'updated';
+      } else {
+        const li = createNodeLi(node, key, node._depth, node._siblingIndex, platform, node._hasChildren);
+        li.dataset.domState = 'added';
+        li.classList.add('dom-node-added');
+        container.appendChild(li);
+        addedCount++;
+        setTimeout(() => li.classList.remove('dom-node-added'), 300);
+      }
+    });
+
+    // Animate-out + remove
+    container.querySelectorAll('[data-dom-state="removing"]').forEach(li => {
+      li.classList.add('dom-node-out');
+      setTimeout(() => li.remove(), 220);
+    });
+
+    // Reorder to match newOrder (appendChild moves existing nodes)
+    newOrder.forEach(key => {
+      const li = container.querySelector(`[data-dom-key="${CSS.escape(key)}"]`);
+      if (li) container.appendChild(li);
+    });
+
+    return { added: addedCount, removed: removedCount, changed: changedCount };
+  }
+
+  /* ------------------------------------------------------------------
+     Render a tree from a flat nodes array (stored per step)
+  ------------------------------------------------------------------ */
+  function renderTree(nodes, platform, targetRef) {
+    if (!nodes || !nodes.length) {
+      showEmpty();
+      return;
+    }
+    const flat = flattenNodes(nodes);
+    const diff = reconcile(flat, platform);
+
+    // Update diff badge
+    diffAdd.textContent = '+' + diff.added;
+    diffRem.textContent = '−' + diff.removed;
+    diffChg.textContent = '~' + diff.changed;
+
+    // Apply changes-only filter
+    applyFilter(filterQuery, changesOnlyMode);
+
+    // Show container
+    emptyEl.style.display   = 'none';
+    loadingEl.style.display = 'none';
+    container.style.display = '';
+
+    // Mark target element
+    setTreeTarget(targetRef, platform, nodes);
+
+    // Announce to screen reader
+    const targetNode = nodes.find(n => n.ref === targetRef
+      || n.text === targetRef
+      || n.id === targetRef);
+    const targetDesc = targetNode
+      ? (targetNode.class + ' ' + nodeLabel(targetNode)).trim()
+      : '';
+    treeAriaLive.textContent = `Step tree: ${diff.added} added, ${diff.removed} removed. `
+      + (targetDesc ? `Target: ${targetDesc}.` : '');
+  }
+
+  /* ------------------------------------------------------------------
+     Mark the AI's current target element with ember treatment
+  ------------------------------------------------------------------ */
+  function setTreeTarget(targetRef, platform, nodes) {
+    // Clear previous target
+    container.querySelectorAll('.tree-node-row.is-target').forEach(r => {
+      r.classList.remove('is-target');
+      r.parentElement.removeAttribute('aria-current');
+    });
+    bboxLockedNode = null;
+    hideBbox(0);
+
+    if (!targetRef) return;
+
+    // Find the matching node
+    let targetNode = null;
+    if (platform === 'web') {
+      targetNode = nodes.find(n => n.ref === targetRef);
+      if (!targetNode) {
+        // try by text/id
+        targetNode = nodes.find(n =>
+          n.text === targetRef || n.id === targetRef || n.desc === targetRef);
+      }
+    } else {
+      targetNode = nodes.find(n =>
+        n.text === targetRef || n.id === targetRef || n.desc === targetRef);
+    }
+
+    if (!targetNode) return;
+
+    const key = stableKey(targetNode, targetNode._depth, targetNode._siblingIndex, platform);
+    const li  = container.querySelector(`[data-dom-key="${CSS.escape(key)}"]`);
+    if (!li) return;
+
+    const row = li.querySelector('.tree-node-row');
+    if (row) row.classList.add('is-target');
+    li.setAttribute('aria-current', 'true');
+
+    // Auto-scroll target into view
+    li.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    // Show locked ember bbox on screenshot (web only)
+    if (platform === 'web' && targetNode.x != null) {
+      bboxLockedNode = targetNode;
+      showBbox(targetNode, true);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     Search / filter
+  ------------------------------------------------------------------ */
+  function applyFilter(query, changesOnly) {
+    const items = container.querySelectorAll('li[role="treeitem"]');
+    items.forEach(li => {
+      const keyAttr = li.dataset.domKey;
+      const labelSpan = li.querySelector('.tree-label');
+      const rawLabel  = labelSpan ? (labelSpan.dataset.rawLabel || '') : '';
+      const cls       = (li.querySelector('.tree-class') || {}).textContent || '';
+      const row       = li.querySelector('.tree-node-row');
+
+      // rebuild label html with current highlight
+      if (labelSpan && rawLabel) {
+        labelSpan.innerHTML = highlightMatch(rawLabel, query);
+      }
+
+      // visibility
+      let hide = false;
+      if (query) {
+        const matches = rawLabel.toLowerCase().includes(query.toLowerCase())
+                     || cls.toLowerCase().includes(query.toLowerCase());
+        hide = !matches;
+      }
+      if (changesOnly && li.dataset.domState === 'updated') hide = true;
+
+      li.classList.toggle('unchanged-hidden', hide);
+    });
+  }
+
+  searchInput.addEventListener('input', function () {
+    filterQuery = searchInput.value.trim();
+    searchClear.classList.toggle('visible', filterQuery.length > 0);
+    changesOnlyMode = false;
+    applyFilter(filterQuery, false);
+  });
+
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      filterQuery = '';
+      searchInput.value = '';
+      searchClear.classList.remove('visible');
+      applyFilter('', false);
+      // return focus to tree
+      const nodes = getVisibleNodes();
+      if (nodes.length) focusNode(nodes[0]);
+    }
+  });
+
+  searchClear.addEventListener('click', function () {
+    filterQuery = '';
+    searchInput.value = '';
+    searchClear.classList.remove('visible');
+    changesOnlyMode = false;
+    applyFilter('', false);
+  });
+
+  // Diff badge click → changes-only mode toggle
+  [diffAdd, diffRem, diffChg].forEach(btn => {
+    btn.addEventListener('click', function () {
+      changesOnlyMode = !changesOnlyMode;
+      if (changesOnlyMode) {
+        filterQuery = '';
+        searchInput.value = '';
+        searchClear.classList.remove('visible');
+      }
+      applyFilter(filterQuery, changesOnlyMode);
+    });
+  });
+
+  /* ------------------------------------------------------------------
+     Show states
+  ------------------------------------------------------------------ */
+  function showEmpty() {
+    emptyEl.style.display   = '';
+    loadingEl.style.display = 'none';
+    container.style.display = 'none';
+  }
+  function showLoading() {
+    emptyEl.style.display   = 'none';
+    loadingEl.style.display = '';
+    container.style.display = 'none';
+  }
+
+  /* ------------------------------------------------------------------
+     No-bbox notice (android/ios)
+  ------------------------------------------------------------------ */
+  function updateNobboxNotice(platform) {
+    if (platform === 'web') {
+      nobboxNote.style.display = 'none';
+      return;
+    }
+    if (localStorage.getItem(NOBBOX_DISM_KEY)) {
+      nobboxNote.style.display = 'none';
+      return;
+    }
+    nobboxNote.style.display = 'flex';
+  }
+
+  nobboxDismiss.addEventListener('click', function () {
+    nobboxNote.style.display = 'none';
+    try { localStorage.setItem(NOBBOX_DISM_KEY, '1'); } catch(e) {}
+  });
+
+  /* ------------------------------------------------------------------
+     Drawer open / close / pin
+  ------------------------------------------------------------------ */
+  function openDrawer() {
+    isOpen = true;
+    drawer.classList.add('is-open');
+    wrap.classList.add('tree-open');
+    toggleTab.setAttribute('aria-expanded', 'true');
+    try { localStorage.setItem(PANEL_OPEN_KEY, '1'); } catch(e) {}
+
+    updateNobboxNotice(state.platform);
+
+    // If we have a current step's tree, render it
+    const curStep = state.steps[state.steps.length - 1];
+    if (curStep && curStep.domTree) {
+      renderTree(curStep.domTree.nodes, curStep.domTree.platform, deriveTargetRef(curStep));
+    }
+  }
+
+  function closeDrawer() {
+    isOpen = false;
+    drawer.classList.remove('is-open');
+    wrap.classList.remove('tree-open');
+    toggleTab.setAttribute('aria-expanded', 'false');
+    bboxLockedNode = null;
+    hideBbox(0);
+    try { localStorage.setItem(PANEL_OPEN_KEY, '0'); } catch(e) {}
+  }
+
+  function toggleDrawer() {
+    isOpen ? closeDrawer() : openDrawer();
+  }
+
+  function applyPin(pinned) {
+    isPinned = pinned;
+    wrap.classList.toggle('tree-pinned', pinned);
+    pinBtn.classList.toggle('pinned', pinned);
+    pinBtn.setAttribute('aria-pressed', String(pinned));
+    try { localStorage.setItem(PANEL_PIN_KEY, pinned ? '1' : '0'); } catch(e) {}
+  }
+
+  toggleTab.addEventListener('click', toggleDrawer);
+  closeBtn.addEventListener('click', closeDrawer);
+  pinBtn.addEventListener('click', function () { applyPin(!isPinned); });
+
+  // Keyboard shortcut: B toggles the panel (not in input/textarea)
+  document.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if ((e.key === 'b' || e.key === 'B') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      toggleDrawer();
+    }
+  });
+
+  // "/" in tree panel → focus search
+  document.addEventListener('keydown', function (e) {
+    if (!isOpen) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === '/') {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
+  /* ------------------------------------------------------------------
+     Restore persisted state
+  ------------------------------------------------------------------ */
+  (function restoreState() {
+    try {
+      if (localStorage.getItem(PANEL_PIN_KEY) === '1') applyPin(true);
+      if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openDrawer();
+    } catch(e) {}
+  })();
+
+  /* ------------------------------------------------------------------
+     Derive the target ref from a step (what the brain acted on)
+  ------------------------------------------------------------------ */
+  function deriveTargetRef(step) {
+    if (!step) return null;
+    // For web: the locator_value often matches the @ref's text/id/desc
+    // We pass the locator_value directly; setTreeTarget tries multiple match fields
+    return step.locator_value || step.extra_value || null;
+  }
+
+  /* ------------------------------------------------------------------
+     Prototype fake DOM tree data — mirrors the 6-step login story
+     Each step gets a small tree of the page at that moment.
+  ------------------------------------------------------------------ */
+  function buildFakeTree(stepIndex, platform) {
+    if (platform !== 'web') {
+      // Android/iOS: no ref, no bbox
+      return [
+        { class: 'TextView',    text: 'Sign in',                 clickable: false },
+        { class: 'EditText',    text: '', desc: 'Username',       clickable: true,  id: 'com.example:id/username' },
+        { class: 'EditText',    text: '', desc: 'Password',       clickable: true,  id: 'com.example:id/password',
+          ...(stepIndex >= 3 ? { text: '••••••••••' } : {}) },
+        { class: 'Button',      text: stepIndex >= 4 ? 'Signing in…' : 'Log in', clickable: true,  id: 'com.example:id/submit' },
+        ...(stepIndex >= 5 ? [
+          { class: 'TextView',  text: 'Dashboard',               clickable: false },
+          { class: 'TextView',  text: 'Welcome back, admin',     clickable: false },
+        ] : []),
+      ];
+    }
+
+    // Web: full with ref + bbox
+    const base = [
+      { ref: '@1',  class: 'html',     text: '',                     clickable: false, x:0,   y:0,   w:1280, h:800 },
+      { ref: '@2',  class: 'div',      text: 'Sign in',              clickable: false, x:435, y:190, w:420,  h:360 },
+      { ref: '@3',  class: 'h2',       text: 'Sign in',              clickable: false, x:440, y:230, w:410,  h:40  },
+      { ref: '@4',  class: 'label',    text: 'Username',             clickable: false, x:450, y:300, w:360,  h:20  },
+      { ref: '@5',  class: 'input',    desc: 'Username',             clickable: true,  x:450, y:325, w:360,  h:40,
+        id: 'username', type: 'email',
+        ...(stepIndex >= 2 ? { text: 'qa_admin@example.com' } : {}) },
+      { ref: '@6',  class: 'label',    text: 'Password',             clickable: false, x:450, y:378, w:360,  h:20  },
+      { ref: '@7',  class: 'input',    desc: 'Password',             clickable: true,  x:450, y:400, w:360,  h:40,
+        id: 'password', type: 'password',
+        ...(stepIndex >= 3 ? { text: '••••••••••' } : {}) },
+      { ref: '@8',  class: 'button',   text: stepIndex >= 4 ? 'Signing in…' : 'Log in',
+                                                                      clickable: stepIndex < 4, x:450, y:452, w:360,  h:44,
+        ...(stepIndex >= 4 ? { disabled: false } : {}) },
+      ...(stepIndex >= 5 ? [
+        { ref: '@9',  class: 'h1',   text: 'Dashboard',             clickable: false, x:40,  y:150, w:300,  h:40 },
+        { ref: '@10', class: 'span', text: '● signed in',           clickable: false, x:40,  y:200, w:200,  h:24 },
+        { ref: '@11', class: 'div',  text: 'Welcome back, admin',   clickable: false, x:64,  y:360, w:500,  h:30 },
+      ] : []),
+    ];
+    return base;
+  }
+
+  /* ------------------------------------------------------------------
+     Hook into the existing step pipeline
+     Called after each onStepEvent so the tree panel updates automatically.
+  ------------------------------------------------------------------ */
+  function onDomTreeStep(step) {
+    // In production, step.dom_tree comes from the SSE payload.
+    // In prototype/offline mode, synthesize it from buildFakeTree.
+    let nodes;
+    if (step.dom_tree && Array.isArray(step.dom_tree.nodes)) {
+      nodes = step.dom_tree.nodes;
+    } else {
+      nodes = buildFakeTree(step.step_index, state.platform);
+    }
+
+    // Store on the step for time-travel
+    step.domTree = { nodes, platform: state.platform };
+
+    // Mark tab pip
+    toggleTab.classList.add('has-data');
+
+    // Only render if panel is open
+    if (!isOpen) return;
+    renderTree(nodes, state.platform, deriveTargetRef(step));
+  }
+
+  /* ------------------------------------------------------------------
+     Expose hooks so the integration shim below can call into the panel.
+  ------------------------------------------------------------------ */
+  window._domTreeOnStep = onDomTreeStep;
+
+  /* Tree update on time-travel selection */
+  window._domTreeOnSelect = function (stepIndex) {
+    if (!isOpen) return;
+    const step = state.steps.find(s => s.step_index === stepIndex);
+    if (!step) return;
+    if (step.domTree) {
+      renderTree(step.domTree.nodes, step.domTree.platform, deriveTargetRef(step));
+    } else {
+      // No stored tree yet — show loading (in production would fetch on demand)
+      showLoading();
+      // Synthesize after a brief delay to mimic async fetch
+      setTimeout(() => {
+        const nodes = buildFakeTree(step.step_index, state.platform);
+        step.domTree = { nodes, platform: state.platform };
+        renderTree(nodes, state.platform, deriveTargetRef(step));
+      }, 180);
+    }
+  };
+
+  /* Platform change clears bbox + refreshes notice */
+  window._domTreeOnPlatform = function (platform) {
+    bboxLockedNode = null;
+    hideBbox(0);
+    updateNobboxNotice(platform);
+    // Re-render current step tree for the new platform
+    const curStep = state.steps[state.steps.length - 1];
+    if (isOpen && curStep) {
+      const nodes = buildFakeTree(curStep.step_index, platform);
+      curStep.domTree = { nodes, platform };
+      renderTree(nodes, platform, deriveTargetRef(curStep));
+    }
+  };
+
+  /* ------------------------------------------------------------------
+     Expose public API on window for integration
+  ------------------------------------------------------------------ */
+  window.DomTreePanel = { open: openDrawer, close: closeDrawer, toggle: toggleDrawer };
+
+})(); // end DomTreePanel IIFE
+
+/* -----------------------------------------------------------------------
+   Patch the existing onStepEvent + selectStep to call the tree panel hooks.
+   These are the two integration points: new step arriving, and time-travel.
+   ----------------------------------------------------------------------- */
+(function patchExistingHandlers() {
+  // Wrap onStepEvent: after the original runs, notify the tree panel
+  const _origOnStep = window.onStepEvent;
+  if (typeof onStepEvent === 'function') {
+    // onStepEvent is defined in the enclosing scope; we can't easily wrap it.
+    // Instead, we rely on the DomTreePanel IIFE having exposed window._domTreeOnStep,
+    // and call it from a MutationObserver on the history list — OR (simpler) we
+    // patch the global feed timer. The cleanest approach: override routeLiveEvent
+    // in a way that also triggers the tree hook. We do this by patching the
+    // global event router that both the live and prototype paths share.
+  }
+
+  // For the PROTOTYPE path: patch startPrototypeFeed by overriding pump
+  // via the step intake hook we set on window._domTreeOnStep.
+  // The prototype calls onStepEvent directly; onStepEvent is not globally
+  // accessible for wrapping. So we use a MutationObserver on #historyScroll:
+  // whenever a new action-item is added, the last step in state.steps is the new one.
+  const obs = new MutationObserver(function (mutations) {
+    mutations.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.nodeType === 1 && node.classList.contains('action-item')) {
+          const stepIdx = parseInt(node.dataset.step, 10);
+          const step = state.steps.find(s => s.step_index === stepIdx);
+          if (step && window._domTreeOnStep) window._domTreeOnStep(step);
+        }
+      });
+    });
+  });
+  obs.observe(document.getElementById('historyScroll'), { childList: true });
+
+  // For time-travel: fire _domTreeOnSelect from click handlers on filmstrip/history.
+  document.getElementById('historyScroll').addEventListener('click', function (e) {
+    const item = e.target.closest('.action-item');
+    if (!item) return;
+    const idx = parseInt(item.dataset.step, 10);
+    if (!isNaN(idx) && window._domTreeOnSelect) {
+      // small delay to let selectStep complete first
+      setTimeout(() => window._domTreeOnSelect(idx), 0);
+    }
+  }, true); // capture phase so we run after selectStep
+
+  document.getElementById('filmstrip').addEventListener('click', function (e) {
+    const frame = e.target.closest('.film-frame');
+    if (!frame || frame.classList.contains('pending')) return;
+    const idx = parseInt(frame.dataset.step, 10);
+    if (!isNaN(idx) && window._domTreeOnSelect) {
+      setTimeout(() => window._domTreeOnSelect(idx), 0);
+    }
+  }, true);
+
+  // Platform switch: patch setPlatform consumers via platform-seg buttons
+  document.querySelectorAll('.platform-seg button').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const p = btn.dataset.platform;
+      if (p && window._domTreeOnPlatform) {
+        setTimeout(() => window._domTreeOnPlatform(p), 50);
+      }
+    });
+  });
+})();
 </script>
 </body>
 </html>
