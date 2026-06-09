@@ -338,3 +338,20 @@ class TestDomStore:
                                           "tree": {"platform": "web", "nodes": []}})
         assert client.get("/api/run/a/step/1/dom").status_code == 404
         assert client.get("/api/run/c/step/1/dom").status_code == 200
+
+    def test_dotdot_run_id_cannot_escape_dom_dir(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        # '..'/'.' run_ids must collapse to the 'run' fallback — a single
+        # component INSIDE _DOM_DIR — not resolve to the store's parent.
+        for evil in ("..", "."):
+            resolved = app_module._dom_run_dir(evil)
+            assert resolved.parent.resolve() == tmp_path.resolve()
+            assert resolved.resolve() == (tmp_path / "run").resolve()
+        # a POST with run_id='..' writes inside tmp_path, never tmp_path.parent
+        r = client.post("/api/dom", json={"run_id": "..", "step_index": 1,
+                                          "tree": {"platform": "web", "nodes": []}})
+        assert r.json()["ok"] is True
+        # the file landed under tmp_path (the 'run' fallback), not tmp_path.parent
+        assert not (tmp_path.parent / "step_001.json").exists()
+        assert (tmp_path / "run" / "step_001.json").exists()

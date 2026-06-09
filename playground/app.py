@@ -11,7 +11,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from playground.cdp_screencast import DEFAULT_CDP_HTTP, run_screencast_safe
 
@@ -91,7 +91,8 @@ _dom_index: "OrderedDict[str, set]" = OrderedDict()
 
 
 def _dom_run_dir(run_id: str) -> Path:
-    safe = "".join(c for c in run_id if c.isalnum() or c in ("-", "_", "."))[:120] or "run"
+    safe = "".join(c for c in run_id if c.isalnum() or c in ("-", "_", "."))[:120]
+    safe = safe.strip(".") or "run"   # prevent '..'/'.'/'....x' path-traversal
     return _DOM_DIR / safe
 
 
@@ -240,8 +241,6 @@ async def get_run_step_dom(run_id: str, step_index: int):
     """Return the stored hierarchical tree for a step, or 404 if absent (not landed
     yet / evicted / capture returned None / mobile). The frontend treats 404 as a
     quiet 'tree unavailable for this step'."""
-    from fastapi.responses import JSONResponse
-
     path = _dom_run_dir(run_id) / f"step_{step_index:03d}.json"
     if not path.is_file():
         return JSONResponse({"error": "no tree for this step"}, status_code=404)
