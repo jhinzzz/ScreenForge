@@ -94,3 +94,31 @@ class TestBuildMobileTree:
         n = build_mobile_tree(xml, "android")["nodes"][0]
         assert "ref" not in n
         assert "x" not in n and "w" not in n   # honest: mobile has no bbox in this shape
+
+
+class _FakePage:
+    def __init__(self, result=None, raises=None):
+        self._result = result
+        self._raises = raises
+
+    def evaluate(self, _js):
+        if self._raises:
+            raise self._raises
+        return self._result
+
+
+class TestBuildWebTree:
+    def test_passthrough_wellformed_result(self):
+        page = _FakePage(result={"nodes": [{"ref": "@1", "class": "button", "children": []}]})
+        tree = build_web_tree(page)
+        assert tree["platform"] == "web"
+        assert tree["nodes"][0]["ref"] == "@1"
+
+    def test_none_when_result_missing_nodes(self):
+        assert build_web_tree(_FakePage(result={"oops": 1})) is None
+
+    def test_none_when_result_not_a_dict(self):
+        assert build_web_tree(_FakePage(result="not a dict")) is None
+
+    def test_none_when_evaluate_raises(self):
+        assert build_web_tree(_FakePage(raises=RuntimeError("page closed"))) is None
