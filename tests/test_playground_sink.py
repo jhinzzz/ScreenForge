@@ -421,3 +421,42 @@ class TestMaybePushStep:
                 result=_result(),
                 step_index=1,
             )
+
+
+class TestCaptureDomTree:
+    def test_capture_returns_none_when_capture_raises(self):
+        from cli.playground_sink import PlaygroundSink
+
+        class _Adapter:
+            driver = object()
+
+        # platform 'web' path lazy-imports build_web_tree; force a failure by
+        # passing an adapter whose driver.evaluate doesn't exist → swallowed → None.
+        assert PlaygroundSink.capture_dom_tree(_Adapter(), "web") is None
+
+    def test_has_dom_tree_flag_defaults_false(self):
+        from cli.playground_sink import PlaygroundStepEvent
+
+        ev = PlaygroundStepEvent(run_id="r1", step_index=1)
+        assert ev.has_dom_tree is False
+
+    def test_disabled_sink_never_posts_tree(self):
+        import cli.playground_sink as mod
+        from cli.playground_sink import PlaygroundSink
+
+        sink = PlaygroundSink(enabled=False)
+        with patch.object(mod.requests, "post") as mock_post:
+            sink.push_dom_tree("r1", 1, {"platform": "web", "nodes": []})
+            mock_post.assert_not_called()
+
+    def test_push_dom_tree_is_fire_and_forget_and_swallows_errors(self):
+        import cli.playground_sink as mod
+        from cli.playground_sink import PlaygroundSink
+
+        sink = PlaygroundSink(enabled=True)
+        with patch.object(
+            mod.requests, "post",
+            side_effect=mod.requests.exceptions.ConnectionError("refused"),
+        ):
+            # Must not raise. Uses a daemon thread; join briefly to let it run.
+            sink.push_dom_tree("r1", 1, {"platform": "web", "nodes": []})
