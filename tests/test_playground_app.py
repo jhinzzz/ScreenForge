@@ -311,3 +311,75 @@ class TestOpenInEditor:
             "file_path": str(f), "line": "not-a-number", "editor": "trae"})
         assert resp.json()["ok"] is True
         assert captured["cmd"] == ["/usr/local/bin/trae", "-g", f"{f}:1"]
+
+
+class TestDomStore:
+    def test_post_dom_persists_and_get_returns_it(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path  # redirect store to a temp dir
+        app_module._dom_index.clear()
+        tree = {"platform": "web", "nodes": [{"ref": "@1", "class": "button", "children": []}]}
+        r = client.post("/api/dom", json={"run_id": "s1", "step_index": 2, "tree": tree})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        got = client.get("/api/run/s1/step/2/dom")
+        assert got.status_code == 200
+        assert got.json()["nodes"][0]["ref"] == "@1"
+
+    def test_get_absent_returns_404(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        assert client.get("/api/run/nope/step/9/dom").status_code == 404
+
+    def test_lru_evicts_oldest_run_dir(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        app_module._MAX_DOM_RUNS = 2
+        for rid in ("a", "b", "c"):  # 3 runs, cap 2 → 'a' evicted
+            client.post("/api/dom", json={"run_id": rid, "step_index": 1,
+                                          "tree": {"platform": "web", "nodes": []}})
+        assert client.get("/api/run/a/step/1/dom").status_code == 404
+        assert client.get("/api/run/c/step/1/dom").status_code == 200
+
+    def test_dotdot_run_id_cannot_escape_dom_dir(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        # '..'/'.' run_ids must collapse to the 'run' fallback — a single
+        # component INSIDE _DOM_DIR — not resolve to the store's parent.
+        for evil in ("..", "."):
+            resolved = app_module._dom_run_dir(evil)
+            assert resolved.parent.resolve() == tmp_path.resolve()
+            assert resolved.resolve() == (tmp_path / "run").resolve()
+        # a POST with run_id='..' writes inside tmp_path, never tmp_path.parent
+        r = client.post("/api/dom", json={"run_id": "..", "step_index": 1,
+                                          "tree": {"platform": "web", "nodes": []}})
+        assert r.json()["ok"] is True
+        # the file landed under tmp_path (the 'run' fallback), not tmp_path.parent
+        assert not (tmp_path.parent / "step_001.json").exists()
+        assert (tmp_path / "run" / "step_001.json").exists()
+
+    def test_cjk_text_round_trips_through_dom_store(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        tree = {"platform": "web", "nodes": [{"ref": "@1", "class": "button", "text": "登录", "children": []}]}
+        client.post("/api/dom", json={"run_id": "cjk", "step_index": 1, "tree": tree})
+        got = client.get("/api/run/cjk/step/1/dom")
+        assert got.status_code == 200
+        assert got.json()["nodes"][0]["text"] == "登录"
+
+
+class TestHasDomTreePassthrough:
+    def test_step_event_carries_has_dom_tree_to_sse(self, client):
+        import asyncio
+
+        q: asyncio.Queue = asyncio.Queue()
+        app_module._subscribers.append(q)
+        try:
+            body = _step_body(run_id="r1", step_index=1)
+            body["has_dom_tree"] = True
+            resp = client.post("/api/step", json=body)
+            assert resp.status_code == 200
+            evt = q.get_nowait()
+        finally:
+            app_module._subscribers.remove(q)
+
+        assert evt["type"] == "step"
+        assert evt.get("has_dom_tree") is True

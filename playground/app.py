@@ -5,12 +5,13 @@ import json
 import logging
 import shutil
 import subprocess
+import tempfile
 import time
 from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from playground.cdp_screencast import DEFAULT_CDP_HTTP, run_screencast_safe
 
@@ -79,6 +80,33 @@ _subscribers: list[asyncio.Queue] = []
 _MAX_RUNS = 20  # total distinct runs kept (LRU-evicted)
 _MAX_STEPS_PER_RUN = 500  # per-run step cap (oldest head truncated)
 _step_log: "OrderedDict[str, list[dict]]" = OrderedDict()
+
+# ⭐ DOM tree store (Brain's Eye View). Trees are 25–80KB — too big for a RAM LRU
+# (20×500×80KB ≈ 800MB), so the RESIDENT server persists them to disk keyed by
+# run_key (the cross-process-stable playground key — NOT reporter.run_id, which
+# differs per --action process). RAM holds only a tiny index: run_key → set(steps).
+_DOM_DIR = Path(tempfile.gettempdir()) / "screenforge_playground_dom"
+_MAX_DOM_RUNS = 5  # LRU cap on distinct run dirs (disk is cheap; ~40MB/run worst)
+_dom_index: "OrderedDict[str, set]" = OrderedDict()
+
+
+def _dom_run_dir(run_id: str) -> Path:
+    safe = "".join(c for c in run_id if c.isalnum() or c in ("-", "_", "."))[:120]
+    safe = safe.strip(".") or "run"   # prevent '..'/'.'/'....x' path-traversal
+    return _DOM_DIR / safe
+
+
+def _dom_evict_if_needed() -> None:
+    while len(_dom_index) > _MAX_DOM_RUNS:
+        old_key, _ = _dom_index.popitem(last=False)
+        d = _dom_run_dir(old_key)
+        if d.exists():
+            for f in d.glob("*.json"):
+                f.unlink(missing_ok=True)
+            try:
+                d.rmdir()
+            except OSError:
+                pass
 
 
 def push_event(event_type: str, data: dict) -> None:
@@ -174,6 +202,29 @@ async def post_step(request: Request):
     return {"ok": True}
 
 
+@app.post("/api/dom")
+async def post_dom(request: Request):
+    """Persist a sidecar DOM tree for (run_id=run_key, step_index). Fire-and-forget
+    from the sink; the server owns the disk path (the producer can't — N session
+    processes share one run_key but have different reporter dirs)."""
+    body = await request.json()
+    run_id = str(body.get("run_id", "default"))
+    step_index = int(body.get("step_index", 0) or 0)
+    tree = body.get("tree")
+    if not isinstance(tree, dict):
+        return {"ok": False, "error": "no tree"}
+    d = _dom_run_dir(run_id)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"step_{step_index:03d}.json").write_text(
+        json.dumps(tree, ensure_ascii=False)
+    )
+    steps = _dom_index.setdefault(run_id, set())
+    steps.add(step_index)
+    _dom_index.move_to_end(run_id)  # LRU: most-recently-written run to the tail
+    _dom_evict_if_needed()
+    return {"ok": True}
+
+
 @app.get("/api/run/{run_id}/steps")
 async def get_run_steps(run_id: str):
     """⭐ Time-travel seed (G6): the data exit for Form B (time travel).
@@ -183,6 +234,17 @@ async def get_run_steps(run_id: str):
     UI indexing this array — zero rework to the execution flow or sink.
     """
     return {"run_id": run_id, "steps": _step_log.get(run_id, [])}
+
+
+@app.get("/api/run/{run_id}/step/{step_index}/dom")
+async def get_run_step_dom(run_id: str, step_index: int):
+    """Return the stored hierarchical tree for a step, or 404 if absent (not landed
+    yet / evicted / capture returned None / mobile). The frontend treats 404 as a
+    quiet 'tree unavailable for this step'."""
+    path = _dom_run_dir(run_id) / f"step_{step_index:03d}.json"
+    if not path.is_file():
+        return JSONResponse({"error": "no tree for this step"}, status_code=404)
+    return JSONResponse(json.loads(path.read_text()))
 
 
 @app.get("/api/editors")

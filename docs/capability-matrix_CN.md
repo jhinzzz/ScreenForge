@@ -133,6 +133,19 @@
 > 支撑；点击 filmstrip 任意帧 / 历史任意步，左侧大截图即回溯到该步画面、右侧代码栏高亮对应行（截图/代码/历史三处联动）——
 > 均在**当前 run 之内**。留作未来独立迭代的是**跨会话历史帧持久化回放**（关页面后再翻旧 run）。代码栏本轮**只读**（可编辑回写与 codegen 自动落盘冲突，非本轮）。
 
+### 大脑之眼视图（DOM 树面板）
+
+一个**只读、实时、分层的面板**，展示 **AI 大脑在每一步实际感知到的过滤元素集合，并按真实的父/子结构重新挂载** —— 而非浏览器 DevTools 原始 DOM。
+
+- **旁路采集**（`playground/dom_capture.py`）：复用 LLM 压缩器的存活/过滤谓词，但保留层级结构。绝不触碰 `compress_web_dom` / `compress_android_xml` —— 扁平化以节省 token 的路径完全不受影响。Web：通过分层 `page.evaluate` 遍历，产出 `ref` `@N` + bbox `x/y/w/h`。Android：解析原始 `dump_hierarchy()` XML 并保留嵌套结构（无 `ref`，无 bbox —— 如实反映，而非伪造）。**iOS：暂不支持** —— 旁路采集复用 Android XML 谓词，但 WDA `source()` 是属性不同的 XCUITest XML，因此没有节点能存活、不会产出任何树（树指示灯保持熄灭）；iOS XCUITest/WDA 谓词是后续待加项。
+- **opt-in / 零成本**：采集挂载在现有的 `--playground-sink` 观察者路径上（默认关闭 = 零额外成本；sink 关闭时连尝试都不做）。
+- **红线不变**：树推送是一个独立的 fire-and-forget `POST /api/dom`，与步骤推送解耦，绝不 join 等待，因此绝不会拖延或改变 `--action` 的 `0/1` 退出码。
+- **磁盘持久化存储**：树（每棵 25–80 KB）由常驻服务器落盘，以跨进程稳定的 `run_key` 为键（而非每个 `--action` 进程各自不同的 `reporter.run_id`）。内存中只保留 `run_key → {步骤索引}` 的轻量索引；LRU ≤ 5 个 run 目录。
+- **按需拉取，零 SSE 开销**：SSE `step` 事件仅携带一个 `has_dom_tree` 布尔值；前端仅在抽屉打开且该步骤处于视图时，通过 `GET /api/run/{run_id}/step/{step_index}/dom` 拉取树。404 = 该步骤无树（静默处理）。大多数用户从不打开面板，因此 SSE 上零树流量。
+- **Web 端**：`ref` 徽章 + 当前目标行 ember 高亮 + 截图上的 ember bbox 叠加层；鼠标悬停 → 蓝色 bbox。
+- **移动端诚实降级**：无 `ref` 徽章，无 bbox 叠加层（明确缺失，而非伪造）；悬停轨道变为琥珀色；一次性可关闭提示。但树是真正分层的（相较于扁平 LLM 输出是真实改进）。
+- **只读**：不支持编辑、删除步骤、对元素执行操作。界面：右侧边缘可折叠抽屉（可固定；快捷键 `B`）；完整 ARIA 键盘导航（↑/↓/←/→/Home/End，`/` 聚焦搜索）；复制定位器；`+N −N ~N` 逐步差异徽章；键控协调器跨步骤保留展开/滚动状态。
+
 ## 人类入口与 Agent 入口分工
 
 | 入口 | 面向对象 | 是否允许自然语言直接驱动 | 是否允许内部第三方 LLM 推理 | 推荐用途 |
@@ -201,3 +214,4 @@
 6. 视觉 fallback (VLM) 依赖 `VISION_API_KEY` / `VISION_BASE_URL` / `VISION_MODEL_NAME` 配置，未配置时自动降级到纯 DOM/XML 定位。
 7. 真正的 `run` 执行完成后，会自动更新 `memory/case_memory.json`，供后续 Agent 运行复用测试资产。
 8. Playground 实时镜像台依赖 `screenforge[playground]` extra（`fastapi`/`uvicorn`/`websockets`）。`--playground-sink` 默认关——纯 CI/agent 跑测试零开销；只在需要"边写边看"时开启。单会话内的时间旅行回溯已落地；跨会话历史帧持久化回放尚未落地。
+9. 大脑之眼视图 DOM 树面板**仅限单会话且只读**：展示当前会话的实时树，仅支持展开/折叠/搜索/复制定位器操作。反向空间查找（点击截图坐标 → 高亮对应节点）与 SSE 差异流推送留作未来迭代。

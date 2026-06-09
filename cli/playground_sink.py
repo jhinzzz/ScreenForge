@@ -25,6 +25,7 @@ DEFAULT_PLAYGROUND_URL = "http://127.0.0.1:7860"
 # waits for the last frame to land before sys.exit — kept ≤ read+ε and well under
 # human-perceptible. Worst added latency on --action ≈ _JOIN_TIMEOUT.
 _POST_TIMEOUT = (0.2, 0.25)  # (connect, read) seconds
+_DOM_POST_TIMEOUT = (0.2, 0.4)  # tree body is larger; read budget a touch higher
 _JOIN_TIMEOUT = 0.3  # seconds; single-step last-frame grace
 
 
@@ -42,6 +43,7 @@ class PlaygroundStepEvent(BaseModel):
     success: bool = True
     screenshot_b64: str = ""  # empty = no screenshot this step (degrade, never crash)
     file_path: str = ""  # abs path of the generated test file (for "open in IDE")
+    has_dom_tree: bool = False  # a sidecar DOM tree was captured for this step
 
 
 class PlaygroundSink:
@@ -101,6 +103,50 @@ class PlaygroundSink:
             log.debug(f"[playground-sink] screenshot skip: {e}")
             return ""
 
+    @staticmethod
+    def capture_dom_tree(adapter, platform: str) -> dict | None:
+        """Sidecar hierarchical tree from the SAME raw source the compressors use,
+        without touching them. Any failure → None (degrade, never crash the action).
+
+        web:  build_web_tree(adapter.driver)            (Playwright page.evaluate)
+        android: build_mobile_tree(driver.dump_hierarchy(), 'android')
+        ios:  build_mobile_tree(driver.source(), 'ios')
+        """
+        try:
+            from playground.dom_capture import build_mobile_tree, build_web_tree
+
+            driver = adapter.driver
+            if platform == "web":
+                return build_web_tree(driver)
+            if platform == "android":
+                return build_mobile_tree(driver.dump_hierarchy(), "android")
+            if platform == "ios":
+                return build_mobile_tree(driver.source(), "ios")
+            return None
+        except Exception as e:
+            log.debug(f"[playground-sink] dom capture skip: {e}")
+            return None
+
+    def push_dom_tree(self, run_id: str, step_index: int, tree: dict) -> None:
+        """Fire-and-forget POST of the captured tree, DECOUPLED from push_step and
+        NEVER join-waited — a big tree body must never delay the lean step push or
+        the action's exit. Disabled sink → no-op."""
+        if not self.enabled:
+            return
+        threading.Thread(
+            target=self._post_dom, args=(run_id, step_index, tree), daemon=True
+        ).start()
+
+    def _post_dom(self, run_id: str, step_index: int, tree: dict) -> None:
+        try:
+            requests.post(
+                f"{self.base_url}/api/dom",
+                json={"run_id": run_id, "step_index": step_index, "tree": tree},
+                timeout=_DOM_POST_TIMEOUT,
+            )
+        except Exception as e:  # swallow (G5)
+            log.debug(f"[playground-sink] dom skip (unreachable): {e}")
+
 
 def build_step_event(
     *,
@@ -110,6 +156,7 @@ def build_step_event(
     result: dict,
     screenshot_b64: str,
     file_path: str = "",
+    has_dom_tree: bool = False,
 ) -> PlaygroundStepEvent:
     """MANDATORY single construction point for every step event (code#4).
 
@@ -134,6 +181,7 @@ def build_step_event(
         success=bool(result.get("success", True)),
         screenshot_b64=screenshot_b64,
         file_path=os.path.abspath(file_path) if file_path else "",
+        has_dom_tree=has_dom_tree,
     )
 
 
@@ -168,15 +216,20 @@ def maybe_push_step(
         return
     try:
         run_key, resolved_index = resolve_playground_run_key(args, reporter)
+        idx = step_index if step_index is not None else resolved_index
+        tree = sink.capture_dom_tree(adapter, getattr(args, "platform", ""))
         event = build_step_event(
             run_key=run_key,
-            step_index=step_index if step_index is not None else resolved_index,
+            step_index=idx,
             action_data=action_data,
             result=result,
             screenshot_b64=PlaygroundSink.encode_screenshot(adapter),
             file_path=file_path,
+            has_dom_tree=tree is not None,
         )
         sink.push_step(event)
+        if tree is not None:
+            sink.push_dom_tree(run_key, idx, tree)  # decoupled, never joined
     except Exception as e:  # never let visualization break the observed action
         log.debug(f"[playground-sink] push skipped: {e}")
 

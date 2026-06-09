@@ -133,6 +133,19 @@ with a filmstrip timeline at the bottom (click any frame to time-travel).
 > **Time-travel (single-session rewind) is shipped**: data persistently accumulates by `step_index`, backed by a read-only `GET /api/run/{run_id}/steps`
 > endpoint, and clicking any filmstrip frame / history step rewinds the large screenshot to that step while the code pane highlights the matching line (screenshot / code / history all cross-linked) — all **within the current run**. What's left for a future standalone iteration is **cross-session persisted-frame replay** (paging back through old runs after the page is closed). The code pane is **read-only** this round (editable write-back conflicts with codegen's automatic disk writes — not this round).
 
+### Brain's Eye View (DOM tree)
+
+A read-only, live, hierarchical panel showing the **filtered element set the AI brain actually perceives at each step, re-hung into its real parent/child structure** — not the browser's raw DevTools DOM.
+
+- **Sidecar capture** (`playground/dom_capture.py`): reuses the LLM compressors' survival/filter predicates but preserves hierarchy. Never touches `compress_web_dom` / `compress_android_xml` — the flatten-for-token-economy path is untouched. Web: a hierarchical `page.evaluate` walk emitting `ref` `@N` + bbox `x/y/w/h`. Android: parses raw `dump_hierarchy()` XML preserving nesting (no `ref`, no bbox — honest, not faked). **iOS: not yet supported** — the sidecar reuses the Android XML predicates, but WDA `source()` is XCUITest XML with different attributes, so nothing survives and no tree is produced (the tree pip stays dark); iOS XCUITest/WDA predicates are a future addition.
+- **Opt-in / zero cost**: capture rides the existing `--playground-sink` observer path (OFF by default = zero added cost; not even attempted when the sink is off).
+- **Red line preserved**: the tree push is a separate fire-and-forget `POST /api/dom`, decoupled from the step push and never join-waited, so it can never delay or change `--action`'s `0/1` exit code.
+- **Disk-backed store**: trees (25–80 KB each) are persisted to disk by the resident server, keyed by the cross-process-stable `run_key` (not `reporter.run_id`, which differs per `--action` process). In-memory index holds only `run_key → {step indices}`; LRU ≤ 5 run dirs.
+- **On-demand fetch, zero SSE overhead**: the SSE `step` event carries only a `has_dom_tree` boolean; the frontend fetches a step's tree via `GET /api/run/{run_id}/step/{step_index}/dom` only when the drawer is open and the step is in view. 404 = no tree for this step (quiet). Most users never open the panel ⇒ zero tree traffic on SSE.
+- **Web**: `ref` badge + ember-highlighted target row + ember bbox overlay on screenshot; hover → blue bbox.
+- **Mobile honest degrade**: no `ref` badge, no bbox overlay (absent, not faked); hover rail turns amber; one-time dismissable notice. The tree is genuinely hierarchical (a real improvement over the flat LLM output).
+- **Read-only**: no editing, no delete-step, no act-on-element. UX: collapsible right-edge drawer (pinnable; hotkey `B`); full ARIA keyboard nav (↑/↓/←/→/Home/End, `/` to search); copy-locator; `+N −N ~N` per-step diff badge; keyed reconciler preserves expand/scroll state across steps.
+
 ## Human Entry vs Agent Entry Division of Labor
 
 | Entry | Audience | Natural-language direct driving allowed | Internal third-party LLM reasoning allowed | Recommended use |
@@ -201,3 +214,4 @@ with a filmstrip timeline at the bottom (click any frame to time-travel).
 6. Visual fallback (VLM) depends on the `VISION_API_KEY` / `VISION_BASE_URL` / `VISION_MODEL_NAME` config; when unconfigured it automatically degrades to pure DOM/XML location.
 7. After a real `run` execution finishes, it automatically updates `memory/case_memory.json` for subsequent Agent runs to reuse test assets.
 8. The Playground Live Mirror depends on the `screenforge[playground]` extra (`fastapi`/`uvicorn`/`websockets`). `--playground-sink` is off by default — zero overhead for pure CI/agent test runs; enable it only when you need to "watch as you write". Single-session time-travel rewind is shipped; cross-session persisted-frame replay is not yet shipped.
+9. The Brain's Eye View DOM tree panel is **single-session and read-only**: it shows the current session's live tree and allows only expand/collapse/search/copy-locator interactions. Reverse spatial lookup (click a screenshot coordinate → highlight the corresponding node) and SSE diff-streaming of tree deltas are deferred to a future iteration.
