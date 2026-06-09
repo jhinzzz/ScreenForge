@@ -1,6 +1,6 @@
 [project]
 name = "screenforge"
-version = "0.4.1"
+version = "0.5.0"
 description = "AI-driven cross-platform UI automation engine with test script generation"
 readme = "README.md"
 requires-python = ">=3.11"

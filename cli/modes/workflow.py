@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cli.shared as _shared
 from cli.modes.dry_run import _build_resolution_hint, _preview_action_resolution
+from cli.playground_sink import build_sink_from_args, maybe_push_step
 from cli.reporter import (
     _apply_resume_summary,
     _build_reporter,
@@ -285,6 +286,9 @@ def run_workflow_default_mode(
         history_manager = _shared.StepHistoryManager(initial_content=header)
         save_to_disk(output_script_path, header)
         executor = _shared.UIExecutor(device, platform=args.platform)
+        # Workflow is one process with many steps (the main use case for live mirror).
+        # Build the sink once; join_on_exit=False — the process lives across all steps.
+        sink = build_sink_from_args(args, join_on_exit=False)
 
         executed_steps = 0
         for index, step in enumerate(workflow.steps, start=1):
@@ -315,6 +319,17 @@ def run_workflow_default_mode(
                 result["code_lines"], result["action_description"]
             )
             save_to_disk(output_script_path, history_manager.get_current_file_content())
+            # ★ Live-mirror bypass: push this step with its loop counter as step_index.
+            maybe_push_step(
+                sink,
+                args=args,
+                reporter=reporter,
+                adapter=adapter,
+                action_data=action_data,
+                result=result,
+                step_index=index,
+                file_path=output_script_path,  # normalized to abs path inside build_step_event
+            )
             reporter.emit_event(
                 "action_executed",
                 step=index,
