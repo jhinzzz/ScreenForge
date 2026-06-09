@@ -2262,6 +2262,7 @@ function selectStep(stepIndex) {
     showScreenshot(step.screenshot, step);
   }
   els.srLive.textContent = `Selected step ${stepIndex}: ${step.action_description || step.action}`;
+  if (window._domTreeOnSelect) window._domTreeOnSelect(stepIndex);
 }
 
 /* ======================================================================
@@ -2317,6 +2318,7 @@ function setPlatform(p) {
   els.shotHint.textContent = (p === 'web')
     ? '1280 × 800 · jpeg · 2 fps'
     : (p === 'ios' ? '1170 × 2532 · jpeg · 2 fps' : '1080 × 2340 · jpeg · 2 fps');
+  if (window._domTreeOnPlatform) window._domTreeOnPlatform(p);
 }
 document.querySelectorAll('.platform-seg button').forEach(b =>
   b.addEventListener('click', () => restartWithPlatform(b.dataset.platform)));
@@ -2538,6 +2540,7 @@ function onStepEvent(ev) {
   addHistoryRow(step);
   if (step.screenshot) { showScreenshot(step.screenshot, step); fillFilmFrame(step); }
   els.srLive.textContent = `Step ${step.step_index}: ${step.action_description}`;
+  if (window._domTreeOnStep) window._domTreeOnStep(step);
 }
 
 function onScreenshotEvent(ev, b64) {
@@ -2820,6 +2823,7 @@ function resetTimeline() {
   els.shotFrame.classList.remove('idle');     // a finished run's amber badge must not bleed into the next
   if (_idleTimer) clearTimeout(_idleTimer);    // and its pending idle-downgrade must not fire mid-new-run
   els.shotPlaceholder.style.display = 'flex';
+  if (window.DomTreePanel && window.DomTreePanel.reset) window.DomTreePanel.reset();
 }
 
 let _feedTimer = null;
@@ -3888,6 +3892,7 @@ if (USE_LIVE_BACKEND) {
      time-travelling back to a step is instant.
   ------------------------------------------------------------------ */
   const _treeCache = new Map();            // "runId#stepIndex" -> {platform, nodes}
+  let _lastTreeRequest = null;             // identity of the most recent showTreeForStep request (stale-fetch guard)
   async function fetchTree(runId, stepIndex) {
     const k = runId + '#' + stepIndex;
     if (_treeCache.has(k)) return _treeCache.get(k);
@@ -3911,9 +3916,12 @@ if (USE_LIVE_BACKEND) {
   async function showTreeForStep(step) {
     if (!step) return;
     if (!isOpen) return;                   // lazy: only fetch/render when open
+    const reqToken = step.run_id + '#' + step.step_index;  // identity of THIS request
+    _lastTreeRequest = reqToken;
     let tree;
     if (USE_LIVE_BACKEND) {
       tree = await fetchTree(step.run_id || _currentRunId, step.step_index);
+      if (_lastTreeRequest !== reqToken) return;   // user moved on during the await → stale, drop
     } else {
       tree = { platform: state.platform, nodes: buildFakeTree(step.step_index, state.platform) };
     }
@@ -3963,76 +3971,35 @@ if (USE_LIVE_BACKEND) {
   };
 
   /* ------------------------------------------------------------------
+     Clear the panel on a new run (called from resetTimeline): wipe the
+     rendered tree + reconciler cache + pip, hide any bbox, reset diff badges
+     and drop the loading/empty state back to empty.
+  ------------------------------------------------------------------ */
+  function resetPanel() {
+    container.innerHTML = '';
+    _treeCache.clear();
+    _lastTreeRequest = null;               // drop any in-flight fetch's identity → its render is now stale
+    toggleTab.classList.remove('has-data');
+    hideBbox(0);
+    bboxLockedNode = null;
+    showEmpty();
+    diffAdd.textContent = '+0';
+    diffRem.textContent = '−0';
+    diffChg.textContent = '~0';
+  }
+
+  /* ------------------------------------------------------------------
      Expose public API on window for integration
   ------------------------------------------------------------------ */
-  window.DomTreePanel = { open: openDrawer, close: closeDrawer, toggle: toggleDrawer };
+  window.DomTreePanel = { open: openDrawer, close: closeDrawer, toggle: toggleDrawer, reset: resetPanel };
 
 })(); // end DomTreePanel IIFE
 
-/* -----------------------------------------------------------------------
-   Patch the existing onStepEvent + selectStep to call the tree panel hooks.
-   These are the two integration points: new step arriving, and time-travel.
-   ----------------------------------------------------------------------- */
-(function patchExistingHandlers() {
-  // Wrap onStepEvent: after the original runs, notify the tree panel
-  const _origOnStep = window.onStepEvent;
-  if (typeof onStepEvent === 'function') {
-    // onStepEvent is defined in the enclosing scope; we can't easily wrap it.
-    // Instead, we rely on the DomTreePanel IIFE having exposed window._domTreeOnStep,
-    // and call it from a MutationObserver on the history list — OR (simpler) we
-    // patch the global feed timer. The cleanest approach: override routeLiveEvent
-    // in a way that also triggers the tree hook. We do this by patching the
-    // global event router that both the live and prototype paths share.
-  }
-
-  // For the PROTOTYPE path: patch startPrototypeFeed by overriding pump
-  // via the step intake hook we set on window._domTreeOnStep.
-  // The prototype calls onStepEvent directly; onStepEvent is not globally
-  // accessible for wrapping. So we use a MutationObserver on #historyScroll:
-  // whenever a new action-item is added, the last step in state.steps is the new one.
-  const obs = new MutationObserver(function (mutations) {
-    mutations.forEach(m => {
-      m.addedNodes.forEach(node => {
-        if (node.nodeType === 1 && node.classList.contains('action-item')) {
-          const stepIdx = parseInt(node.dataset.step, 10);
-          const step = state.steps.find(s => s.step_index === stepIdx);
-          if (step && window._domTreeOnStep) window._domTreeOnStep(step);
-        }
-      });
-    });
-  });
-  obs.observe(document.getElementById('historyScroll'), { childList: true });
-
-  // For time-travel: fire _domTreeOnSelect from click handlers on filmstrip/history.
-  document.getElementById('historyScroll').addEventListener('click', function (e) {
-    const item = e.target.closest('.action-item');
-    if (!item) return;
-    const idx = parseInt(item.dataset.step, 10);
-    if (!isNaN(idx) && window._domTreeOnSelect) {
-      // small delay to let selectStep complete first
-      setTimeout(() => window._domTreeOnSelect(idx), 0);
-    }
-  }, true); // capture phase so we run after selectStep
-
-  document.getElementById('filmstrip').addEventListener('click', function (e) {
-    const frame = e.target.closest('.film-frame');
-    if (!frame || frame.classList.contains('pending')) return;
-    const idx = parseInt(frame.dataset.step, 10);
-    if (!isNaN(idx) && window._domTreeOnSelect) {
-      setTimeout(() => window._domTreeOnSelect(idx), 0);
-    }
-  }, true);
-
-  // Platform switch: patch setPlatform consumers via platform-seg buttons
-  document.querySelectorAll('.platform-seg button').forEach(btn => {
-    btn.addEventListener('click', function () {
-      const p = btn.dataset.platform;
-      if (p && window._domTreeOnPlatform) {
-        setTimeout(() => window._domTreeOnPlatform(p), 50);
-      }
-    });
-  });
-})();
+/* The DOM-tree panel wires itself directly into the step pipeline: onStepEvent,
+   selectStep, setPlatform and resetTimeline call window._domTreeOnStep /
+   _domTreeOnSelect / _domTreeOnPlatform / DomTreePanel.reset inline (those are
+   top-level functions in this same script). No MutationObserver / click-shim
+   needed — the hooks fire for both the live and prototype feed paths. */
 </script>
 </body>
 </html>
