@@ -3556,7 +3556,7 @@ if (USE_LIVE_BACKEND) {
     setTreeTarget(targetRef, platform, nodes);
 
     // Announce to screen reader
-    const targetNode = nodes.find(n => n.ref === targetRef
+    const targetNode = flat.find(n => n.ref === targetRef
       || n.text === targetRef
       || n.id === targetRef);
     const targetDesc = targetNode
