@@ -169,6 +169,29 @@ The top bar's **☀/🌙 button** toggles between the light and dark themes:
 
 Every item in the bottom **filmstrip** and the bottom-right **step history** is clickable: click any frame / step and the large screenshot on the left **jumps back to that step's view**, while the code column on the right **highlights the corresponding line**. All three (screenshot / code / history) move together.
 
+### Brain's Eye View — the DOM tree panel
+
+The **Brain's Eye View** is a collapsible drawer on the right edge of the playground that shows the **hierarchical element tree the AI brain actually used at each step** — the same filtered set the compressor fed to the model, but re-hung into its real parent/child structure instead of a flat list.
+
+**Opening it**: click the `TREE` tab on the right edge of the window, or press **`B`** anywhere in the playground to toggle the drawer open/closed. You can pin it open so it stays visible as steps advance.
+
+**Reading the tree**:
+- The row highlighted in **ember orange** is the element the brain acted on at this step (the current target). On Web, the same ember color appears as a **bbox overlay on the screenshot**, so you can see exactly which region on the page the brain targeted.
+- **Hover any row** (Web only) to see a **blue bbox overlay** on the screenshot, letting you spatially locate any node — not just the acted-on one.
+- Each Web element shows its **`@N` ref badge** (the same number the brain sees in the compressed DOM). Click the badge, or press **Enter** on a focused row, to **copy its locator** to the clipboard — ready to paste into a `--action` command or a test.
+
+**Navigating the tree**:
+- Click any row's triangle to expand/collapse its subtree, or use the keyboard:
+  - **↑ / ↓** — move focus up/down one row
+  - **← / →** — collapse/expand the focused node
+  - **Home / End** — jump to first/last visible row
+  - **`/`** — focus the search/filter box; type to filter nodes by text, role, or ref; **Escape** to clear
+- The tree reconciler is **keyed**: as steps advance the tree updates in place, preserving your expand/collapse state and scroll position.
+
+**The diff badge**: each step shows a **`+N −N ~N`** badge (added / removed / changed nodes vs the previous step), giving you a quick read on how much the page changed between actions.
+
+**Honest mobile behaviour**: Android and iOS have **no `@N` ref badge and no bbox overlay** — these are genuinely absent in mobile capture, not hidden. The hover rail turns **amber** as a reminder. A one-time dismissable notice explains why. What you do get is a **genuinely hierarchical tree** (the real parent/child nesting from `dump_hierarchy` / WDA `source`), which is a real improvement over the flat element list the LLM receives.
+
 ---
 
 ## Troubleshooting
@@ -191,5 +214,6 @@ Every item in the bottom **filmstrip** and the bottom-right **step history** is 
 - **Code column is read-only**: editing code in the playground to write it back isn't supported this round (it would conflict with codegen's automatic save-to-disk).
 - **Time-travel is in-session rewind**: clicking a frame/step jumps the screenshot + highlights the code within the **current run** (see above). Persisted replay of historical frames across sessions (paging through old runs after closing the page) is left for a future iteration.
 - **Mobile "live" is step-wise**: Android/iOS take roughly 0.5–2s per screenshot (the device's physical ceiling), so the front end faithfully presents discrete snapshots and doesn't fake a continuous video.
+- **Brain's Eye View is read-only and single-session**: the DOM tree panel supports expand/collapse, search, and copy-locator only — no editing or acting on elements. Reverse spatial lookup (click a screenshot pixel → highlight the corresponding tree node) and SSE diff-streaming of tree deltas are deferred to a future iteration.
 
 For the deeper architecture and red-line contract, see [capability-matrix.md](./capability-matrix.md#playground-live-mirror-2026-06).

@@ -4,6 +4,32 @@
 
 **中文** | [English](./CHANGELOG.md)
 
+## [未发布]
+
+### Added
+- **大脑之眼视图 —— Playground 中的只读实时分层 DOM 树面板。**
+  Playground 的每一步现在可选展示 **AI 大脑实际感知到的过滤元素集合，并按真实父/子结构重新挂载**
+  —— 既非浏览器 DevTools 的原始 DOM，也非 LLM 接收的扁平 token 节省输出。
+  此前缺口的根因在于 LLM 压缩器为节省 token 而刻意扁平化树结构，层级信息从未被保留在人类可检视之处。
+  本次新增专用旁路采集，在不触碰压缩器的前提下捕获层级：
+  - 新增 `playground/dom_capture.py` —— 复用压缩器的存活/过滤谓词，但以分层方式遍历，而非扁平化。
+    Web：`page.evaluate` 分层遍历，每个节点产出 `ref` `@N` + bbox `x/y/w/h`。移动端（Android/iOS）：
+    解析原始 `dump_hierarchy()` / `source()` XML 并保留嵌套（无 `ref`，无 bbox —— 如实反映，非伪造）。
+    `compress_web_dom` / `compress_android_xml` 完全不受影响。
+  - 采集以 `--playground-sink` 为门控（默认关 = 零额外成本；sink 关闭时连尝试都不做）。
+    **红线不变**：树推送是独立的 fire-and-forget `POST /api/dom`，与步骤推送解耦，绝不 join 等待，
+    因此绝不拖延或改变 `--action` 的 `0/1` 退出码。
+  - 服务器以跨进程稳定的 `run_key`（而非每个 `--action` 进程各自不同的 `reporter.run_id`）为键将树
+    落盘，LRU ≤ 5 个 run 目录。SSE `step` 事件仅携带 `has_dom_tree` 布尔值——SSE 上零树字节。
+    前端通过 `GET /api/run/{run_id}/step/{step_index}/dom` 按需拉取，仅在抽屉打开且该步骤处于
+    视图时触发（大多数用户从不打开，因此 SSE 零树流量）。
+  - 界面：右侧边缘可折叠抽屉（可固定；快捷键 `B`）；当前目标行 ember 高亮 +（Web）截图上 ember bbox
+    叠加层；鼠标悬停任意节点（Web）→ 蓝色 bbox；完整 ARIA 键盘导航（↑/↓/←/→/Home/End，`/` 聚焦搜索）；
+    点击 `@N` 徽章或按 Enter 复制定位器；`+N −N ~N` 逐步差异徽章；键控协调器逐步就地更新树，保留展开/滚动状态。
+  - **移动端诚实降级**：Android/iOS 无 `ref` 徽章、无 bbox 叠加层（明确缺失，非隐藏）；悬停轨道变为
+    琥珀色；一次性可关闭提示。移动端树是真正分层的 —— 相较于扁平 LLM 输出是真实改进。
+    反向空间查找与 SSE 差异流推送留作未来迭代。
+
 ## [0.5.0] - 2026-06-09
 
 ### Added

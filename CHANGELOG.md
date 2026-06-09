@@ -4,6 +4,42 @@ All notable changes to ScreenForge will be documented in this file.
 
 [中文](./CHANGELOG_CN.md) | **English**
 
+## [Unreleased]
+
+### Added
+- **Brain's Eye View — read-only live hierarchical DOM tree panel in the Playground.**
+  Every step in the Playground now optionally shows the **filtered element set the AI
+  brain actually perceived, re-hung into its real parent/child structure** — not the
+  browser's raw DevTools DOM and not the flat token-economy output the LLM receives.
+  The root cause of the previous gap was that the LLM compressors deliberately flatten
+  the tree for token economy; the hierarchy was never preserved anywhere a human could
+  inspect it. This release adds a dedicated sidecar that captures the hierarchy without
+  touching the compressors:
+  - Added `playground/dom_capture.py` — reuses the compressors' survival/filter
+    predicates but walks the tree hierarchically instead of flattening it. Web: a
+    `page.evaluate` walk emitting `ref` `@N` + bbox `x/y/w/h` per node. Mobile
+    (Android/iOS): parses raw `dump_hierarchy()` / `source()` XML preserving nesting
+    (no `ref`, no bbox — honest, not faked). `compress_web_dom` /
+    `compress_android_xml` are untouched.
+  - Capture is gated on `--playground-sink` (off by default = zero added cost; not
+    even attempted when the sink is off). **Red line preserved**: the tree push is a
+    separate fire-and-forget `POST /api/dom`, decoupled from the step push and never
+    join-waited, so it can never delay or change `--action`'s `0/1` exit code.
+  - Server persists trees to disk keyed by the cross-process-stable `run_key` (not
+    `reporter.run_id`), LRU ≤ 5 run dirs. The SSE `step` event carries only a
+    `has_dom_tree` boolean — zero tree bytes on SSE. The frontend fetches
+    `GET /api/run/{run_id}/step/{step_index}/dom` on demand, only when the drawer
+    is open and the step is in view (most users never open it ⇒ zero tree traffic).
+  - UX: right-edge collapsible drawer (pinnable; hotkey `B`); current target row
+    ember-highlighted + (Web) ember bbox overlay on the screenshot; hover any node
+    (Web) → blue bbox; full ARIA keyboard nav (↑/↓/←/→/Home/End, `/` to search);
+    copy-locator on `@N` badge click or Enter; `+N −N ~N` per-step diff badge; keyed
+    reconciler updates the tree in place per step, preserving expand/scroll state.
+  - **Honest mobile degrade**: Android/iOS have no `ref` badge and no bbox overlay
+    (absent, not faked); hover rail turns amber; one-time dismissable notice. The
+    mobile tree is genuinely hierarchical — a real improvement over the flat LLM
+    output. Reverse spatial lookup and SSE diff-streaming are deferred.
+
 ## [0.5.0] - 2026-06-09
 
 ### Added
