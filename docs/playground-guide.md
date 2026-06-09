@@ -190,7 +190,7 @@ The **Brain's Eye View** is a collapsible drawer on the right edge of the playgr
 
 **The diff badge**: each step shows a **`+N −N ~N`** badge (added / removed / changed nodes vs the previous step), giving you a quick read on how much the page changed between actions.
 
-**Honest mobile behaviour**: Android and iOS have **no `@N` ref badge and no bbox overlay** — these are genuinely absent in mobile capture, not hidden. The hover rail turns **amber** as a reminder. A one-time dismissable notice explains why. What you do get is a **genuinely hierarchical tree** (the real parent/child nesting from `dump_hierarchy` / WDA `source`), which is a real improvement over the flat element list the LLM receives.
+**Honest mobile behaviour**: Android and iOS have **no `@N` ref badge and no bbox overlay** — these are genuinely absent in mobile capture, not hidden. The hover rail turns **amber** as a reminder. A one-time dismissable notice explains why. On **Android** you do get a **genuinely hierarchical tree** (the real parent/child nesting from `dump_hierarchy`), a real improvement over the flat element list the LLM receives. On **iOS the DOM tree is not yet supported**: the sidecar reuses the Android XML predicates, but WDA `source()` returns XCUITest XML with different attributes, so nothing survives the filter — the tree pip stays dark and no tree shows (iOS XCUITest/WDA predicates are a future addition).
 
 ---
 

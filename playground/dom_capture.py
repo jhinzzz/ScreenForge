@@ -80,12 +80,14 @@ def _build_mobile_forest(el, promote_ids, suppress_ids):
 
 
 def build_mobile_tree(raw_xml, platform):
-    """Parse raw Android/iOS XML into a hierarchical filtered tree, or None.
+    """Parse raw Android XML into a hierarchical filtered tree, or None.
 
-    NOTE: iOS goes through compress_ios_xml separately for the LLM; for the tree
-    we reuse the Android predicates against the WDA XML's android-like attributes.
-    If iOS attribute names diverge in practice, the iOS branch degrades to fewer
-    surviving nodes — never crashes. (Honest v1 boundary; iOS tree is best-effort.)
+    HONEST v1 BOUNDARY: these predicates are the ANDROID ones (text/content-desc/
+    resource-id/clickable/enabled). iOS WDA `.source()` returns XCUITest XML with
+    different attributes (XCUIElementType* tags + name/label/value/type), so every
+    iOS node is filtered out → empty forest → None (no tree, pip stays dark). iOS
+    DOM-tree capture is therefore NOT yet supported; WDA-predicate support is a
+    future addition. Never crashes either way (empty → None, parse error → None).
     """
     try:
         root = ET.fromstring(raw_xml)
@@ -102,6 +104,10 @@ def build_mobile_tree(raw_xml, platform):
         if root_self is not None:
             root_self["children"] = forest
             forest = [root_self]
+        if not forest:
+            return None  # no surviving elements ⇒ no tree to show (keeps has_dom_tree truthful:
+                         # iOS XCUITest XML yields nothing under the Android predicates, and a
+                         # genuinely empty page has nothing to render — both should leave the pip dark)
         return {"platform": platform, "nodes": forest}
     except Exception:
         return None
@@ -117,6 +123,8 @@ def build_web_tree(page):
         result = page.evaluate(_WEB_TREE_JS)
         if not isinstance(result, dict) or "nodes" not in result:
             return None
+        if not result["nodes"]:
+            return None  # blank page / nothing survived ⇒ no tree (keeps has_dom_tree truthful)
         result["platform"] = "web"
         return result
     except Exception:

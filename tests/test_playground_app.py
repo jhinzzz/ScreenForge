@@ -356,6 +356,15 @@ class TestDomStore:
         assert not (tmp_path.parent / "step_001.json").exists()
         assert (tmp_path / "run" / "step_001.json").exists()
 
+    def test_cjk_text_round_trips_through_dom_store(self, client, tmp_path):
+        app_module._DOM_DIR = tmp_path
+        app_module._dom_index.clear()
+        tree = {"platform": "web", "nodes": [{"ref": "@1", "class": "button", "text": "登录", "children": []}]}
+        client.post("/api/dom", json={"run_id": "cjk", "step_index": 1, "tree": tree})
+        got = client.get("/api/run/cjk/step/1/dom")
+        assert got.status_code == 200
+        assert got.json()["nodes"][0]["text"] == "登录"
+
 
 class TestHasDomTreePassthrough:
     def test_step_event_carries_has_dom_tree_to_sse(self, client):

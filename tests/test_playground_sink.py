@@ -487,6 +487,33 @@ class TestMaybePushStep:
         mock_push_dom.assert_not_called()
         assert mock_push_step.call_args[0][0].has_dom_tree is False
 
+    def test_step_and_dom_tree_share_run_key_and_index(self):
+        # seam#2 regression: the SSE step event and the /api/dom push MUST use the
+        # SAME key + index from one maybe_push_step. With a --session-id the key is
+        # the session_id (NOT reporter.run_id) and the index is session steps()+1.
+        import argparse
+        sink = PlaygroundSink(enabled=True)
+        reporter = MagicMock()
+        reporter.run_id = "RID"
+        args = argparse.Namespace(platform="web", session_id="SESS", session_end="", playground_url="")
+        fake_tree = {"platform": "web", "nodes": [{"ref": "@1", "class": "button", "children": []}]}
+        captured = {}
+
+        def _grab_step(ev):
+            captured["step_run_id"] = ev.run_id
+            captured["step_idx"] = ev.step_index
+        with patch.object(PlaygroundSink, "capture_dom_tree", return_value=fake_tree), \
+             patch.object(PlaygroundSink, "encode_screenshot", return_value=""), \
+             patch("cli.playground_sink.load_session", return_value={"steps": 4}), \
+             patch.object(sink, "push_step", side_effect=_grab_step), \
+             patch.object(sink, "push_dom_tree") as mock_dom:
+            maybe_push_step(sink, args=args, reporter=reporter, adapter=MagicMock(),
+                            action_data=_action_data(), result=_result())
+        dom_run_id, dom_idx, _tree = mock_dom.call_args[0]
+        # the SSE step event and the /api/dom push MUST use the same key + index
+        assert dom_run_id == captured["step_run_id"] == "SESS"   # session_id is the run_key, not reporter.run_id
+        assert dom_idx == captured["step_idx"] == 5              # session steps(4)+1
+
 
 class TestCaptureDomTree:
     def test_capture_returns_none_when_capture_raises(self):

@@ -12,10 +12,22 @@ class TestBuildMobileTree:
     def test_returns_none_on_parse_error(self):
         assert build_mobile_tree("<<not xml", "android") is None
 
-    def test_empty_hierarchy_yields_empty_nodes(self):
+    def test_empty_hierarchy_yields_none(self):
+        # An empty hierarchy has no surviving elements ⇒ no tree (keeps has_dom_tree
+        # truthful: the pip must not light when there is nothing to show).
         xml = '<hierarchy rotation="0"></hierarchy>'
-        tree = build_mobile_tree(xml, "android")
-        assert tree == {"platform": "android", "nodes": []}
+        assert build_mobile_tree(xml, "android") is None
+
+    def test_ios_xcuitest_xml_yields_none_today(self):
+        # iOS WDA returns XCUITest XML (XCUIElementType* tags + name/label/value/type),
+        # which the Android predicates don't recognize → every node filtered → None.
+        # This pins the HONEST v1 boundary: iOS DOM-tree capture is not yet supported.
+        ios_xml = (
+            '<XCUIElementTypeApplication name="MyApp" label="MyApp">'
+            '<XCUIElementTypeButton name="login" label="登录" value="" type="XCUIElementTypeButton"/>'
+            '</XCUIElementTypeApplication>'
+        )
+        assert build_mobile_tree(ios_xml, "ios") is None
 
     def test_single_clickable_node_emitted(self):
         xml = (

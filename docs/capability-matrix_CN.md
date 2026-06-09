@@ -137,7 +137,7 @@
 
 一个**只读、实时、分层的面板**，展示 **AI 大脑在每一步实际感知到的过滤元素集合，并按真实的父/子结构重新挂载** —— 而非浏览器 DevTools 原始 DOM。
 
-- **旁路采集**（`playground/dom_capture.py`）：复用 LLM 压缩器的存活/过滤谓词，但保留层级结构。绝不触碰 `compress_web_dom` / `compress_android_xml` —— 扁平化以节省 token 的路径完全不受影响。Web：通过分层 `page.evaluate` 遍历，产出 `ref` `@N` + bbox `x/y/w/h`。移动端（Android/iOS）：解析原始 `dump_hierarchy()` / `source()` XML 并保留嵌套结构（无 `ref`，无 bbox —— 如实反映，而非伪造）。
+- **旁路采集**（`playground/dom_capture.py`）：复用 LLM 压缩器的存活/过滤谓词，但保留层级结构。绝不触碰 `compress_web_dom` / `compress_android_xml` —— 扁平化以节省 token 的路径完全不受影响。Web：通过分层 `page.evaluate` 遍历，产出 `ref` `@N` + bbox `x/y/w/h`。Android：解析原始 `dump_hierarchy()` XML 并保留嵌套结构（无 `ref`，无 bbox —— 如实反映，而非伪造）。**iOS：暂不支持** —— 旁路采集复用 Android XML 谓词，但 WDA `source()` 是属性不同的 XCUITest XML，因此没有节点能存活、不会产出任何树（树指示灯保持熄灭）；iOS XCUITest/WDA 谓词是后续待加项。
 - **opt-in / 零成本**：采集挂载在现有的 `--playground-sink` 观察者路径上（默认关闭 = 零额外成本；sink 关闭时连尝试都不做）。
 - **红线不变**：树推送是一个独立的 fire-and-forget `POST /api/dom`，与步骤推送解耦，绝不 join 等待，因此绝不会拖延或改变 `--action` 的 `0/1` 退出码。
 - **磁盘持久化存储**：树（每棵 25–80 KB）由常驻服务器落盘，以跨进程稳定的 `run_key` 为键（而非每个 `--action` 进程各自不同的 `reporter.run_id`）。内存中只保留 `run_key → {步骤索引}` 的轻量索引；LRU ≤ 5 个 run 目录。
