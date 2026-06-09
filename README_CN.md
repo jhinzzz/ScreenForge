@@ -88,6 +88,7 @@ screenforge inspect
 - **视觉 fallback**：DOM 无法定位时（Canvas、游戏），VLM 从截图解析坐标
 - **MCP Server**：任何 MCP 兼容的 Agent 可原生驱动 ScreenForge
 - **结构化输出**：JSON Lines 事件流 + `report/runs/<id>/` 产物，便于 CI 集成
+- **实时镜像台（Live Mirror）**：一边跑用例，一边在浏览器里看生成的 pytest 代码逐行长出 + 实时截图 —— `screenforge --playground`。见 [实时镜像台指南](docs/playground-guide_CN.md)
 
 ## Agent 集成 (Claude Code / Cursor / Codex)
 
@@ -153,9 +154,10 @@ export MODEL_NAME=gpt-4o
 | 资源 | 说明 |
 |------|------|
 | [Agent 集成指南](docs/agent_guide.md) | AI Agent 集成协议 |
-| [能力矩阵](docs/capability-matrix.md) | 支持的平台、动作和定位器 |
+| [能力矩阵](docs/capability-matrix_CN.md) | 支持的平台、动作和定位器 |
+| [实时镜像台指南](docs/playground-guide_CN.md) | Live Mirror — 边跑用例边看代码与截图实时增长 |
 | [Workflow 示例](docs/workflows/) | YAML workflow 模板 |
-| [变更日志](CHANGELOG.md) | 版本历史 |
+| [变更日志](CHANGELOG_CN.md) | 版本历史 |
 
 ## 贡献
 

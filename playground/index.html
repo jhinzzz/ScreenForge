@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ScreenForge Playground — Live Mirror</title>
 
+<!-- Theme pre-paint guard: set data-theme BEFORE first paint so there's no
+     dark→light flash. Reads the saved choice, else the OS preference. Inlined
+     (not deferred) on purpose — it must run synchronously in <head>. -->
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('screenforge.playground.theme');
+      var theme = saved || (window.matchMedia &&
+        window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+
 <!--
   ScreenForge Playground · Live Mirror (high-fidelity prototype)
   ──────────────────────────────────────────────────────────────
@@ -89,6 +105,96 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
 
   --gap: 12px;
+
+  /* Chrome surfaces promoted to tokens so the light theme can flip them — and so
+     there is ONE source of truth (root-cause fix for inconsistent no-device text). */
+  --code-bg: #0c0c10;        /* code buffer (deeper than panels) */
+  --frame-bg: #0e0e12;       /* screenshot viewport backing */
+  --phone-bezel: #1c1c24;    /* phone mock bezel */
+  --scrollbar: #2a2a33;
+  --scrollbar-hover: #3a3a46;
+  --assert: #67e8f9;         /* assert action accent (cyan) */
+  --ide-btn-bg: linear-gradient(180deg, #1f2a3d, #18222f);
+  --ide-btn-border: #2c3b52;
+  --ide-btn-border-hover: #3a5a85;
+  --ide-menu-bg: #18222f;
+  --header-grad-end: #121219;
+  --timeline-grad-start: #121218;
+  --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
+  --grain-opacity: 0.025;
+  --bloom-warm: rgba(255, 120, 73, 0.07);   /* ember atmosphere bloom (top-left) */
+  --bloom-cool: rgba(96, 165, 250, 0.06);   /* cool atmosphere bloom (right) */
+
+  /* Text that sits ON the screenshot imagery (step caption, filmstrip badge/label).
+     The imagery is ALWAYS dark (it's the app-under-test, not playground chrome), so
+     this must NOT flip with the theme — pinned to a light ink in BOTH themes. */
+  --on-shot: #ecedf1;
+  --on-shot-dim: #c4c6cf;
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   LIGHT THEME — "annealed steel on blueprint paper".
+   The forge cooled, not abandoned: same molten-ember signature, inverted world.
+   Warm paper surfaces, ink-slate text, accents deepened for WCAG AA on light.
+   Toggled via <html data-theme="light">; persisted + pre-paint guarded (no FOUC).
+   ============================================================ */
+[data-theme="light"] {
+  --bg-0: #e7e3dc;           /* deepest paper (app void) */
+  --bg-1: #f4f2ed;           /* primary paper */
+  --bg-2: #faf8f4;           /* panels */
+  --bg-3: #ffffff;           /* raised cards / rows */
+  --bg-4: #efebe3;           /* hover */
+  --bg-header: #f6f4ef;
+
+  --line: #d9d3c8;
+  --line-soft: #e7e2d8;
+  --line-strong: #c4bdaf;
+
+  --text-hi: #1b212e;        /* ink — ~13:1 on paper */
+  --text: #39414f;           /* slate — ~8:1 */
+  --text-dim: #5d6473;       /* ~5.5:1 */
+  --text-faint: #636a78;     /* ~4.8:1 on the lightest --bg-1 paper (clears AA everywhere) */
+
+  --blue: #2563eb;           /* deepened from #60a5fa for AA on light */
+  --blue-deep: #bcd0ef;
+  --green: #047857;
+  --purple: #6d28d9;
+  --amber: #b45309;          /* bronze — value accent, AA on light */
+  --live: #047857;
+  --red: #c81e1e;            /* ~4.7:1 on paper (was #dc2626 @ 4.32 — under AA for text) */
+  --red-deep: #f3d2d2;
+
+  --ember: #ea580c;          /* the signature, still molten on paper */
+  --ember-soft: #c2410c;     /* burnt orange — text-safe (~5.3:1) */
+  --ember-glow: rgba(234, 88, 12, 0.40);
+
+  --shadow-img: 0 18px 50px -14px rgba(60, 45, 30, 0.22), 0 4px 14px -6px rgba(60, 45, 30, 0.14);
+  --shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.02) inset;
+
+  --code-bg: #fcfbf8;        /* warm printed-listing paper */
+  --frame-bg: #e6e2db;
+  --phone-bezel: #3a3a42;    /* phones are dark objects — a touch lifted on paper */
+  --scrollbar: #cfc9bd;
+  --scrollbar-hover: #b1a998;
+  --assert: #0e7490;         /* cyan-deep, AA on light */
+  --ide-btn-bg: linear-gradient(180deg, #ffffff, #eef2f8);
+  --ide-btn-border: #c4d2e4;
+  --ide-btn-border-hover: #93b4dd;
+  --ide-menu-bg: #ffffff;
+  --header-grad-end: #efece6;
+  --timeline-grad-start: #eeebe5;
+  --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2c2533, #1c1c26);
+  --grain-opacity: 0.012;
+  --bloom-warm: rgba(234, 88, 12, 0.06);
+  --bloom-cool: rgba(37, 99, 235, 0.05);
+
+  /* Pinned identical to dark — text on the always-dark screenshot must stay light. */
+  --on-shot: #ecedf1;
+  --on-shot-dim: #c4c6cf;
+
+  color-scheme: light;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -109,8 +215,8 @@ body {
   text-rendering: optimizeLegibility;
   /* Atmosphere: faint ember bloom top-left + cool bloom right, over a subtle grid. */
   background-image:
-    radial-gradient(900px 460px at 8% -8%, rgba(255, 120, 73, 0.07), transparent 60%),
-    radial-gradient(820px 520px at 102% 8%, rgba(96, 165, 250, 0.06), transparent 62%),
+    radial-gradient(900px 460px at 8% -8%, var(--bloom-warm), transparent 60%),
+    radial-gradient(820px 520px at 102% 8%, var(--bloom-cool), transparent 62%),
     linear-gradient(var(--line-soft) 1px, transparent 1px),
     linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
   background-size: auto, auto, 46px 46px, 46px 46px;
@@ -123,7 +229,7 @@ body::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.025;
+  opacity: var(--grain-opacity);
   z-index: 9999;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)'/%3E%3C/svg%3E");
 }
@@ -135,7 +241,7 @@ header {
   flex: 0 0 auto;
   height: 52px;
   padding: 0 16px;
-  background: linear-gradient(180deg, var(--bg-header), #121219);
+  background: linear-gradient(180deg, var(--bg-header), var(--header-grad-end));
   border-bottom: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -158,7 +264,7 @@ header::after {
   width: 26px; height: 26px;
   border-radius: 7px;
   display: grid; place-items: center;
-  background: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
+  background: var(--brand-mark-bg);
   border: 1px solid var(--line-strong);
   box-shadow: 0 0 0 1px rgba(255,120,73,0.12), 0 0 14px -4px var(--ember-glow);
   position: relative;
@@ -189,6 +295,28 @@ header::after {
 .bar-spacer { flex: 1; }
 .bar-divider { width: 1px; height: 22px; background: var(--line); }
 
+/* Theme toggle — a small icon button. Sun shows in dark mode (→ switch to light),
+   moon shows in light mode (→ switch to dark). The inactive glyph is hidden via
+   the data-theme on <html>, so only one is ever visible. */
+.theme-toggle {
+  display: inline-grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s, transform .12s;
+}
+.theme-toggle:hover { color: var(--ember-soft); border-color: var(--line-strong); background: var(--bg-3); }
+.theme-toggle:active { transform: translateY(1px); }
+.theme-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.theme-toggle svg { width: 15px; height: 15px; display: block; }
+.theme-toggle .i-sun  { display: none; }
+.theme-toggle .i-moon { display: none; }
+[data-theme="dark"]  .theme-toggle .i-sun  { display: block; }  /* dark now → offer sun */
+[data-theme="light"] .theme-toggle .i-moon { display: block; }  /* light now → offer moon */
+
 /* Connection status badge */
 .status {
   display: inline-flex; align-items: center; gap: 7px;
@@ -207,9 +335,14 @@ header::after {
 }
 .status[data-state="live"]        { color: var(--live);  border-color: rgba(110,231,183,0.35); background: rgba(110,231,183,0.08); }
 .status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(96,165,250,0.35);  background: rgba(96,165,250,0.08); }
+/* idle = SSE still connected, but the device/web target has gone quiet (no steps
+   or frames for a while). Distinct from disconnected: amber, not red — nothing
+   broke, the run just ended or paused. */
+.status[data-state="idle"]        { color: var(--amber); border-color: rgba(251,191,113,0.35); background: rgba(251,191,113,0.08); }
 .status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(252,165,165,0.35);  background: rgba(252,165,165,0.08); }
 .status[data-state="live"] .dot       { animation: pulse-dot 1.9s ease-out infinite; }
 .status[data-state="connecting"] .dot { animation: blink 1s steps(2, start) infinite; }
+/* idle dot: steady, no animation — signals "not actively streaming". */
 @keyframes pulse-dot {
   0%   { box-shadow: 0 0 0 0 rgba(110,231,183,0.55); }
   70%  { box-shadow: 0 0 0 6px rgba(110,231,183,0); }
@@ -269,15 +402,15 @@ header::after {
   font-family: var(--font-ui);
   font-size: 12px; font-weight: 500;
   color: var(--text-hi);
-  background: linear-gradient(180deg, #1f2a3d, #18222f);
-  border: 1px solid #2c3b52;
+  background: var(--ide-btn-bg);
+  border: 1px solid var(--ide-btn-border);
   padding: 6px 12px;
   border-radius: 8px;
   cursor: pointer;
   transition: transform .12s ease, border-color .15s, box-shadow .15s;
   white-space: nowrap;
 }
-.btn-vscode:hover { border-color: #3a5a85; box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.btn-vscode:hover { border-color: var(--ide-btn-border-hover); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
 .btn-vscode:active { transform: translateY(1px); }
 .btn-vscode svg { width: 14px; height: 14px; }
 .btn-vscode .kbd {
@@ -289,6 +422,37 @@ header::after {
   padding: 0 4px;
   margin-left: 2px;
 }
+
+/* "Open in <IDE>" split button: [ Open in Trae ][▾] + detected-editor menu.
+   Detection-driven (GET /api/editors). data-state on the wrapper: 'none' (no
+   editor on PATH → disabled, both buttons dimmed) or 'ready'. */
+.ide-open { position: relative; display: inline-flex; align-items: stretch; }
+.ide-open .btn-ide-go    { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ide-open .btn-ide-pick  {
+  border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none;
+  padding: 6px 8px; font-size: 11px; color: var(--text-dim);
+}
+.ide-open[data-state="none"] .btn-vscode { opacity: .5; cursor: not-allowed; }
+.ide-open[data-state="none"] .btn-vscode:hover { border-color: var(--ide-btn-border); box-shadow: none; }
+/* Disabled-but-detected (no test has run yet → no file to open): must LOOK inert,
+   not falsely clickable. Before this, a disabled go-button kept opacity 1 +
+   cursor:pointer and silently did nothing on click — the "no reaction" bug. */
+.btn-vscode:disabled { opacity: .45; cursor: not-allowed; }
+.btn-vscode:disabled:hover { border-color: var(--ide-btn-border); box-shadow: none; }
+.ide-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  min-width: 160px; margin: 0; padding: 4px; list-style: none;
+  background: var(--ide-menu-bg); border: 1px solid var(--ide-btn-border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ide-menu li {
+  font-family: var(--font-ui); font-size: 12px; color: var(--text-hi);
+  padding: 6px 10px; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.ide-menu li:hover, .ide-menu li[aria-selected="true"] { background: rgba(96,165,250,0.12); }
+.ide-menu li .tick { color: var(--live); font-size: 11px; visibility: hidden; }
+.ide-menu li[aria-selected="true"] .tick { visibility: visible; }
 
 /* ============================================================
    MAIN GRID  — left screenshot | right (code over history)
@@ -373,7 +537,7 @@ header::after {
   border-radius: var(--r-md);
   box-shadow: var(--shadow-img);
   transition: max-width .45s cubic-bezier(.4,0,.2,1), aspect-ratio .45s cubic-bezier(.4,0,.2,1);
-  background: #0e0e12;
+  background: var(--frame-bg);
   overflow: hidden;
   outline: 1px solid var(--line-strong);
 }
@@ -389,7 +553,7 @@ header::after {
   height: min(100%, 660px);
   border-radius: 26px;
   outline: none;
-  border: 7px solid #1c1c24;
+  border: 7px solid var(--phone-bezel);
   box-shadow: var(--shadow-img), 0 0 0 1px #000 inset;
 }
 .shot-frame.phone::before { /* notch */
@@ -436,12 +600,19 @@ header::after {
   padding: 3px 8px; border-radius: 6px;
 }
 .shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse-dot 1.9s ease-out infinite; }
+/* When the target goes quiet, the frame's "LIVE" badge would lie. Dim it to amber,
+   stop the pulse, and relabel to "IDLE" (the visible "LIVE" text is hidden via the
+   .lbl span below). Driven by .shot-frame.idle, toggled in markActivity(). */
+.shot-frame.idle .shot-live-tag { color: var(--amber); border-color: rgba(251,191,113,0.3); }
+.shot-frame.idle .shot-live-tag .dot { background: var(--amber); animation: none; }
+.shot-frame.idle .shot-live-tag .lbl { display: none; }
+.shot-frame.idle .shot-live-tag::after { content: 'IDLE'; }
 /* step caption: which step this frame corresponds to */
 .shot-step-tag {
   position: absolute; bottom: 10px; left: 10px; z-index: 4;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text);
+  color: var(--on-shot);   /* on dark imagery — stays light in both themes */
   background: rgba(8,8,12,0.7);
   border: 1px solid var(--line);
   backdrop-filter: blur(6px);
@@ -502,17 +673,17 @@ header::after {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  background: #0c0c10;       /* slightly deeper than panel so code reads as a "buffer" */
+  background: var(--code-bg);   /* slightly deeper than panel so code reads as a "buffer" */
   scroll-behavior: smooth;
 }
-/* Custom scrollbars (webkit) — thin, dark, dev-tool style */
+/* Custom scrollbars (webkit) — thin, dev-tool style; tokenized so they flip with theme */
 .code-scroll::-webkit-scrollbar,
 .history-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
 .code-scroll::-webkit-scrollbar-thumb,
-.history-scroll::-webkit-scrollbar-thumb { background: #2a2a33; border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+.history-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
 .code-scroll::-webkit-scrollbar-thumb:hover,
-.history-scroll::-webkit-scrollbar-thumb:hover { background: #3a3a46; background-clip: padding-box; }
-.code-scroll, .history-scroll { scrollbar-width: thin; scrollbar-color: #2a2a33 transparent; }
+.history-scroll::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); background-clip: padding-box; }
+.code-scroll, .history-scroll { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
 
 pre.code-pre {
   margin: 0;
@@ -525,6 +696,31 @@ pre.code-pre {
   min-width: max-content;
 }
 pre.code-pre code { font-family: var(--font-mono) !important; background: transparent !important; text-shadow: none !important; }
+
+/* Prism's bundled theme (prism-tomorrow) is tuned for DARK backgrounds — its plain
+   text + punctuation are ~#ccc, invisible on light paper. Override the syntax palette
+   for light mode ONLY (dark is left untouched, zero regression): an ink-on-paper set,
+   each ≥4.5:1 on --code-bg, with the `function` token carrying the brand burnt-orange. */
+[data-theme="light"] pre.code-pre code,
+[data-theme="light"] pre.code-pre code[class*="language-"] { color: #39414f; }   /* plain text — slate ~8:1 */
+[data-theme="light"] .code-pre .token.comment,
+[data-theme="light"] .code-pre .token.prolog,
+[data-theme="light"] .code-pre .token.doctype,
+[data-theme="light"] .code-pre .token.cdata     { color: #6a7180; font-style: italic; }  /* ~4.7:1 */
+[data-theme="light"] .code-pre .token.punctuation { color: #5d6473; }                     /* ~5.5:1 */
+[data-theme="light"] .code-pre .token.keyword,
+[data-theme="light"] .code-pre .token.boolean,
+[data-theme="light"] .code-pre .token.operator   { color: #7c3aed; }                      /* violet ~5.6:1 */
+[data-theme="light"] .code-pre .token.string,
+[data-theme="light"] .code-pre .token.char,
+[data-theme="light"] .code-pre .token.triple-quoted-string { color: #047857; }            /* green ~4.7:1 */
+[data-theme="light"] .code-pre .token.function,
+[data-theme="light"] .code-pre .token.class-name { color: #c2410c; }                      /* brand burnt-orange ~5.3:1 */
+[data-theme="light"] .code-pre .token.number,
+[data-theme="light"] .code-pre .token.builtin,
+[data-theme="light"] .code-pre .token.constant   { color: #0e7490; }                      /* cyan-deep ~4.9:1 */
+[data-theme="light"] .code-pre .token.decorator,
+[data-theme="light"] .code-pre .token.annotation { color: #b45309; }                      /* bronze ~4.8:1 */
 
 /* each emitted code line is a row with a gutter number + an ember rail */
 .cl {
@@ -585,7 +781,10 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   color: var(--text-faint);
   line-height: 1.7;
 }
-.code-empty .c { color: #7c8a72; }   /* WCAG AA: ~5:1 (was #5f6b57 @ 3.3:1) */
+/* The Python-comment lines in the empty state. Was a one-off green (#7c8a72) that
+   clashed with the neutral-gray screenshot/history empties — issue #5's "字体颜色
+   不统一". Unified to the shared faint token so all three empty panels read as one. */
+.code-empty .c { color: var(--text-faint); }
 
 /* ---------- RIGHT-BOTTOM: action history ---------- */
 .history-panel .panel-head .count {
@@ -666,7 +865,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   color: var(--green);
   flex: 0 0 auto;
 }
-.action-item .a-type.assert { color: #67e8f9; }
+.action-item .a-type.assert { color: var(--assert); }
 .action-item .a-type.goto   { color: var(--blue); }
 .action-item .a-target {
   font-family: var(--font-mono);
@@ -713,7 +912,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   flex: 0 0 auto;
   height: 92px;
   border-top: 1px solid var(--line);
-  background: linear-gradient(180deg, #121218, var(--bg-1));
+  background: linear-gradient(180deg, var(--timeline-grad-start), var(--bg-1));
   display: flex;
   align-items: center;
   gap: 14px;
@@ -755,10 +954,10 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   padding: 6px 2px;
   position: relative;
   scrollbar-width: thin;
-  scrollbar-color: #2a2a33 transparent;
+  scrollbar-color: var(--scrollbar) transparent;
 }
 .filmstrip::-webkit-scrollbar { height: 7px; }
-.filmstrip::-webkit-scrollbar-thumb { background: #2a2a33; border-radius: 6px; }
+.filmstrip::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 6px; }
 
 .film-node {
   flex: 0 0 auto;
@@ -793,7 +992,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: absolute; top: 4px; left: 4px;
   font-family: var(--font-mono);
   font-size: 9px; font-weight: 700;
-  color: var(--text-hi);
+  color: var(--on-shot);   /* on dark imagery — stays light in both themes */
   background: rgba(8,8,12,0.78);
   padding: 1px 5px; border-radius: 4px;
   display: inline-flex; align-items: center; gap: 4px;
@@ -804,7 +1003,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: absolute; bottom: 0; left: 0; right: 0;
   font-family: var(--font-mono);
   font-size: 8.5px; letter-spacing: .03em;
-  color: var(--text);
+  color: var(--on-shot);   /* on dark imagery — stays light in both themes */
   background: linear-gradient(0deg, rgba(8,8,12,0.92), transparent);
   padding: 9px 5px 3px;
   text-align: center;
@@ -904,23 +1103,42 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
   <span class="bar-divider"></span>
 
-  <!-- run id -->
+  <!-- run id (placeholder until the first step arrives) -->
   <span class="meta-chip" title="Current run">
-    <span class="k">run</span><span class="v" id="runId">run_8f3a1c</span>
+    <span class="k">run</span><span class="v" id="runId">—</span>
   </span>
 
-  <!-- current generated file -->
+  <!-- current generated file (placeholder until a test starts generating) -->
   <span class="meta-chip file" title="File being generated">
-    <span class="k">file</span><span class="v" id="fileName">test_auto_20260608_142530.py</span>
+    <span class="k">file</span><span class="v" id="fileName">—</span>
   </span>
 
-  <!-- open in vscode (visual only) -->
-  <button class="btn-vscode" id="openVscode" title="Open the generated file in VSCode (visual only in this prototype)">
-    <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="#3a5a85" stroke="#60a5fa" stroke-width="1" stroke-linejoin="round"/></svg>
-    Open in VSCode<span class="kbd">⌘E</span>
-  </button>
+  <!-- open the generated file in a detected IDE; split button: open + switch -->
+  <span class="ide-open" id="ideOpen" data-state="none">
+    <button class="btn-vscode btn-ide-go" id="ideGo" type="button"
+            title="Open the generated file in your editor" disabled>
+      <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="#3a5a85" stroke="#60a5fa" stroke-width="1" stroke-linejoin="round"/></svg>
+      <span class="ide-label" id="ideLabel">Open in IDE</span><span class="kbd">⌘E</span>
+    </button>
+    <button class="btn-vscode btn-ide-pick" id="idePick" type="button"
+            aria-haspopup="listbox" aria-expanded="false" title="Choose editor" disabled>▾</button>
+    <ul class="ide-menu" id="ideMenu" role="listbox" hidden></ul>
+  </span>
 
   <span class="bar-divider"></span>
+
+  <!-- theme toggle (light / dark) -->
+  <button class="theme-toggle" id="themeToggle" type="button"
+          aria-label="Toggle light / dark theme" title="Toggle theme (sun = go light, moon = go dark)">
+    <svg class="i-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/>
+      <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5 5l1.6 1.6M17.4 17.4 19 19M19 5l-1.6 1.6M6.6 17.4 5 19"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+    <svg class="i-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 13.2A8 8 0 1 1 10.8 4a6.3 6.3 0 0 0 9.2 9.2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+    </svg>
+  </button>
 
   <!-- connection status -->
   <span class="status" id="status" data-state="connecting" role="status" aria-live="polite">
@@ -952,7 +1170,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
       <!-- the live frame (hidden until first screenshot) -->
       <figure class="shot-frame web" id="shotFrame" style="display:none">
         <div class="scanline" aria-hidden="true"></div>
-        <span class="shot-live-tag" aria-hidden="true"><span class="dot"></span>LIVE</span>
+        <span class="shot-live-tag" aria-hidden="true"><span class="dot"></span><span class="lbl">LIVE</span></span>
         <img id="shotImg" alt="Live screenshot of the application under test" />
         <figcaption class="shot-step-tag" id="shotStepTag">step 0</figcaption>
       </figure>
@@ -968,7 +1186,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
         <span class="filetab">
           <span class="live-pip" aria-hidden="true"></span>
           <span class="py">PY</span>
-          <span class="name" id="codeFileName">test_auto_20260608_142530.py</span>
+          <span class="name" id="codeFileName">—</span>
         </span>
         <span class="spacer"></span>
         <span class="hint">pytest · playwright · allure</span>
@@ -1002,17 +1220,17 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   </div>
 </main>
 
-<!-- ============================ TIMELINE / FILMSTRIP (time-travel seed) ============================ -->
-<footer class="timeline" role="region" aria-label="Step timeline (time-travel — UI only in this phase)">
+<!-- ============================ TIMELINE / FILMSTRIP (time-travel) ============================ -->
+<footer class="timeline" role="region" aria-label="Step timeline — click a frame to rewind">
   <div class="timeline-label">
     <span class="t"><span class="ico"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M3 10h18M8 6v12M16 6v12" stroke="currentColor" stroke-width="1.1"/></svg></span>Timeline</span>
-    <span class="seed" title="Visual scaffold only — clicking does not yet rewind the view">⏱ time-travel · seed</span>
+    <span class="seed" title="Click any frame to jump the screenshot and highlight its code">⏱ time-travel</span>
   </div>
   <div class="filmstrip" id="filmstrip" role="list" aria-label="Step filmstrip">
     <!-- film nodes injected by JS -->
   </div>
   <div class="scrubber-help">
-    <b>Coming soon:</b> click a frame to rewind the screenshot &amp; highlight its code.
+    <b>Tip:</b> click a frame to rewind the screenshot &amp; highlight its code.
   </div>
 </footer>
 
@@ -1092,6 +1310,17 @@ const ACTION_LABEL = a => ({
   assert_exist: 'assert', assert_text_equals: 'assert_text',
 }[a] || a);
 
+// Global actions carry no element locator. The backend tags them with the
+// sentinel locator_type/value "global" (see common/capabilities.GLOBAL_ACTIONS
+// + the AI prompts) — that's an internal marker, NOT a real locator, so the
+// history row must not render it as `global=global`. Treat both the action set
+// and the bare sentinel as "no locator".
+const GLOBAL_ACTIONS = new Set(['goto', 'swipe', 'press', 'assert_url']);
+const hasRealLocator = step =>
+  !GLOBAL_ACTIONS.has(step.action)
+  && !!step.locator_value
+  && String(step.locator_value).toLowerCase() !== 'global';
+
 /* ======================================================================
    RENDER: CODE PANEL
    Append-only. Each emitted code_line becomes its own .cl row so we can
@@ -1166,18 +1395,21 @@ function addHistoryRow(step) {
   row.tabIndex = 0;
   row.dataset.step = step.step_index;
 
-  const loc = step.locator_value
+  // Real locator → `type=value`; global action (goto/swipe/press/assert_url) →
+  // show its extra_value (URL / direction / key / url-substring), never the
+  // internal "global" sentinel.
+  const loc = hasRealLocator(step)
     ? `<span class="loctype">${step.locator_type || ''}=</span>${escapeHtml(step.locator_value)}`
-    : (step.action === 'goto' ? escapeHtml(step.extra_value) : '');
+    : escapeHtml(step.extra_value || '');
 
   row.innerHTML = `
     <span class="idx">${step.step_index}</span>
     <span class="body">
       <span class="line1">
-        <span class="a-type ${ACTION_CLASS(step.action)}">${ACTION_LABEL(step.action)}</span>
+        <span class="a-type ${ACTION_CLASS(step.action)}">${escapeHtml(ACTION_LABEL(step.action))}</span>
         <span class="a-target">${loc}</span>
       </span>
-      ${step.extra_value && step.action !== 'goto' ? `<span class="a-value">"${escapeHtml(step.extra_value)}"</span>` : ''}
+      ${step.extra_value && hasRealLocator(step) ? `<span class="a-value">"${escapeHtml(step.extra_value)}"</span>` : ''}
       <span class="a-desc">${escapeHtml(step.action_description || '')}</span>
     </span>
     <span class="meta">
@@ -1323,7 +1555,29 @@ function showScreenshot(src, step) {
    ====================================================================== */
 function setStatus(stateName, label) {
   els.status.dataset.state = stateName;
-  els.statusLabel.textContent = label || ({ live: 'Live', connecting: 'Connecting', disconnected: 'Disconnected' }[stateName]);
+  els.statusLabel.textContent = label || ({ live: 'Live', connecting: 'Connecting', idle: 'Idle', disconnected: 'Disconnected' }[stateName]);
+}
+
+// Activity-driven liveness. The browser↔playground SSE stays open forever (the
+// server is always up), so SSE.onopen alone can't tell us the device/web TARGET
+// is still producing steps — that's why "Live" used to stick after the run ended.
+// Fix (light, frontend-only): every real step/screenshot event marks activity;
+// if none arrives for IDLE_AFTER_MS we drop "Live" → "Idle" (amber, not red — the
+// connection is fine, the run just went quiet). The next event flips us back.
+const IDLE_AFTER_MS = 4000;   // ~2× the slowest mobile frame (0.5–2s) + margin
+let _idleTimer = null;
+function markActivity() {
+  if (els.status.dataset.state !== 'live') setStatus('live');
+  els.shotFrame.classList.remove('idle');
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => {
+    // Only downgrade from a live state — never override 'connecting'/'disconnected'
+    // (a genuine SSE drop owns the status and must not be masked as mere idleness).
+    if (els.status.dataset.state === 'live') {
+      setStatus('idle');
+      els.shotFrame.classList.add('idle');   // dim the screenshot "LIVE" badge too
+    }
+  }, IDLE_AFTER_MS);
 }
 function setPlatform(p) {
   state.platform = p;
@@ -1336,14 +1590,159 @@ function setPlatform(p) {
 document.querySelectorAll('.platform-seg button').forEach(b =>
   b.addEventListener('click', () => restartWithPlatform(b.dataset.platform)));
 
-document.getElementById('openVscode').addEventListener('click', () => {
-  // Prototype: visual only. Real impl would hit a local helper that runs:
-  //   code -g <abs_path>:<line>   (or vscode://file/<path>:<line>)
-  const btn = document.getElementById('openVscode');
-  const orig = btn.querySelector('.kbd').textContent;
-  btn.querySelector('.kbd').textContent = '✓';
-  setTimeout(() => btn.querySelector('.kbd').textContent = orig, 900);
-});
+/* ----------------------------------------------------------------------
+   "Open in <IDE>" — detect installed editors, let the user pick, remember it,
+   and open the generated file at the latest line. The playground server runs
+   the editor CLI (loopback-only POST /api/open); the browser can't spawn procs.
+   ---------------------------------------------------------------------- */
+const ideEls = {
+  wrap:  document.getElementById('ideOpen'),
+  go:    document.getElementById('ideGo'),
+  pick:  document.getElementById('idePick'),
+  menu:  document.getElementById('ideMenu'),
+  label: document.getElementById('ideLabel'),
+};
+const IDE_PREF_KEY = 'screenforge.playground.editor';
+let _editors = [];           // [{id,label}] detected on the server's PATH
+let _selectedEditor = null;  // id string
+// Declared here (above initIdeButton() at the bottom of this block) so the
+// refreshOpenability() read of _currentFilePath can't hit a TDZ even if the
+// fetch await in initIdeButton is ever removed. Assigned later in onStepEvent.
+let _currentRunId = null;
+let _currentFilePath = '';   // abs path of the file being generated (for "open in IDE")
+
+function _chosenEditor() {
+  // Remembered choice if still available, else the first detected (pref order).
+  const saved = localStorage.getItem(IDE_PREF_KEY);
+  if (saved && _editors.some(e => e.id === saved)) return saved;
+  return _editors.length ? _editors[0].id : null;
+}
+
+function renderIdeMenu() {
+  ideEls.menu.innerHTML = '';
+  _editors.forEach(e => {
+    const li = document.createElement('li');
+    li.setAttribute('role', 'option');
+    li.dataset.id = e.id;
+    li.setAttribute('aria-selected', String(e.id === _selectedEditor));
+    li.innerHTML = `<span>${escapeHtml(e.label)}</span><span class="tick">✓</span>`;
+    li.addEventListener('click', () => {
+      _selectedEditor = e.id;
+      localStorage.setItem(IDE_PREF_KEY, e.id);
+      reflectSelectedEditor();
+      closeIdeMenu();
+      openCurrentFile();   // picking from the menu also opens — one gesture
+    });
+    ideEls.menu.appendChild(li);
+  });
+}
+
+function reflectSelectedEditor() {
+  const ed = _editors.find(e => e.id === _selectedEditor);
+  ideEls.label.textContent = ed ? `Open in ${ed.label}` : 'Open in IDE';
+  ideEls.menu.querySelectorAll('li').forEach(li =>
+    li.setAttribute('aria-selected', String(li.dataset.id === _selectedEditor)));
+}
+
+function openIdeMenu() {
+  if (ideEls.wrap.dataset.state === 'none') return;
+  ideEls.menu.hidden = false;
+  ideEls.pick.setAttribute('aria-expanded', 'true');
+}
+function closeIdeMenu() {
+  ideEls.menu.hidden = true;
+  ideEls.pick.setAttribute('aria-expanded', 'false');
+}
+
+async function openCurrentFile() {
+  if (!_selectedEditor) return;
+  const kbd = ideEls.go.querySelector('.kbd');
+  const orig = kbd.textContent;
+  // No file yet (e.g. picked an editor from ▾ before any test ran): give visible
+  // feedback instead of a silent no-op — that silence WAS the original complaint.
+  if (!_currentFilePath) {
+    const lbl = ideEls.label.textContent;
+    ideEls.label.textContent = 'No file yet — run a test first';
+    setTimeout(() => { ideEls.label.textContent = lbl; }, 1600);
+    return;
+  }
+  // Latest rendered line = the bottom of the code panel (the freshest step).
+  const line = Math.max(1, state.steps.reduce((n, s) => n + (s.code_lines ? s.code_lines.length : 0), 0));
+  try {
+    const r = await fetch('/api/open', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_path: _currentFilePath, line, editor: _selectedEditor }),
+    });
+    const d = await r.json();
+    ideEls.go.querySelector('.kbd').textContent = d.ok ? '✓' : '✕';
+    if (!d.ok) console.warn('open in editor failed:', d.error);
+  } catch (e) {
+    ideEls.go.querySelector('.kbd').textContent = '✕';
+    console.warn('open in editor error:', e);
+  }
+  setTimeout(() => { ideEls.go.querySelector('.kbd').textContent = orig; }, 1100);
+}
+
+function refreshOpenability() {
+  // The go-button is actionable only when an editor exists AND a file is known.
+  const ready = ideEls.wrap.dataset.state === 'ready' && !!_currentFilePath;
+  ideEls.go.disabled = !ready;
+}
+
+async function initIdeButton() {
+  if (!USE_LIVE_BACKEND) return;  // offline demo has no server to run editors
+  try {
+    const r = await fetch('/api/editors');
+    const d = await r.json();
+    _editors = d.editors || [];
+  } catch { _editors = []; }
+
+  if (!_editors.length) {
+    ideEls.wrap.dataset.state = 'none';
+    ideEls.go.disabled = true; ideEls.pick.disabled = true;
+    ideEls.go.title = 'No editor detected on PATH (install a CLI like `code`, `trae`, `cursor`)';
+    ideEls.label.textContent = 'No editor found';
+    return;
+  }
+  ideEls.wrap.dataset.state = 'ready';
+  ideEls.pick.disabled = false;
+  _selectedEditor = _chosenEditor();
+  renderIdeMenu();
+  reflectSelectedEditor();
+  refreshOpenability();
+
+  ideEls.go.addEventListener('click', openCurrentFile);
+  ideEls.pick.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ideEls.menu.hidden ? openIdeMenu() : closeIdeMenu();
+  });
+  document.addEventListener('click', (e) => {
+    if (!ideEls.wrap.contains(e.target)) closeIdeMenu();
+  });
+  // ⌘E / Ctrl-E opens in the current editor (matches the kbd hint).
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
+      e.preventDefault(); openCurrentFile();
+    }
+  });
+}
+initIdeButton();
+
+/* ----------------------------------------------------------------------
+   Theme toggle (light / dark). The pre-paint guard in <head> already set
+   data-theme before first paint (no FOUC); this just wires the button to
+   flip + persist it. matchMedia is only the DEFAULT — an explicit choice wins.
+   ---------------------------------------------------------------------- */
+const THEME_KEY = 'screenforge.playground.theme';
+(function initThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* private mode: in-memory only */ }
+  });
+})();
 
 /* ======================================================================
    EVENT INTAKE — the ONE place both feeds hand off to.
@@ -1360,7 +1759,29 @@ function toImgSrc(val) {
   return String(val).startsWith('data:') ? val : 'data:image/png;base64,' + val;
 }
 
+// _currentRunId / _currentFilePath are declared up in the IDE-button block so
+// they're initialized before initIdeButton() runs (no TDZ). Reset on each new run.
 function onStepEvent(ev) {
+  // NEW RUN → wipe the timeline FIRST (before pushing this step), so a second
+  // run's steps don't pile onto the previous run's list and collide step_index
+  // (the "two #1 rows" bug). Tracked via a JS var, not els.runId.textContent,
+  // because that starts with a hardcoded placeholder and would misfire. Demo
+  // mode owns its own reset in startPrototypeFeed(), so this is live-only.
+  if (USE_LIVE_BACKEND && ev.run_id && ev.run_id !== _currentRunId) {
+    if (_currentRunId !== null) resetTimeline();  // skip the very first run (already empty)
+    _currentRunId = ev.run_id;
+    els.runId.textContent = ev.run_id;
+    // Prefer the real generated file path (sink sends it) → its basename in the
+    // chip and its abs path for "open in IDE". Fall back to a synthesized name
+    // for the legacy 'action' compat shim, which carries no file_path.
+    _currentFilePath = ev.file_path || '';
+    const fname = _currentFilePath ? _currentFilePath.split('/').pop()
+                                   : 'test_' + ev.run_id + '.py';
+    els.fileName.textContent = fname;
+    els.codeFileName.textContent = fname;
+  }
+  if (ev.file_path) _currentFilePath = ev.file_path;  // keep latest within the run
+  if (typeof refreshOpenability === 'function') refreshOpenability();  // enable "open in IDE" once a file is known
   const step = {
     step_index: ev.step_index,
     action: ev.action,
@@ -1375,13 +1796,6 @@ function onStepEvent(ev) {
     lineIds: [],
   };
   state.steps.push(step);
-  // Live mode learns the run identity from the stream (the demo sets it itself).
-  if (USE_LIVE_BACKEND && ev.run_id && els.runId.textContent !== ev.run_id) {
-    els.runId.textContent = ev.run_id;
-    const fname = 'test_' + ev.run_id + '.py';
-    els.fileName.textContent = fname;
-    els.codeFileName.textContent = fname;
-  }
   appendCodeLines(step);
   addHistoryRow(step);
   if (step.screenshot) { showScreenshot(step.screenshot, step); fillFilmFrame(step); }
@@ -1435,8 +1849,11 @@ function connectLiveBackend() {
 
   // 2) Open the SSE stream.
   const es = new EventSource('/api/events');
-  es.onopen  = () => setStatus('live');
-  es.onerror = () => setStatus('disconnected');   // EventSource auto-reconnects
+  // onopen means the browser↔server pipe is up — NOT that a run is streaming.
+  // Show "idle" (connected, awaiting steps); the first real event flips us to
+  // "live" via markActivity(). This avoids a misleading "Live" on an idle server.
+  es.onopen  = () => { if (els.status.dataset.state !== 'live') setStatus('idle'); };
+  es.onerror = () => { setStatus('disconnected'); if (_idleTimer) clearTimeout(_idleTimer); };  // EventSource auto-reconnects
   es.onmessage = (e) => {
     let data; try { data = JSON.parse(e.data); } catch { return; }
     routeLiveEvent(data, false);
@@ -1445,6 +1862,10 @@ function connectLiveBackend() {
 }
 
 function routeLiveEvent(data, backfill) {
+  // Real-time events (not historical backfill) prove the target is still alive →
+  // refresh the liveness timer. Backfill replays old history on connect; counting
+  // it as activity would falsely show "Live" on a fresh load of a finished run.
+  if (!backfill) markActivity();
   if (data.type === 'screenshot') {
     // Backend tells us a new frame exists → pull the latest PNG/JPEG.
     fetch('/api/screenshot').then(r => r.json()).then(d => {
@@ -1642,9 +2063,11 @@ function buildStory(platform) {
   ];
 }
 
-let _feedTimer = null;
-function startPrototypeFeed() {
-  // reset
+// Wipe the timeline back to empty. Reused by the prototype feed AND the live
+// path when a NEW run begins — without it, a second run's steps pile onto the
+// first run's list and their per-run step_index values collide (e.g. two "#1"
+// rows). One run = one fresh timeline.
+function resetTimeline() {
   state.steps = [];
   state.selectedStep = null;
   _firstStepSeen = false;
@@ -1656,7 +2079,14 @@ function startPrototypeFeed() {
   els.historyEmpty.style.display = 'block';
   els.historyCount.textContent = '0 steps';
   els.shotFrame.style.display = 'none';
+  els.shotFrame.classList.remove('idle');     // a finished run's amber badge must not bleed into the next
+  if (_idleTimer) clearTimeout(_idleTimer);    // and its pending idle-downgrade must not fire mid-new-run
   els.shotPlaceholder.style.display = 'flex';
+}
+
+let _feedTimer = null;
+function startPrototypeFeed() {
+  resetTimeline();
 
   const story = buildStory(state.platform);
   state.totalExpected = story.length;

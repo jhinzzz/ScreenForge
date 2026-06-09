@@ -68,6 +68,7 @@ Each step: **inspect → decide → act → verify**. The AI decides, ScreenForg
 - **Visual fallback**: When DOM can't locate elements (Canvas, games), VLM parses screenshots
 - **MCP server**: Any MCP-compatible Agent can drive ScreenForge natively
 - **Structured output**: JSON Lines events + `report/runs/<id>/` artifacts for CI integration
+- **Live Mirror playground**: Watch the generated pytest code grow line-by-line beside a live screenshot as the test runs — `screenforge --playground`. See the [Playground Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/playground-guide.md)
 
 ## Agent Integration (Claude Code / Cursor / Codex)
 
@@ -160,6 +161,7 @@ If ScreenForge generates tests for your project, add this badge to your README:
 | [MCP Setup (3 min)](https://github.com/jhinzzz/ScreenForge/blob/main/docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
 | [Agent Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/agent_guide.md) | Integration protocol for AI Agents |
 | [Capability Matrix](https://github.com/jhinzzz/ScreenForge/blob/main/docs/capability-matrix.md) | Supported platforms, actions, and locators |
+| [Playground Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/playground-guide.md) | Live Mirror — watch code + screenshots grow as the test runs |
 | [Workflow Examples](https://github.com/jhinzzz/ScreenForge/tree/main/docs/workflows) | YAML workflow templates |
 | [CHANGELOG](https://github.com/jhinzzz/ScreenForge/blob/main/CHANGELOG.md) | Version history |
 

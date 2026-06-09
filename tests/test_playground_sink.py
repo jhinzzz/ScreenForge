@@ -147,7 +147,7 @@ class TestEncodeScreenshot:
 
 
 class TestBuildStepEventFactory:
-    """#6 — mandatory single construction point assembles all eight fields."""
+    """#6 — mandatory single construction point assembles every field."""
 
     def test_assembles_all_fields(self):
         ev = build_step_event(
@@ -156,6 +156,7 @@ class TestBuildStepEventFactory:
             action_data=_action_data(),
             result=_result(),
             screenshot_b64="ZHVtbXk=",
+            file_path="/abs/test_x.py",
         )
         assert ev.run_id == "run-A"
         assert ev.step_index == 3
@@ -167,6 +168,43 @@ class TestBuildStepEventFactory:
         assert ev.extra_value == ""
         assert ev.success is True
         assert ev.screenshot_b64 == "ZHVtbXk="
+        assert ev.file_path == "/abs/test_x.py"
+
+    def test_file_path_defaults_empty(self):
+        # The legacy 'action' compat path carries no file_path; omitting it must
+        # not break construction (empty string, not None — frontend treats "" as
+        # "no openable file" and disables the IDE button). Critically, "" must
+        # stay "" — abspath("") wrongly returns the cwd, which would light up the
+        # IDE button pointing at a directory. The factory guards this.
+        ev = build_step_event(
+            run_key="r", step_index=1,
+            action_data=_action_data(), result=_result(), screenshot_b64="",
+        )
+        assert ev.file_path == ""
+
+    def test_file_path_normalized_to_absolute(self):
+        # The 3 call sites now pass the RAW script path; the factory is the single
+        # place that absolutizes it (so normalization runs inside the G5 try/except,
+        # one idiom, not three). A relative path must come out absolute.
+        import os
+
+        ev = build_step_event(
+            run_key="r", step_index=1,
+            action_data=_action_data(), result=_result(), screenshot_b64="",
+            file_path="test_cases/web/test_x.py",
+        )
+        assert os.path.isabs(ev.file_path)
+        assert ev.file_path == os.path.abspath("test_cases/web/test_x.py")
+        assert ev.file_path.endswith("test_cases/web/test_x.py")
+
+    def test_file_path_absolute_passes_through_unchanged(self):
+        # An already-absolute path is idempotent under abspath — no double-prefix.
+        ev = build_step_event(
+            run_key="r", step_index=1,
+            action_data=_action_data(), result=_result(), screenshot_b64="",
+            file_path="/abs/test_x.py",
+        )
+        assert ev.file_path == "/abs/test_x.py"
 
     def test_tolerates_missing_optional_action_keys(self):
         ev = build_step_event(

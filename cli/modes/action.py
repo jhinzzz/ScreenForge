@@ -217,6 +217,7 @@ def run_action_default_mode(
             action_data=action_data,
             result=result,
             step_index=None,  # resolver picks: session counter, or 1 for a bare action
+            file_path=output_script_path,  # normalized to abs path inside build_step_event
         )
         reporter.emit_event(
             "action_executed",

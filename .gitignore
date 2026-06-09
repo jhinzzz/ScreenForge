@@ -18,6 +18,8 @@ __pycache__/
 .cache/
 *.pyc
 .DS_Store
+.ruff_cache/
+.mypy_cache/
 
 # IDE
 .qoder/
@@ -38,3 +40,4 @@ test_cases/test_auto_generated*.py
 report/
 specs/
 memory/*.json
+.omc/

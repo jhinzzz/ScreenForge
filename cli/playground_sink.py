@@ -7,6 +7,7 @@ it does not touch execute_and_record, codegen, or disk persistence.
 """
 
 import base64
+import os
 import threading
 
 import requests  # already in requirements.txt (requests==2.32.5) — zero new deps
@@ -40,6 +41,7 @@ class PlaygroundStepEvent(BaseModel):
     extra_value: str = ""
     success: bool = True
     screenshot_b64: str = ""  # empty = no screenshot this step (degrade, never crash)
+    file_path: str = ""  # abs path of the generated test file (for "open in IDE")
 
 
 class PlaygroundSink:
@@ -107,12 +109,18 @@ def build_step_event(
     action_data: dict,
     result: dict,
     screenshot_b64: str,
+    file_path: str = "",
 ) -> PlaygroundStepEvent:
     """MANDATORY single construction point for every step event (code#4).
 
     All three entry points (action / workflow / main) build events ONLY through
     here. Adding a field later (e.g. a seed timestamp) is then one edit, not three
     — preventing the P9-style schema split where one call site silently drifts.
+
+    file_path is normalized to an absolute path HERE (one idiom, one place) rather
+    than at each call site, so it happens inside maybe_push_step's G5 try/except.
+    Empty stays empty — abspath('') would wrongly yield the cwd, and the frontend
+    treats '' as "no openable file" (disables the IDE button), so guard it.
     """
     return PlaygroundStepEvent(
         run_id=run_key,
@@ -125,6 +133,7 @@ def build_step_event(
         extra_value=action_data.get("extra_value", ""),
         success=bool(result.get("success", True)),
         screenshot_b64=screenshot_b64,
+        file_path=os.path.abspath(file_path) if file_path else "",
     )
 
 
@@ -146,6 +155,7 @@ def maybe_push_step(
     action_data: dict,
     result: dict,
     step_index: int | None = None,
+    file_path: str = "",
 ) -> None:
     """The ONE guarded entry point every call site uses (action / workflow / main).
 
@@ -164,6 +174,7 @@ def maybe_push_step(
             action_data=action_data,
             result=result,
             screenshot_b64=PlaygroundSink.encode_screenshot(adapter),
+            file_path=file_path,
         )
         sink.push_step(event)
     except Exception as e:  # never let visualization break the observed action

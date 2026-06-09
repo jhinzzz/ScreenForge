@@ -281,7 +281,10 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--action cannot be combined with --goal or --workflow")
     has_demo = bool(getattr(args, "demo", False))
     has_init = bool(getattr(args, "init", False))
-    if has_demo or has_init:
+    # --playground starts a standalone server (dispatch.py handles it after this
+    # validation, exactly like --init/--demo) — it needs no goal/workflow/action.
+    has_playground = bool(getattr(args, "playground", False))
+    if has_demo or has_init or has_playground:
         return
     has_session_end = bool(str(getattr(args, "session_end", "")).strip())
     if has_session_end:

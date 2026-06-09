@@ -144,3 +144,15 @@ class TestValidateCliArgs:
     def test_demo_valid(self):
         args = self._make_args(goal="", demo=True)
         validate_cli_args(args)
+
+    def test_playground_alone_valid(self):
+        # Regression: --playground starts a standalone server (dispatch handles it
+        # AFTER this validation, like --init/--demo) and needs no goal/action.
+        # Before the fix it raised "Must provide --goal/--workflow/--action",
+        # making the live-mirror entry point impossible to launch from the CLI.
+        args = self._make_args(goal="", playground=True)
+        validate_cli_args(args)
+
+    def test_playground_with_port_valid(self):
+        args = self._make_args(goal="", playground=True, playground_port=8000)
+        validate_cli_args(args)

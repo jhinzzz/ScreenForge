@@ -349,6 +349,7 @@ def main():
                         action_data=effective_action_data,
                         result=result,
                         step_index=history_manager.get_history_count(),
+                        file_path=current_script_path,  # normalized to abs path inside build_step_event
                     )
                 else:
                     log.error("[System] ❌ 执行动作失败")

@@ -2,27 +2,86 @@
 
 All notable changes to ScreenForge will be documented in this file.
 
-## [Unreleased]
+[中文](./CHANGELOG_CN.md) | **English**
+
+## [0.5.0] - 2026-06-09
 
 ### Added
-- **Playground 实时镜像台（Live Mirror）—— 边写用例边看页面**。`screenforge --playground`
-  起的常驻可视化进程现在能实时显示**正在生成的 pytest 代码**与**被操作的页面**，二者并排联动。
-  根因不是缺数据，是"没把数据接出去那一根线"：每步 `result["code_lines"]` 与三端统一的
-  `take_screenshot()` 早已现成，playground 的 `POST /api/*` 入口却是零调用的死代码。本次接上这根线：
-  - 新增 `cli/playground_sink.py`——一个 **fire-and-forget 旁路观察者**，挂在 `save_to_disk` 之后，
-    每步把代码 + 截图 POST 给常驻 playground。daemon 线程推送 + 分离超时 `(0.3, 0.5)`，playground
-    没开/拒连/卡死一律静默 skip。**红线**：绝不因推送失败改变 `--action` 的 `0/1` 退出码或耗时
-    （`--playground-sink` 默认关 = 零开销，连截图都不抓）。
-  - 三个执行入口同构接入（共用 `build_step_event` 单一构造点 + `maybe_push_step` 单一守卫入口）：
-    `--action` 单步、`workflow` YAML 多步、`main.py` 人类录制。
-  - playground 新增 `POST /api/step`（按 `run_id` 命名空间累积**步骤元数据**，`OrderedDict` LRU
-    ≤20 run × ≤500 步；base64 帧只进实时单槽 + SSE，**不进**累积日志——内存有界）+ 前端只读代码栏
-    （Prism 语法高亮 + 最新行 ember 高亮 + 平滑滚底）+ 三区布局（截图 ｜ 代码近等宽并列 ｜ 动作历史）。
-  - ⭐ **"时间旅行"seed**：数据按 `step_index` 持久累积 + `GET /api/run/{run_id}/steps` 只读端点 +
-    底部 filmstrip 时间轴骨架（选中跨高亮代码/历史/截图）。完整回溯交互留作未来迭代。
-  - 新增 CLI 旗标 `--playground-sink`（opt-in）/ `--playground-url`。依赖 `screenforge[playground]` extra，
-    零新增基础依赖（`requests` 早已在 `requirements.txt`）。
-  - **诚实边界**：移动端"实时"是步进式刷新（每步 0.5–2s，设备物理上限），前端如实呈现离散快照，不假装连续流。
+- **Playground Live Mirror — watch the page as you write the test.** The resident
+  visualization process started by `screenforge --playground` now shows the
+  **pytest code being generated** beside the **page being driven**, the two linked
+  side-by-side in real time. The root cause was never missing data — it was "the
+  one wire that never got connected": every step's `result["code_lines"]` and the
+  cross-platform `take_screenshot()` were already on hand, yet playground's
+  `POST /api/*` entry points were dead code with zero callers. This release connects
+  that wire:
+  - Added `cli/playground_sink.py` — a **fire-and-forget bypass observer** hooked in
+    after `save_to_disk` that POSTs each step's code + screenshot to the resident
+    playground. Daemon-thread push + split timeout `(0.2, 0.25)`; if playground is
+    down / refusing / hung it silently skips. **Red line**: a failed push must never
+    change `--action`'s `0/1` exit code or its latency (`--playground-sink` is off by
+    default = zero overhead, not even a screenshot is taken).
+  - Wired into all three execution entry points isomorphically (sharing the single
+    construction point `build_step_event` + the single guarded entry `maybe_push_step`):
+    `--action` single-step, `workflow` YAML multi-step, and `main.py` human recording.
+  - Playground gained `POST /api/step` (accumulates **step metadata** namespaced by
+    `run_id`, `OrderedDict` LRU ≤20 runs × ≤500 steps; base64 frames go only to the
+    live single-slot + SSE, **never** into the accumulated log — bounded memory) plus
+    a read-only code pane (Prism syntax highlighting + ember-highlighted latest line +
+    smooth scroll-to-bottom) plus a three-zone layout (screenshot ｜ near-equal-width
+    code column ｜ action history).
+  - ⭐ **"Time-travel" (single-session rewind)**: click any frame in the bottom
+    filmstrip / any step in the history and the large screenshot on the left jumps back
+    to that step's frame while the code pane on the right highlights the matching line
+    (screenshot / code / history all linked). Data accumulates persistently by
+    `step_index` + a `GET /api/run/{run_id}/steps` read-only endpoint. Cross-session
+    persisted-frame replay is left for a future iteration.
+  - **Light / dark theme toggle**: the header ☀/🌙 button switches between the
+    forge-style dark theme and the "annealed steel on blueprint paper" light theme;
+    the choice is saved to `localStorage` and **applied on first paint with no flash**
+    (`data-theme` set synchronously inside `<head>`), falling back to the system
+    `prefers-color-scheme` when never chosen. Every text / accent color + the code
+    highlighting in the light theme was re-picked to meet WCAG AA (≥4.5:1); the
+    screenshot of the page under test is unaffected by the theme (always shown as-is).
+  - Added CLI flags `--playground-sink` (opt-in) / `--playground-url`. Depends on the
+    `screenforge[playground]` extra, with zero new base dependencies (`requests` was
+    already in `requirements.txt`).
+  - **Open the generated test in your IDE in one click**: the header "Open in <IDE>"
+    button **auto-detects** the editors installed on your PATH (VS Code / Trae / Cursor /
+    Windsurf / Zed / Sublime / IntelliJ / PyCharm / Vim / Neovim), with a dropdown to
+    switch, the choice saved to `localStorage`, and a `⌘E`/`Ctrl-E` shortcut. Added
+    `GET /api/editors` (PATH probe only) + `POST /api/open` (loopback-only, fixed-argv
+    invocation — the file path can't be injected as a command). When none are detected
+    the button is disabled with a hint.
+  - **Honest connection status**: the indicator is judged by **activity** rather than
+    by the SSE connection — after a run goes quiet for ~4s it auto-downgrades from
+    `Live` to `Idle` (amber, and the screenshot corner badge flips to `IDLE`), turning
+    back to `Live` when a new step arrives; only a truly broken SSE shows
+    `Disconnected`. Fixes the misleading "still green Live after the run finished".
+  - **Honest boundary**: the mobile "real-time" view is step-wise refresh (0.5–2s per
+    step, the device's physical ceiling); the frontend faithfully presents discrete
+    snapshots and does not fake a continuous stream.
+
+### Fixed
+- **The "Open in IDE" button did nothing when clicked with no run in progress** —
+  two root causes: (1) when "no test has run yet / no file to open" the button was
+  already `disabled`, but the CSS still rendered it as fully clickable (opaque, pointer
+  cursor) → it looked clickable, clicking did nothing; (2) the header `run`/`file`
+  slots showed a **hardcoded fake filename** `test_auto_20260608_142530.py`, making it
+  look like a real file was loaded. Fix: added `.btn-vscode:disabled` greying + a
+  `not-allowed` cursor; changed the three placeholders to an honest `—`; and picking
+  an editor from the ▾ menu while there's no file now **shows a visible hint**
+  ("No file yet — run a test first") instead of failing silently.
+- **The bottom "Coming soon" was stale copy** — frame-click rewind (screenshot jump +
+  code highlight) is in fact **already shipped** and working. Removed the misleading
+  "Coming soon" / "seed" / "visual only" copy in favor of an honest description
+  ("Tip: click a frame to rewind…").
+- **Empty-state text colors were inconsistent when no device was connected** — the
+  code pane's empty-state comment used a one-off green `#7c8a72`, out of step with the
+  neutral grey of the screenshot / history empty states. The root cause was hardcoded
+  colors bypassing the token system; this release converges ~25 chrome hardcoded colors
+  onto the design tokens (the very same root-cause fix that makes the light theme
+  possible), unifying the empty-state text.
 
 ## [0.4.1] - 2026-06-08
 

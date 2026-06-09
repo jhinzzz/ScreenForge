@@ -216,3 +216,98 @@ class TestMalformedPayload:
         resp = client.post("/api/step", json={"step_index": 1, "code_lines": ["a\n"]})
         assert resp.status_code == 200
         assert "default" in app_module._step_log  # body.get("run_id", "default")
+
+
+class TestEditorDetection:
+    """GET /api/editors — PATH probe only; resolved binary path never leaves the server."""
+
+    def test_lists_only_detected_editors(self, client, monkeypatch):
+        # Only 'trae' and 'code' are on PATH → only those two surface, in pref order.
+        present = {"trae": "/usr/local/bin/trae", "code": "/usr/local/bin/code"}
+        monkeypatch.setattr(app_module.shutil, "which", lambda b: present.get(b))
+        resp = client.get("/api/editors")
+        assert resp.status_code == 200
+        eds = resp.json()["editors"]
+        assert [e["id"] for e in eds] == ["trae", "code"]  # preference order preserved
+        # The resolved path must NOT be exposed to the client.
+        assert all("_path" not in e and "path" not in e for e in eds)
+
+    def test_empty_when_no_editor_on_path(self, client, monkeypatch):
+        monkeypatch.setattr(app_module.shutil, "which", lambda b: None)
+        assert client.get("/api/editors").json()["editors"] == []
+
+
+class TestBuildOpenCommand:
+    """_build_open_command — each editor family's argv shape (never a shell string)."""
+
+    @pytest.mark.parametrize("style,expected", [
+        ("goto", ["/x/ed", "-g", "/f.py:12"]),
+        ("colon", ["/x/ed", "/f.py:12"]),
+        ("line-flag", ["/x/ed", "--line", "12", "/f.py"]),
+        ("plus", ["/x/ed", "+12", "/f.py"]),
+    ])
+    def test_argv_shapes(self, style, expected):
+        ed = {"_path": "/x/ed", "_args": style}
+        assert app_module._build_open_command(ed, "/f.py", 12) == expected
+
+
+class TestOpenInEditor:
+    """POST /api/open — safety guards + fallback. Popen is mocked: no real launch."""
+
+    @pytest.fixture
+    def only_trae(self, monkeypatch):
+        monkeypatch.setattr(app_module.shutil, "which",
+                            lambda b: "/usr/local/bin/trae" if b == "trae" else None)
+
+    def test_rejects_missing_file(self, client, only_trae, monkeypatch):
+        calls = []
+        monkeypatch.setattr(app_module.subprocess, "Popen", lambda c: calls.append(c))
+        resp = client.post("/api/open", json={
+            "file_path": "/tmp/nope_does_not_exist_xyz.py", "line": 3, "editor": "trae"})
+        assert resp.json()["ok"] is False
+        assert "not found" in resp.json()["error"]
+        assert calls == []  # never launched
+
+    def test_path_injection_is_inert(self, client, only_trae, monkeypatch, tmp_path):
+        # A shell-injection-shaped path is treated as a literal filename. It doesn't
+        # exist as a file → rejected; and even if it did, Popen gets an argv LIST,
+        # so the '; touch' is an arg, never a shell command.
+        calls = []
+        monkeypatch.setattr(app_module.subprocess, "Popen", lambda c: calls.append(c))
+        resp = client.post("/api/open", json={
+            "file_path": "/tmp/x.py; touch /tmp/PWNED", "line": 1, "editor": "trae"})
+        assert resp.json()["ok"] is False
+        assert calls == []
+
+    def test_unknown_editor_falls_back_to_first_detected(self, client, only_trae, monkeypatch, tmp_path):
+        f = tmp_path / "test_demo.py"
+        f.write_text("# t\n")
+        captured = {}
+        monkeypatch.setattr(app_module.subprocess, "Popen",
+                            lambda c: captured.setdefault("cmd", c))
+        resp = client.post("/api/open", json={
+            "file_path": str(f), "line": 5, "editor": "bogus_editor"})
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["editor"] == "trae"  # fell back to first detected
+        # Launched with the VSCode-family goto shape, resolved abs path, as argv list.
+        assert captured["cmd"] == ["/usr/local/bin/trae", "-g", f"{f}:5"]
+
+    def test_no_editor_detected_returns_error(self, client, monkeypatch, tmp_path):
+        monkeypatch.setattr(app_module.shutil, "which", lambda b: None)
+        f = tmp_path / "t.py"
+        f.write_text("x\n")
+        resp = client.post("/api/open", json={"file_path": str(f), "line": 1})
+        assert resp.json()["ok"] is False
+        assert "no editor" in resp.json()["error"].lower()
+
+    def test_bad_line_defaults_to_one(self, client, only_trae, monkeypatch, tmp_path):
+        f = tmp_path / "t.py"
+        f.write_text("x\n")
+        captured = {}
+        monkeypatch.setattr(app_module.subprocess, "Popen",
+                            lambda c: captured.setdefault("cmd", c))
+        resp = client.post("/api/open", json={
+            "file_path": str(f), "line": "not-a-number", "editor": "trae"})
+        assert resp.json()["ok"] is True
+        assert captured["cmd"] == ["/usr/local/bin/trae", "-g", f"{f}:1"]

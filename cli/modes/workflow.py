@@ -328,6 +328,7 @@ def run_workflow_default_mode(
                 action_data=action_data,
                 result=result,
                 step_index=index,
+                file_path=output_script_path,  # normalized to abs path inside build_step_event
             )
             reporter.emit_event(
                 "action_executed",
