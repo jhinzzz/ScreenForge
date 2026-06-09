@@ -2525,6 +2525,13 @@ function onStepEvent(ev) {
     code_lines: ev.code_lines || [],
     screenshot: toImgSrc(ev.screenshot_b64 || ev._screenshot || null),
     lineIds: [],
+    // DOM-tree on-demand fetch keys (T7): the tree itself is NOT on the SSE
+    // payload (25–80KB); the step event carries only run_id + a has_dom_tree
+    // boolean. The tree panel fetches GET /api/run/{run_id}/step/{idx}/dom on
+    // demand when the drawer is open. run_id falls back to the run currently
+    // in view so the panel can key the fetch even on the compat 'action' path.
+    run_id: ev.run_id || _currentRunId || null,
+    has_dom_tree: ev.has_dom_tree === true,
   };
   state.steps.push(step);
   appendCodeLines(step);
@@ -3743,11 +3750,12 @@ if (USE_LIVE_BACKEND) {
 
     updateNobboxNotice(state.platform);
 
-    // If we have a current step's tree, render it
+    // Fetch + show the current step's tree on demand. The drawer may be opened
+    // for the first time after several steps, so we can't rely on a tree being
+    // cached — showTreeForStep fetches it now (isOpen is already true above, so
+    // its drawer-open guard passes). No-ops cleanly when there is no step yet.
     const curStep = state.steps[state.steps.length - 1];
-    if (curStep && curStep.domTree) {
-      renderTree(curStep.domTree.nodes, curStep.domTree.platform, deriveTargetRef(curStep));
-    }
+    if (curStep) showTreeForStep(curStep);
   }
 
   function closeDrawer() {
@@ -3874,28 +3882,57 @@ if (USE_LIVE_BACKEND) {
   }
 
   /* ------------------------------------------------------------------
+     On-demand tree fetch + cache
+     Trees are 25–80KB — never on SSE; fetched per step only when the drawer
+     is open. Small LRU-ish cache keyed by run_id#step_index so re-opening /
+     time-travelling back to a step is instant.
+  ------------------------------------------------------------------ */
+  const _treeCache = new Map();            // "runId#stepIndex" -> {platform, nodes}
+  async function fetchTree(runId, stepIndex) {
+    const k = runId + '#' + stepIndex;
+    if (_treeCache.has(k)) return _treeCache.get(k);
+    try {
+      const r = await fetch(`/api/run/${encodeURIComponent(runId)}/step/${stepIndex}/dom`);
+      if (!r.ok) return null;              // 404 = no tree for this step (quiet)
+      const tree = await r.json();         // {platform, nodes:[...]}
+      _treeCache.set(k, tree);
+      if (_treeCache.size > 50) _treeCache.delete(_treeCache.keys().next().value);
+      return tree;
+    } catch (e) { return null; }
+  }
+
+  /* ------------------------------------------------------------------
+     Show the DOM tree for a step (the single render entry).
+     Lazy: only fetches/renders when the drawer is open. Live mode fetches the
+     tree on demand; offline mode synthesizes it from buildFakeTree. The GET
+     returns the FULL envelope {platform, nodes}; renderTree wants the nodes
+     array + a platform string, so we unpack tree.nodes / tree.platform.
+  ------------------------------------------------------------------ */
+  async function showTreeForStep(step) {
+    if (!step) return;
+    if (!isOpen) return;                   // lazy: only fetch/render when open
+    let tree;
+    if (USE_LIVE_BACKEND) {
+      tree = await fetchTree(step.run_id || _currentRunId, step.step_index);
+    } else {
+      tree = { platform: state.platform, nodes: buildFakeTree(step.step_index, state.platform) };
+    }
+    if (!tree || !Array.isArray(tree.nodes)) { showEmpty(); return; }
+    step.domTree = tree;                   // cache on the step for instant re-show
+    renderTree(tree.nodes, tree.platform || state.platform, deriveTargetRef(step));
+  }
+
+  /* ------------------------------------------------------------------
      Hook into the existing step pipeline
      Called after each onStepEvent so the tree panel updates automatically.
   ------------------------------------------------------------------ */
   function onDomTreeStep(step) {
-    // In production, step.dom_tree comes from the SSE payload.
-    // In prototype/offline mode, synthesize it from buildFakeTree.
-    let nodes;
-    if (step.dom_tree && Array.isArray(step.dom_tree.nodes)) {
-      nodes = step.dom_tree.nodes;
-    } else {
-      nodes = buildFakeTree(step.step_index, state.platform);
-    }
-
-    // Store on the step for time-travel
-    step.domTree = { nodes, platform: state.platform };
-
-    // Mark tab pip
-    toggleTab.classList.add('has-data');
-
-    // Only render if panel is open
-    if (!isOpen) return;
-    renderTree(nodes, state.platform, deriveTargetRef(step));
+    // Live mode lights the pip only when the backend says a tree exists for this
+    // step (has_dom_tree). Offline mode always lights it — buildFakeTree always
+    // returns data. The tree itself is fetched on demand by showTreeForStep
+    // (which no-ops when the drawer is closed, and fetches live / fakes offline).
+    if (step.has_dom_tree || !USE_LIVE_BACKEND) toggleTab.classList.add('has-data');
+    showTreeForStep(step);
   }
 
   /* ------------------------------------------------------------------
@@ -3903,37 +3940,26 @@ if (USE_LIVE_BACKEND) {
   ------------------------------------------------------------------ */
   window._domTreeOnStep = onDomTreeStep;
 
-  /* Tree update on time-travel selection */
+  /* Tree update on time-travel selection — fetch on demand (live) or fake
+     (offline) via the shared showTreeForStep path. The cache makes a re-visit
+     to an already-seen step instant; a first visit to an uncached live step
+     shows the loading state while the fetch is in flight. */
   window._domTreeOnSelect = function (stepIndex) {
     if (!isOpen) return;
     const step = state.steps.find(s => s.step_index === stepIndex);
     if (!step) return;
-    if (step.domTree) {
-      renderTree(step.domTree.nodes, step.domTree.platform, deriveTargetRef(step));
-    } else {
-      // No stored tree yet — show loading (in production would fetch on demand)
-      showLoading();
-      // Synthesize after a brief delay to mimic async fetch
-      setTimeout(() => {
-        const nodes = buildFakeTree(step.step_index, state.platform);
-        step.domTree = { nodes, platform: state.platform };
-        renderTree(nodes, state.platform, deriveTargetRef(step));
-      }, 180);
-    }
+    if (USE_LIVE_BACKEND && !step.domTree) showLoading();  // brief spinner pre-fetch
+    showTreeForStep(step);
   };
 
-  /* Platform change clears bbox + refreshes notice */
+  /* Platform change clears bbox + refreshes notice, then re-shows the current
+     step for the new platform via the shared fetch/fake path. */
   window._domTreeOnPlatform = function (platform) {
     bboxLockedNode = null;
     hideBbox(0);
     updateNobboxNotice(platform);
-    // Re-render current step tree for the new platform
     const curStep = state.steps[state.steps.length - 1];
-    if (isOpen && curStep) {
-      const nodes = buildFakeTree(curStep.step_index, platform);
-      curStep.domTree = { nodes, platform };
-      renderTree(nodes, platform, deriveTargetRef(curStep));
-    }
+    if (isOpen && curStep) showTreeForStep(curStep);
   };
 
   /* ------------------------------------------------------------------
