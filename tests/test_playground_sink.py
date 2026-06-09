@@ -6,6 +6,7 @@ cross-process run-key resolution (arch#1) and daemon non-blocking (arch#3).
 """
 
 import argparse
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -422,6 +423,70 @@ class TestMaybePushStep:
                 step_index=1,
             )
 
+    def test_enabled_pushes_dom_tree_when_capture_succeeds(self):
+        """End-to-end wiring: a captured tree flows to push_dom_tree with the
+        resolved (run_key, idx, tree), and the step event advertises has_dom_tree."""
+        sink = PlaygroundSink(enabled=True)
+        adapter = MagicMock()
+        args = argparse.Namespace(session_id="", session_end="", platform="web")
+        reporter = MagicMock(run_id="r1")
+        fake_tree = {
+            "platform": "web",
+            "nodes": [{"ref": "@1", "class": "button", "children": []}],
+        }
+        with patch.object(
+            PlaygroundSink, "capture_dom_tree", return_value=fake_tree
+        ), patch.object(
+            PlaygroundSink, "encode_screenshot", return_value=""
+        ), patch.object(sink, "push_step") as mock_push_step, patch.object(
+            sink, "push_dom_tree"
+        ) as mock_push_dom:
+            maybe_push_step(
+                sink,
+                args=args,
+                reporter=reporter,
+                adapter=adapter,
+                action_data=_action_data(),
+                result=_result(),
+                step_index=3,
+            )
+        mock_push_step.assert_called_once()
+        mock_push_dom.assert_called_once()
+        # the step event must advertise the tree
+        assert mock_push_step.call_args[0][0].has_dom_tree is True
+        # push_dom_tree gets (run_key, idx, tree)
+        called = mock_push_dom.call_args[0]
+        assert called[0] == "r1"
+        assert called[1] == 3
+        assert called[2] == fake_tree
+
+    def test_enabled_skips_dom_tree_when_capture_returns_none(self):
+        """Mirror: capture degraded to None → no tree POST, flag stays False, but
+        the lean step push still fires (the sink keeps observing without a tree)."""
+        sink = PlaygroundSink(enabled=True)
+        adapter = MagicMock()
+        args = argparse.Namespace(session_id="", session_end="", platform="web")
+        reporter = MagicMock(run_id="r1")
+        with patch.object(
+            PlaygroundSink, "capture_dom_tree", return_value=None
+        ), patch.object(
+            PlaygroundSink, "encode_screenshot", return_value=""
+        ), patch.object(sink, "push_step") as mock_push_step, patch.object(
+            sink, "push_dom_tree"
+        ) as mock_push_dom:
+            maybe_push_step(
+                sink,
+                args=args,
+                reporter=reporter,
+                adapter=adapter,
+                action_data=_action_data(),
+                result=_result(),
+                step_index=3,
+            )
+        mock_push_step.assert_called_once()
+        mock_push_dom.assert_not_called()
+        assert mock_push_step.call_args[0][0].has_dom_tree is False
+
 
 class TestCaptureDomTree:
     def test_capture_returns_none_when_capture_raises(self):
@@ -449,14 +514,46 @@ class TestCaptureDomTree:
             sink.push_dom_tree("r1", 1, {"platform": "web", "nodes": []})
             mock_post.assert_not_called()
 
-    def test_push_dom_tree_is_fire_and_forget_and_swallows_errors(self):
+    def test_push_dom_tree_returns_immediately_under_slow_post(self):
+        """Red line: the tree POST is fire-and-forget with NO join, so even a very
+        slow playground cannot delay the action's exit. Mirrors the timing pattern
+        of TestDaemonNonBlocking — the 2s sleep rides the daemon thread, the caller
+        returns near-instantly. (push_dom_tree, unlike push_step, never join-waits.)"""
         import cli.playground_sink as mod
         from cli.playground_sink import PlaygroundSink
 
         sink = PlaygroundSink(enabled=True)
+
+        def _slow_post(*a, **k):
+            time.sleep(2.0)
+            return MagicMock()
+
+        with patch.object(mod.requests, "post", side_effect=_slow_post):
+            start = time.perf_counter()
+            sink.push_dom_tree("r1", 1, {"platform": "web", "nodes": []})
+            elapsed = time.perf_counter() - start
+        # Daemon thread carries the 2s sleep; the caller returns at once.
+        assert elapsed < 0.3, f"push_dom_tree blocked for {elapsed:.2f}s"
+
+    def test_push_dom_tree_swallows_post_errors_in_thread(self):
+        """G5: a ConnectionError inside the daemon thread must be swallowed, never
+        propagate. We join the spawned thread (no .join() exists in production —
+        the test does it itself) so the error has actually fired before asserting."""
+        import cli.playground_sink as mod
+        from cli.playground_sink import PlaygroundSink
+
+        sink = PlaygroundSink(enabled=True)
+        before = threading.active_count()
         with patch.object(
-            mod.requests, "post",
+            mod.requests,
+            "post",
             side_effect=mod.requests.exceptions.ConnectionError("refused"),
         ):
-            # Must not raise. Uses a daemon thread; join briefly to let it run.
+            # Must not raise on the caller's thread.
             sink.push_dom_tree("r1", 1, {"platform": "web", "nodes": []})
+            # Drain the daemon thread(s) push_dom_tree spawned so the swallow runs.
+            for t in threading.enumerate():
+                if t is not threading.current_thread() and t.daemon:
+                    t.join(timeout=2.0)
+        # No thread leaked and, crucially, no exception surfaced.
+        assert threading.active_count() <= before
