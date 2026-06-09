@@ -154,8 +154,14 @@ _WEB_TREE_JS = r"""
     if (style.display === 'none' || style.visibility === 'hidden') return null;
 
     const role = el.getAttribute('role');
+    // Parity with compress_web_dom (utils_web.py): a style.cursor==='pointer'
+    // element is what the brain perceives as clickable (the div/span-as-button
+    // pattern). Reuse the `style` already computed above — never call
+    // getComputedStyle twice. Without this the Brain's Eye panel under-counts the
+    // brain's clickable set, lying about what it saw.
     const isInteractive = ['a','button','input','select','textarea'].includes(tag)
-      || el.hasAttribute('onclick') || interactiveRoles.has(role);
+      || el.hasAttribute('onclick') || interactiveRoles.has(role)
+      || style.cursor === 'pointer';
     const isSemantic = isInteractive;
     const directText = (el.childNodes ? Array.from(el.childNodes)
       .filter(n => n.nodeType === 3).map(n => n.textContent).join('').trim() : '');

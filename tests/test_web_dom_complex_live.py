@@ -735,3 +735,65 @@ def test_did_you_mean_offers_close_match_on_typo(page):
     )
     # The suggested locator should be a web ref the agent can retry with.
     assert diag.candidates[0].locator["type"] == "ref"
+
+
+# --- sidecar/compressor parity: cursor:pointer clickability ----------------
+#
+# These exercise playground/dom_capture.build_web_tree (the "Brain's Eye View"
+# sidecar), NOT compress_web_dom. The sidecar's whole job is to show the panel
+# what the brain PERCEIVED — so its interactivity predicate must match the
+# compressor's. utils_web.py treats style.cursor==='pointer' as a clickability
+# signal; the sidecar originally did not, so cursor:pointer "fake buttons" (the
+# div/span-as-button pattern) showed up in the panel mislabeled clickable=false
+# — the panel lying about what the brain saw. That's the bug these pin.
+
+
+def _web_tree_flat(page, html: str) -> list:
+    """Render HTML, build the sidecar hierarchical tree, and flatten it to a list
+    so a test can find a node regardless of nesting depth (the sidecar emits a
+    parent/child forest, unlike compress_web_dom's flat ui_elements)."""
+    from playground.dom_capture import build_web_tree
+
+    page.goto("data:text/html," + _quote(html))
+    page.wait_for_timeout(200)
+    tree = build_web_tree(page)
+    flat: list = []
+
+    def _walk(nodes):
+        for n in nodes:
+            flat.append(n)
+            _walk(n.get("children") or [])
+
+    _walk((tree or {}).get("nodes") or [])
+    return flat
+
+
+def test_cursor_pointer_div_is_clickable_in_sidecar(page):
+    """A div-as-button (no native tag / role / onclick, only style:cursor:pointer)
+    is what the brain SEES as clickable — compress_web_dom marks it clickable via
+    style.cursor==='pointer' (utils_web.py). The sidecar tree must agree, or the
+    Brain's Eye panel under-reports the brain's clickable set (the pionex finding:
+    panel showed fewer clickables than the brain perceived). Pins parity."""
+    nodes = _web_tree_flat(page, "<div style='cursor:pointer'>FakeButton</div>")
+    fake = next((n for n in nodes if (n.get("text") or "") == "FakeButton"), None)
+    assert fake is not None, (
+        "cursor:pointer div not captured at all — sidecar blind to a div-as-button"
+    )
+    assert fake.get("clickable") is True, (
+        "cursor:pointer div reported clickable=false in the sidecar — the Brain's Eye "
+        "panel under-counts what the brain actually perceived as clickable "
+        "(compress_web_dom counts it via style.cursor==='pointer'); parity broken"
+    )
+
+
+def test_plain_text_div_not_clickable_in_sidecar(page):
+    """Over-correction guard: a plain text div (default cursor, no interactivity
+    signal) is still captured for its text, but must stay clickable=false. Pins
+    that the cursor:pointer fix keys on 'pointer' specifically, not 'has any text'."""
+    nodes = _web_tree_flat(page, "<div>JustText</div>")
+    plain = next((n for n in nodes if (n.get("text") or "") == "JustText"), None)
+    assert plain is not None, "plain text div should still be captured (for its label)"
+    assert plain.get("clickable") is not True, (
+        "plain text div (cursor:auto) wrongly marked clickable — the cursor:pointer "
+        "fix over-reached and now flags any text node as clickable"
+    )
