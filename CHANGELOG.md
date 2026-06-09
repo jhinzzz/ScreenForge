@@ -6,6 +6,8 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-09
+
 ### Added
 - **Brain's Eye View — read-only live hierarchical DOM tree panel in the Playground.**
   Every step in the Playground now optionally shows the **filtered element set the AI
