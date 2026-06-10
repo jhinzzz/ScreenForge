@@ -190,7 +190,7 @@ def run_action_default_mode(
                 action_description=action_data["name"],
             )
             log.error(f"❌ [Action] Failed: {action_data['name']}")
-            if json_mode:
+            if json_mode or shared_adapter_manager is not None:
                 # Distinguish a verification verdict (assertion_failed=true: the
                 # SUT did not meet the assertion — do NOT retry) from a real
                 # engine error. Only engine errors get the did-you-mean
@@ -224,9 +224,14 @@ def run_action_default_mode(
                     ui_tree=ui_tree,
                     current_url=page_url,
                 )
-                json.dump(payload, sys.stdout, ensure_ascii=False)
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                # Stash for the MCP handler (manager present); write stdout for
+                # shell (--json). MCP keeps stdout clean: stashes but never writes.
+                if shared_adapter_manager is not None:
+                    shared_adapter_manager.set_last_observation(payload)
+                if json_mode:
+                    json.dump(payload, sys.stdout, ensure_ascii=False)
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
             return 1
 
         history_manager.add_step(result["code_lines"], result["action_description"])
@@ -259,7 +264,7 @@ def run_action_default_mode(
         final_status = "success"
         exit_code = 0
 
-        if json_mode:
+        if json_mode or shared_adapter_manager is not None:
             _ensure_ui_compressors()
             ui_json, _ = _capture_ui_state(args, adapter, reporter, 1)
             try:
@@ -273,9 +278,14 @@ def run_action_default_mode(
                 current_url=current_url(adapter, args.platform),
                 output_script=output_script_path,
             )
-            json.dump(payload, sys.stdout, ensure_ascii=False)
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            # Stash for the MCP handler (manager present); write stdout for shell
+            # (--json). MCP keeps stdout clean: it stashes but never writes.
+            if shared_adapter_manager is not None:
+                shared_adapter_manager.set_last_observation(payload)
+            if json_mode:
+                json.dump(payload, sys.stdout, ensure_ascii=False)
+                sys.stdout.write("\n")
+                sys.stdout.flush()
 
         return 0
     except Exception as e:
