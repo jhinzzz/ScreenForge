@@ -49,3 +49,27 @@ def test_assertion_failed_payload_is_bare_verdict():
     assert "recommended_next_step" not in payload
     assert "current_url" not in payload
     assert "element_count" not in payload
+
+
+from cli.modes.action import build_success_payload
+
+
+def test_success_payload_shape_matches_shell_json():
+    ui_tree = {"ui_elements": [{"ref": "@1", "text": "Home"}]}
+    payload = build_success_payload(
+        action_name="click:Login",
+        platform="web",
+        ui_tree=ui_tree,
+        current_url="https://example.com/home",
+        output_script="test_cases/web/test_x.py",
+    )
+    # Field-identical to the inline shell --json success dict it replaces.
+    assert payload == {
+        "ok": True,
+        "action": "click:Login",
+        "platform": "web",
+        "ui_tree": ui_tree,
+        "element_count": 1,
+        "output_script": "test_cases/web/test_x.py",
+        "current_url": "https://example.com/home",
+    }

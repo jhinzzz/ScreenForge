@@ -75,6 +75,30 @@ def build_failure_payload(
     return payload
 
 
+def build_success_payload(
+    *,
+    action_name: str,
+    platform: str,
+    ui_tree: dict,
+    current_url: str,
+    output_script: str,
+) -> dict:
+    """Assemble the --action --json success payload.
+
+    Single source of truth shared by the shell --json stdout write and the MCP
+    observation stash, so the two can never drift. Pure: no I/O, no device.
+    """
+    return {
+        "ok": True,
+        "action": action_name,
+        "platform": platform,
+        "ui_tree": ui_tree,
+        "element_count": len(ui_tree.get("ui_elements", []) or []),
+        "output_script": output_script,
+        "current_url": current_url,
+    }
+
+
 def run_action_default_mode(
     args,
     output_script_path: str,
@@ -242,15 +266,14 @@ def run_action_default_mode(
                 ui_tree = json.loads(ui_json)
             except (json.JSONDecodeError, TypeError):
                 ui_tree = {}
-            json.dump({
-                "ok": True,
-                "action": action_data["name"],
-                "platform": args.platform,
-                "ui_tree": ui_tree,
-                "element_count": len(ui_tree.get("ui_elements", [])),
-                "output_script": output_script_path,
-                "current_url": current_url(adapter, args.platform),
-            }, sys.stdout, ensure_ascii=False)
+            payload = build_success_payload(
+                action_name=action_data["name"],
+                platform=args.platform,
+                ui_tree=ui_tree,
+                current_url=current_url(adapter, args.platform),
+                output_script=output_script_path,
+            )
+            json.dump(payload, sys.stdout, ensure_ascii=False)
             sys.stdout.write("\n")
             sys.stdout.flush()
 
