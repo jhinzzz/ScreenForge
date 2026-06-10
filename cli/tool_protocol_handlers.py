@@ -30,6 +30,31 @@ from common.tool_protocol import (
     load_tool_request_from_stdin,
 )
 
+# Agent-facing fields projected from the live execute observation onto the MCP
+# response — the exact superset of --action --json success + engine_error shapes,
+# plus the single-observation workflow markers. Curated allowlist so it never
+# clobbers the response envelope (ok/operation/mode/exit_code/run_dir/...).
+_OBSERVATION_FIELDS = (
+    "ui_tree",
+    "element_count",
+    "current_url",
+    "output_script",
+    "executed_steps",
+    "result",
+    "assertion_failed",
+    "error_code",
+    "message",
+    "fix",
+    "candidates",
+    "recommended_next_step",
+    "failed_step_index",
+    "failed_step_name",
+)
+
+
+def _project_observation_fields(observation: dict) -> dict:
+    return {key: observation[key] for key in _OBSERVATION_FIELDS if key in observation}
+
 
 class _NullRunReporter:
     def emit_event(self, event: str, **payload) -> None:
@@ -329,11 +354,12 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
 
     # Minimal MCP-execute enrichment: error_code + fix from the single-source
     # table (NO did-you-mean candidates — this run-report path has no live
-    # ui_elements). NOTE: this stays {} until the autonomous run reporter
-    # propagates the executor's error_code into summary.json; today
-    # run_reporter writes category/stage/last_error but not error_code, so the
-    # `if code:` guard is the honest no-op — never a fabricated code. Wiring it
-    # live is a follow-up (propagate error_code through the run summary).
+    # ui_elements). The execution modes now thread the executor's error_code into
+    # summary.json (run_reporter.finalize(error_code=...)), so this is LIVE for the
+    # --goal autonomous path — the one execute path that produces no observation to
+    # fold below. For action/workflow the live observation overrides this with the
+    # richer engine_error diagnosis. The `if code:` guard keeps it honest: an empty
+    # summary error_code (e.g. assertion verdict) yields {}, never a fabricated code.
     failure_diagnosis = {}
     if exit_code != 0:
         from common.error_codes import lookup
@@ -343,7 +369,7 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
             msg, fix = lookup(code)
             failure_diagnosis = {"error_code": code, "message": msg, "fix": fix}
 
-    return {
+    response = {
         "ok": exit_code == 0,
         "operation": "execute",
         "mode": execution_mode,
@@ -357,6 +383,34 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
         "recommended_next_step": run_assets.get("recommended_next_step"),
         "failure_diagnosis": failure_diagnosis,
     }
+
+    # Fold in the live post-action observation (MCP parity with --action --json).
+    # The execute mode stashed it on the manager during dispatch; project its
+    # agent-facing fields ON TOP of the run-report response so live data wins
+    # (e.g. recommended_next_step from the live page beats the run_assets one).
+    # This is what makes failure_diagnosis REAL on MCP — sourced from the live
+    # executor result, not the lossy summary.json. take_* clears the stash.
+    observation = (
+        shared_adapter_manager.take_last_observation()
+        if shared_adapter_manager is not None
+        else None
+    )
+    if observation:
+        response.update(_project_observation_fields(observation))
+        if observation.get("result") == "engine_error":
+            response["failure_diagnosis"] = {
+                "error_code": observation.get("error_code", ""),
+                "message": observation.get("message", ""),
+                "fix": observation.get("fix", ""),
+            }
+        elif observation.get("result") == "assertion_failed":
+            # A failed assertion is a terminal verdict, not a recoverable error.
+            # The bare verdict omits recommended_next_step, so without this the
+            # run_assets-derived value (set above) would survive and bait a retry
+            # on a legitimately-failed assertion. Null it to keep the verdict bare.
+            response["recommended_next_step"] = None
+
+    return response
 
 
 def build_load_run_payload(run_id: str) -> dict:

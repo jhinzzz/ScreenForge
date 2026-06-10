@@ -57,6 +57,7 @@ def _dispatch_execution(
             args,
             output_script_path,
             resume_context,
+            shared_adapter_manager=shared_adapter_manager,
         )
     if args.action and execution_mode == MODE_PLAN_ONLY:
         return run_action_plan_only_mode(

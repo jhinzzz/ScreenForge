@@ -75,6 +75,30 @@ def build_failure_payload(
     return payload
 
 
+def build_success_payload(
+    *,
+    action_name: str,
+    platform: str,
+    ui_tree: dict,
+    current_url: str,
+    output_script: str,
+) -> dict:
+    """Assemble the --action --json success payload.
+
+    Single source of truth shared by the shell --json stdout write and the MCP
+    observation stash, so the two can never drift. Pure: no I/O, no device.
+    """
+    return {
+        "ok": True,
+        "action": action_name,
+        "platform": platform,
+        "ui_tree": ui_tree,
+        "element_count": len(ui_tree.get("ui_elements", []) or []),
+        "output_script": output_script,
+        "current_url": current_url,
+    }
+
+
 def run_action_default_mode(
     args,
     output_script_path: str,
@@ -88,6 +112,7 @@ def run_action_default_mode(
     exit_code = 1
     final_status = "failed"
     final_error = ""
+    final_error_code = ""
     steps_executed = 0
     _emit_run_started(reporter, args, output_script_path, MODE_RUN)
     _apply_resume_summary(reporter, resume_context)
@@ -155,6 +180,9 @@ def run_action_default_mode(
         result = executor.execute_and_record(action_data)
         if not result.get("success"):
             assertion_failed = bool(result.get("assertion_failed"))
+            # Record the executor's code (E0xx) so finalize writes it into
+            # summary.json — assertion verdicts carry none, so this stays "".
+            final_error_code = result.get("error_code", "") or ""
             if assertion_failed:
                 final_error = f"Assertion failed: {action_data['name']}"
             else:
@@ -166,7 +194,7 @@ def run_action_default_mode(
                 action_description=action_data["name"],
             )
             log.error(f"❌ [Action] Failed: {action_data['name']}")
-            if json_mode:
+            if json_mode or shared_adapter_manager is not None:
                 # Distinguish a verification verdict (assertion_failed=true: the
                 # SUT did not meet the assertion — do NOT retry) from a real
                 # engine error. Only engine errors get the did-you-mean
@@ -200,9 +228,14 @@ def run_action_default_mode(
                     ui_tree=ui_tree,
                     current_url=page_url,
                 )
-                json.dump(payload, sys.stdout, ensure_ascii=False)
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                # Stash for the MCP handler (manager present); write stdout for
+                # shell (--json). MCP keeps stdout clean: stashes but never writes.
+                if shared_adapter_manager is not None:
+                    shared_adapter_manager.set_last_observation(payload)
+                if json_mode:
+                    json.dump(payload, sys.stdout, ensure_ascii=False)
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
             return 1
 
         history_manager.add_step(result["code_lines"], result["action_description"])
@@ -235,24 +268,28 @@ def run_action_default_mode(
         final_status = "success"
         exit_code = 0
 
-        if json_mode:
+        if json_mode or shared_adapter_manager is not None:
             _ensure_ui_compressors()
             ui_json, _ = _capture_ui_state(args, adapter, reporter, 1)
             try:
                 ui_tree = json.loads(ui_json)
             except (json.JSONDecodeError, TypeError):
                 ui_tree = {}
-            json.dump({
-                "ok": True,
-                "action": action_data["name"],
-                "platform": args.platform,
-                "ui_tree": ui_tree,
-                "element_count": len(ui_tree.get("ui_elements", [])),
-                "output_script": output_script_path,
-                "current_url": current_url(adapter, args.platform),
-            }, sys.stdout, ensure_ascii=False)
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            payload = build_success_payload(
+                action_name=action_data["name"],
+                platform=args.platform,
+                ui_tree=ui_tree,
+                current_url=current_url(adapter, args.platform),
+                output_script=output_script_path,
+            )
+            # Stash for the MCP handler (manager present); write stdout for shell
+            # (--json). MCP keeps stdout clean: it stashes but never writes.
+            if shared_adapter_manager is not None:
+                shared_adapter_manager.set_last_observation(payload)
+            if json_mode:
+                json.dump(payload, sys.stdout, ensure_ascii=False)
+                sys.stdout.write("\n")
+                sys.stdout.flush()
 
         return 0
     except Exception as e:
@@ -266,6 +303,7 @@ def run_action_default_mode(
             exit_code=exit_code,
             steps_executed=steps_executed,
             last_error=final_error,
+            error_code=final_error_code,
         )
         log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if owns_adapter and adapter:

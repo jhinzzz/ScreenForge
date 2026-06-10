@@ -1,5 +1,6 @@
 """Workflow execution modes."""
 
+import json
 from pathlib import Path
 
 import cli.shared as _shared
@@ -11,10 +12,14 @@ from cli.reporter import (
     _emit_run_started,
 )
 from cli.shared import (
+    _capture_ui_state,
     _connect_adapter,
     _ensure_executor_runtime,
     _ensure_history_manager,
+    _ensure_ui_compressors,
     _ensure_workflow_loader,
+    _SharedAdapterManager,
+    current_url,
     get_initial_header,
     log,
     save_to_disk,
@@ -242,12 +247,14 @@ def run_workflow_default_mode(
     args,
     output_script_path: str,
     resume_context: dict,
+    shared_adapter_manager: _SharedAdapterManager | None = None,
 ) -> int:
     adapter = None
     reporter = _build_reporter(args, output_script_path, MODE_RUN)
     exit_code = 1
     final_status = "failed"
     final_error = ""
+    final_error_code = ""
     steps_executed = 0
     _emit_run_started(reporter, args, output_script_path, MODE_RUN)
     _apply_resume_summary(reporter, resume_context)
@@ -297,6 +304,7 @@ def run_workflow_default_mode(
 
             steps_executed = index
             action_data = _workflow_step_to_action_data(step, index)
+            last_action_name = action_data["name"]
             reporter.emit_event(
                 "step_started",
                 step=index,
@@ -306,6 +314,9 @@ def run_workflow_default_mode(
             result = executor.execute_and_record(action_data)
             if not result.get("success"):
                 final_error = f"Workflow step failed: {action_data['name']}"
+                # Record the failing step's code (E0xx) for summary.json; assertion
+                # verdicts carry none, so this stays "".
+                final_error_code = result.get("error_code", "") or ""
                 reporter.emit_event(
                     "action_executed",
                     step=index,
@@ -313,6 +324,36 @@ def run_workflow_default_mode(
                     action_description=action_data["name"],
                 )
                 log.error(f"❌ [Workflow] Step failed: {action_data['name']}")
+                # ★ MCP parity: stash the FAILING step's observation (single-point
+                # failure) with its index/name so the agent knows where the batch
+                # stopped. Gated on a manager (MCP/session path) — bare shell pays
+                # nothing. NEVER a per-step array (see design doc, decision §).
+                if shared_adapter_manager is not None:
+                    # Local import dodges an action↔workflow cycle (both import cli.shared).
+                    from cli.modes.action import build_failure_payload
+                    assertion_failed = bool(result.get("assertion_failed"))
+                    page_url = current_url(adapter, args.platform)
+                    fail_ui_tree = {}
+                    if not assertion_failed:
+                        _ensure_ui_compressors()
+                        try:
+                            ui_json, _ = _capture_ui_state(args, adapter, reporter, index)
+                            fail_ui_tree = json.loads(ui_json)
+                        except Exception as e:
+                            log.warning(f"⚠️ [Workflow] Failed to capture post-failure UI state: {e}")
+                            fail_ui_tree = {}
+                    observation = build_failure_payload(
+                        action_name=action_data["name"],
+                        platform=args.platform,
+                        assertion_failed=assertion_failed,
+                        error_code=result.get("error_code", "") or "",
+                        locator_value=action_data.get("locator_value", "") or "",
+                        ui_tree=fail_ui_tree,
+                        current_url=page_url,
+                    )
+                    observation["failed_step_index"] = index
+                    observation["failed_step_name"] = action_data["name"]
+                    shared_adapter_manager.set_last_observation(observation)
                 return 1
 
             history_manager.add_step(
@@ -344,6 +385,30 @@ def run_workflow_default_mode(
             )
         )
         reporter.update_control_summary(executed_steps=executed_steps)
+        # ★ MCP parity: stash ONE live observation — the FINAL step's end-state,
+        # marked with executed_steps so the agent knows it's the end, not step 1.
+        # Gated on a manager; bare shell workflow pays nothing. NEVER per-step.
+        if shared_adapter_manager is not None and executed_steps:
+            # Local import dodges an action↔workflow cycle (both import cli.shared).
+            from cli.modes.action import build_success_payload
+            _ensure_ui_compressors()
+            # steps_executed (raw loop index) is used ONLY for screenshot artifact
+            # naming under --vision; the captured ui_json content is independent of it.
+            try:
+                ui_json, _ = _capture_ui_state(args, adapter, reporter, steps_executed)
+                final_ui_tree = json.loads(ui_json)
+            except Exception as e:
+                log.warning(f"⚠️ [Workflow] Failed to capture final UI state: {e}")
+                final_ui_tree = {}
+            observation = build_success_payload(
+                action_name=last_action_name,
+                platform=args.platform,
+                ui_tree=final_ui_tree,
+                current_url=current_url(adapter, args.platform),
+                output_script=output_script_path,
+            )
+            observation["executed_steps"] = executed_steps
+            shared_adapter_manager.set_last_observation(observation)
         final_status = "success"
         exit_code = 0
         return 0
@@ -360,6 +425,7 @@ def run_workflow_default_mode(
             exit_code=exit_code,
             steps_executed=steps_executed,
             last_error=final_error,
+            error_code=final_error_code,
         )
         log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if adapter:

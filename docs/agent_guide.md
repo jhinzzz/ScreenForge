@@ -193,6 +193,16 @@ Beyond direct shell calls, machine-readable protocols are supported:
 
 Supported operations: `capabilities`, `inspect_ui`, `load_case_memory`, `execute`, `load_run`
 
+> **MCP `execute` returns the live post-action observation.** As of this version,
+> `ui_agent_execute` (action or workflow) returns the same agent-facing fields as
+> shell `--action --json`: on success `ui_tree` + `element_count` + `current_url`
+> (so you do NOT need a follow-up `inspect_ui`); on engine-error `candidates` +
+> `recommended_next_step` + a real `failure_diagnosis` (`error_code` + `fix`). A
+> workflow returns exactly ONE observation — the final step on success (marked
+> `executed_steps`), or the failing step on failure (marked `failed_step_index` /
+> `failed_step_name`). Per-step narration lives in the playground stream and
+> `report/runs/<id>/steps.jsonl` (via `load_run`), not the execute response.
+
 ## Troubleshooting
 
 - **Exit code 0**: Success — script generated at the `--output` path
