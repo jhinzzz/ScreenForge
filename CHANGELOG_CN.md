@@ -6,6 +6,18 @@
 
 ## [未发布]
 
+### Changed
+- **MCP `ui_agent_execute` 现在返回动作后的实时观测**，与 shell `--action --json`
+  对齐。此前通过 MCP（面向 Claude Desktop / Cursor / Cline 主推的接入方式）驱动
+  ScreenForge 的 agent 只能拿到一份 run-report 摘要，必须再调用一次 `inspect_ui`
+  才能看到结果——正是 `--json` 融合本要消除的双倍往返；且 did-you-mean 恢复信息
+  （`candidates` / `recommended_next_step`）与真正的 `failure_diagnosis` 一概缺失。
+  现在执行模式把 shell 写往 stdout 的同一份负载暂存到共享会话管理器上，由 MCP
+  处理器折叠进响应（stdout 保持为干净的 JSON-RPC 通道）。覆盖 `action` 与
+  `workflow`；workflow 只返回**一份**观测——成功取最后一步（`executed_steps`），
+  失败取出错步（`failed_step_index` / `failed_step_name`），绝不逐步堆叠（token
+  经济）。神圣的面向 LLM 的压缩器与 `--action` 的 `0/1` 退出码契约均不受影响。
+
 ## [0.6.0] - 2026-06-09
 
 ### Added

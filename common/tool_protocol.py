@@ -154,6 +154,11 @@ def build_cli_arg_overrides(request: ToolRequest) -> dict:
         "env": request.env,
         "platform": request.platform,
         "vision": request.vision,
+        # Stays False for MCP/tool-protocol: the agent-facing payload is NOT
+        # written to stdout (that's the JSON-RPC channel). Instead the execute
+        # mode stashes the live observation on the shared manager and the MCP
+        # handler folds it into the response. See
+        # docs/superpowers/specs/2026-06-10-mcp-live-observation-parity-design.md
         "json": False,
         "doctor": request.mode == MODE_DOCTOR,
         "plan_only": request.mode == MODE_PLAN_ONLY,

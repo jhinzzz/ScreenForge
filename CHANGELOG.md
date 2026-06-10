@@ -6,6 +6,22 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **MCP `ui_agent_execute` now returns the live post-action observation**, at
+  parity with shell `--action --json`. Previously an agent driving ScreenForge
+  over MCP (the advertised primary integration for Claude Desktop / Cursor /
+  Cline) got back a run-report summary and had to call `inspect_ui` again to see
+  the result — a double round-trip the `--json` fusion was built to kill, and the
+  did-you-mean recovery (`candidates` / `recommended_next_step`) plus a real
+  `failure_diagnosis` were absent. The execute mode now stashes the same payload
+  the shell writes to stdout onto the shared session manager, and the MCP handler
+  folds it into the response (stdout stays a clean JSON-RPC channel). Covers
+  `action` and `workflow`; a workflow returns exactly ONE observation — the final
+  step on success (`executed_steps`) or the failing step on failure
+  (`failed_step_index` / `failed_step_name`), never a per-step array (token
+  economy). The sacred LLM-facing compressors and the `--action` `0/1` exit
+  contract are untouched.
+
 ## [0.6.0] - 2026-06-09
 
 ### Added
