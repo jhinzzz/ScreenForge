@@ -31,6 +31,32 @@ from common.tool_protocol import (
 )
 
 
+# Agent-facing fields projected from the live execute observation onto the MCP
+# response — the exact superset of --action --json success + engine_error shapes,
+# plus the single-observation workflow markers. Curated allowlist so it never
+# clobbers the response envelope (ok/operation/mode/exit_code/run_dir/...).
+_OBSERVATION_FIELDS = (
+    "ui_tree",
+    "element_count",
+    "current_url",
+    "output_script",
+    "executed_steps",
+    "result",
+    "assertion_failed",
+    "error_code",
+    "message",
+    "fix",
+    "candidates",
+    "recommended_next_step",
+    "failed_step_index",
+    "failed_step_name",
+)
+
+
+def _project_observation_fields(observation: dict) -> dict:
+    return {key: observation[key] for key in _OBSERVATION_FIELDS if key in observation}
+
+
 class _NullRunReporter:
     def emit_event(self, event: str, **payload) -> None:
         return None
@@ -343,7 +369,7 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
             msg, fix = lookup(code)
             failure_diagnosis = {"error_code": code, "message": msg, "fix": fix}
 
-    return {
+    response = {
         "ok": exit_code == 0,
         "operation": "execute",
         "mode": execution_mode,
@@ -357,6 +383,28 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
         "recommended_next_step": run_assets.get("recommended_next_step"),
         "failure_diagnosis": failure_diagnosis,
     }
+
+    # Fold in the live post-action observation (MCP parity with --action --json).
+    # The execute mode stashed it on the manager during dispatch; project its
+    # agent-facing fields ON TOP of the run-report response so live data wins
+    # (e.g. recommended_next_step from the live page beats the run_assets one).
+    # This is what makes failure_diagnosis REAL on MCP — sourced from the live
+    # executor result, not the lossy summary.json. take_* clears the stash.
+    observation = (
+        shared_adapter_manager.take_last_observation()
+        if shared_adapter_manager is not None
+        else None
+    )
+    if observation:
+        response.update(_project_observation_fields(observation))
+        if observation.get("result") == "engine_error":
+            response["failure_diagnosis"] = {
+                "error_code": observation.get("error_code", ""),
+                "message": observation.get("message", ""),
+                "fix": observation.get("fix", ""),
+            }
+
+    return response
 
 
 def build_load_run_payload(run_id: str) -> dict:
