@@ -325,6 +325,7 @@ def run_workflow_default_mode(
                 # stopped. Gated on a manager (MCP/session path) — bare shell pays
                 # nothing. NEVER a per-step array (see design doc, decision §).
                 if shared_adapter_manager is not None:
+                    # Local import dodges an action↔workflow cycle (both import cli.shared).
                     from cli.modes.action import build_failure_payload
                     assertion_failed = bool(result.get("assertion_failed"))
                     page_url = current_url(adapter, args.platform)
@@ -384,8 +385,11 @@ def run_workflow_default_mode(
         # marked with executed_steps so the agent knows it's the end, not step 1.
         # Gated on a manager; bare shell workflow pays nothing. NEVER per-step.
         if shared_adapter_manager is not None and executed_steps:
+            # Local import dodges an action↔workflow cycle (both import cli.shared).
             from cli.modes.action import build_success_payload
             _ensure_ui_compressors()
+            # steps_executed (raw loop index) is used ONLY for screenshot artifact
+            # naming under --vision; the captured ui_json content is independent of it.
             try:
                 ui_json, _ = _capture_ui_state(args, adapter, reporter, steps_executed)
                 final_ui_tree = json.loads(ui_json)
