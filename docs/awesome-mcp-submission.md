@@ -9,7 +9,7 @@ PR content for https://github.com/punkpeye/awesome-mcp-servers
 Under the **Testing** or **Browser Automation** category:
 
 ```markdown
-- [ScreenForge](https://github.com/jhinzzz/ScreenForge) - AI-driven UI automation that turns Agent interactions into pytest scripts. Supports Web (Playwright), Android, and iOS. Self-healing locators, semantic cache, Allure reporting.
+- [ScreenForge](https://github.com/jhinzzz/ScreenForge) - Your AI agent runs the test, you keep the pytest file. Turns Agent interactions into self-healing, replayable pytest scripts — and drives real iOS + Android devices, not just Chrome (Playwright). Semantic cache, Allure reporting.
 ```
 
 ---
@@ -34,9 +34,9 @@ ScreenForge exposes 5 MCP tools that let any AI Agent drive UI automation across
 
 **What makes it different from existing entries?**
 
-- Generates **replayable pytest scripts** (not just one-shot browsing)
+- **You keep the pytest file**: generates **replayable pytest scripts** that run in CI (not just one-shot browsing)
+- **Real devices, not just browsers**: drives physical Android (uiautomator2) and iOS (wda) over the same MCP surface — the one thing pure-web agents (Playwright MCP, Browser Use) can't do
 - **Self-healing engine** auto-repairs broken locators with confidence scoring + AST validation
-- **Cross-platform**: same MCP API surface for Web, Android, and iOS
 - **No hidden LLM calls**: the Agent is the brain, ScreenForge is the hands
 
 **Setup:**
