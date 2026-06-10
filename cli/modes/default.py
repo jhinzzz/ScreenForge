@@ -30,6 +30,7 @@ def run_default_mode(
     exit_code = 1
     final_status = "failed"
     final_error = ""
+    final_error_code = ""
     steps_executed = 0
     _emit_run_started(reporter, args, output_script_path, MODE_RUN)
     _apply_resume_summary(reporter, resume_context)
@@ -89,6 +90,9 @@ def run_default_mode(
             status = decision_data.get("status")
             action_data = decision_data.get("result", {})
             last_error = ""
+            # Reset per iteration so a recovered-then-succeeded run finalizes with
+            # error_code="" — only THIS step's failure (set below) should persist.
+            final_error_code = ""
             reporter.emit_event(
                 "decision_received",
                 step=step_count,
@@ -121,6 +125,7 @@ def run_default_mode(
                         )
                     else:
                         final_error = "Final action/assertion failed — task verification did not pass"
+                        final_error_code = result.get("error_code", "") or ""
                         reporter.emit_event(
                             "action_executed",
                             step=step_count,
@@ -193,6 +198,9 @@ def run_default_mode(
                         )
                     else:
                         consecutive_failures += 1
+                        # Retain the executor's code (E0xx) so if the circuit
+                        # breaker trips below, finalize records the real last code.
+                        final_error_code = result.get("error_code", "") or ""
                         action_repr = f"{action_data.get('action')} - {action_data.get('locator_type')}={action_data.get('locator_value')}"
                         last_error = f"Action [{action_repr}] failed — element not found or not interactable on the current page."
                         reporter.emit_event(
@@ -239,6 +247,7 @@ def run_default_mode(
             exit_code=exit_code,
             steps_executed=steps_executed,
             last_error=final_error,
+            error_code=final_error_code,
         )
         log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if adapter:

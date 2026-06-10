@@ -112,6 +112,7 @@ def run_action_default_mode(
     exit_code = 1
     final_status = "failed"
     final_error = ""
+    final_error_code = ""
     steps_executed = 0
     _emit_run_started(reporter, args, output_script_path, MODE_RUN)
     _apply_resume_summary(reporter, resume_context)
@@ -179,6 +180,9 @@ def run_action_default_mode(
         result = executor.execute_and_record(action_data)
         if not result.get("success"):
             assertion_failed = bool(result.get("assertion_failed"))
+            # Record the executor's code (E0xx) so finalize writes it into
+            # summary.json — assertion verdicts carry none, so this stays "".
+            final_error_code = result.get("error_code", "") or ""
             if assertion_failed:
                 final_error = f"Assertion failed: {action_data['name']}"
             else:
@@ -299,6 +303,7 @@ def run_action_default_mode(
             exit_code=exit_code,
             steps_executed=steps_executed,
             last_error=final_error,
+            error_code=final_error_code,
         )
         log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if owns_adapter and adapter:

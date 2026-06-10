@@ -135,6 +135,24 @@ class TestRunReporterFinalize:
         data = json.loads(summary_file.read_text())
         assert data["failure_analysis"] is None
 
+    def test_finalize_writes_error_code_when_given(self, reporter):
+        # error_code threads from the executor through finalize into summary.json
+        # so the MCP --goal fallback (which has no live observation) can build a
+        # real failure_diagnosis from it.
+        reporter.finalize(
+            status="failed", exit_code=1, steps_executed=2,
+            last_error="element not found", error_code="E037",
+        )
+        data = json.loads((reporter.run_dir / "summary.json").read_text())
+        assert data["error_code"] == "E037"
+
+    def test_finalize_error_code_empty_by_default(self, reporter):
+        # No code supplied → empty string, NEVER a fabricated code. The handler's
+        # `if code:` guard then leaves failure_diagnosis {}.
+        reporter.finalize(status="failed", exit_code=1, steps_executed=2, last_error="boom")
+        data = json.loads((reporter.run_dir / "summary.json").read_text())
+        assert data["error_code"] == ""
+
 
 class TestBuildFailureAnalysis:
     def _build(self, last_error="", status="failed", exit_code=1, steps_executed=3):

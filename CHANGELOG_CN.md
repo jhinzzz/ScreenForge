@@ -17,6 +17,12 @@
   `workflow`；workflow 只返回**一份**观测——成功取最后一步（`executed_steps`），
   失败取出错步（`failed_step_index` / `failed_step_name`），绝不逐步堆叠（token
   经济）。神圣的面向 LLM 的压缩器与 `--action` 的 `0/1` 退出码契约均不受影响。
+- **MCP `--goal`（自主）失败现在带有真正的 `failure_diagnosis`。** 各执行模式把
+  执行器的 `error_code` 透传进 `summary.json`（`run_reporter.finalize(error_code=…)`），
+  于是处理器能为这条唯一不产出实时观测、无可折叠的执行路径构建出真实的
+  `error_code` + `fix`。断言判定（`result: assertion_failed`）现在会丢弃 run-report
+  中的 `recommended_next_step`，以免对一个合理失败的断言诱导重试。纯增量改动——
+  `--goal` 路径的控制流与退出码均不变。
 
 ## [0.6.0] - 2026-06-09
 

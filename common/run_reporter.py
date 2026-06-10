@@ -329,6 +329,7 @@ class RunReporter:
         exit_code: int,
         steps_executed: int,
         last_error: str = "",
+        error_code: str = "",
     ) -> None:
         if self._finished:
             return
@@ -366,6 +367,10 @@ class RunReporter:
                 "exit_code": exit_code,
                 "steps_executed": steps_executed,
                 "last_error": last_error,
+                # Agent-facing code from the executor (E0xx); "" when none. Lets the
+                # MCP handler build a real failure_diagnosis on the --goal path,
+                # which produces no live observation to fold. Never fabricated.
+                "error_code": str(error_code or ""),
                 "finished_at": _now_iso(),
             }
         )

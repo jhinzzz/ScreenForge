@@ -354,11 +354,12 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
 
     # Minimal MCP-execute enrichment: error_code + fix from the single-source
     # table (NO did-you-mean candidates — this run-report path has no live
-    # ui_elements). NOTE: this stays {} until the autonomous run reporter
-    # propagates the executor's error_code into summary.json; today
-    # run_reporter writes category/stage/last_error but not error_code, so the
-    # `if code:` guard is the honest no-op — never a fabricated code. Wiring it
-    # live is a follow-up (propagate error_code through the run summary).
+    # ui_elements). The execution modes now thread the executor's error_code into
+    # summary.json (run_reporter.finalize(error_code=...)), so this is LIVE for the
+    # --goal autonomous path — the one execute path that produces no observation to
+    # fold below. For action/workflow the live observation overrides this with the
+    # richer engine_error diagnosis. The `if code:` guard keeps it honest: an empty
+    # summary error_code (e.g. assertion verdict) yields {}, never a fabricated code.
     failure_diagnosis = {}
     if exit_code != 0:
         from common.error_codes import lookup
@@ -402,6 +403,12 @@ def build_tool_response_payload(request, shared_adapter_manager: _SharedAdapterM
                 "message": observation.get("message", ""),
                 "fix": observation.get("fix", ""),
             }
+        elif observation.get("result") == "assertion_failed":
+            # A failed assertion is a terminal verdict, not a recoverable error.
+            # The bare verdict omits recommended_next_step, so without this the
+            # run_assets-derived value (set above) would survive and bait a retry
+            # on a legitimately-failed assertion. Null it to keep the verdict bare.
+            response["recommended_next_step"] = None
 
     return response
 

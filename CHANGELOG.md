@@ -21,6 +21,14 @@ All notable changes to ScreenForge will be documented in this file.
   (`failed_step_index` / `failed_step_name`), never a per-step array (token
   economy). The sacred LLM-facing compressors and the `--action` `0/1` exit
   contract are untouched.
+- **MCP `--goal` (autonomous) failures now carry a real `failure_diagnosis`.** The
+  execution modes thread the executor's `error_code` into `summary.json`
+  (`run_reporter.finalize(error_code=…)`), so the handler builds a real
+  `error_code` + `fix` for the one execute path that produces no live observation
+  to fold. An assertion verdict (`result: assertion_failed`) now drops any
+  run-report `recommended_next_step` so it can't bait a retry on a legitimately
+  failed assertion. Purely additive — the `--goal` path's control flow and exit
+  codes are unchanged.
 
 ## [0.6.0] - 2026-06-09
 

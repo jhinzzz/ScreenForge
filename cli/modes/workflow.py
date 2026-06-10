@@ -254,6 +254,7 @@ def run_workflow_default_mode(
     exit_code = 1
     final_status = "failed"
     final_error = ""
+    final_error_code = ""
     steps_executed = 0
     _emit_run_started(reporter, args, output_script_path, MODE_RUN)
     _apply_resume_summary(reporter, resume_context)
@@ -313,6 +314,9 @@ def run_workflow_default_mode(
             result = executor.execute_and_record(action_data)
             if not result.get("success"):
                 final_error = f"Workflow step failed: {action_data['name']}"
+                # Record the failing step's code (E0xx) for summary.json; assertion
+                # verdicts carry none, so this stays "".
+                final_error_code = result.get("error_code", "") or ""
                 reporter.emit_event(
                     "action_executed",
                     step=index,
@@ -421,6 +425,7 @@ def run_workflow_default_mode(
             exit_code=exit_code,
             steps_executed=steps_executed,
             last_error=final_error,
+            error_code=final_error_code,
         )
         log.info(f"🏁 Done. Generated script saved to: {output_script_path}")
         if adapter:
