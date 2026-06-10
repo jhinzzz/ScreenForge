@@ -382,6 +382,18 @@ class _SharedAdapterManager:
         # an inspect_ui and a follow-up `ref @N` action in the same MCP session
         # share state via get_executor() — without any process-global.
         self._executors: dict[str, object] = {}
+        # ONE live post-action observation, stashed by the execute mode
+        # (--action / --workflow) when this manager is present (MCP/session
+        # path only), read once by the MCP handler after dispatch. Cleared on
+        # read so a later execute can't serve a stale prior step's observation.
+        self._last_observation: dict | None = None
+
+    def set_last_observation(self, payload: dict) -> None:
+        self._last_observation = payload
+
+    def take_last_observation(self) -> dict | None:
+        observation, self._last_observation = self._last_observation, None
+        return observation
 
     def get_or_create(self, platform: str, env: str = "dev"):
         if platform in self._adapters:
