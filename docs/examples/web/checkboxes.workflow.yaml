@@ -1,0 +1,17 @@
+version: 1
+name: checkboxes
+platform: web
+vars:
+  url: "https://the-internet.herokuapp.com/checkboxes"
+steps:
+  - name: Navigate to the checkboxes page
+    action: goto
+    extra_value: "{{ url }}"
+  - name: Click the first checkbox
+    action: click
+    locator_type: css
+    locator_value: "#checkboxes input:first-child"
+  - name: Assert the checkboxes form is present
+    action: assert_exist
+    locator_type: css
+    locator_value: "#checkboxes"

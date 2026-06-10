@@ -43,6 +43,11 @@ screenforge = "cli.dispatch:main"
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+# docs/examples/ holds ScreenForge-generated pytest files committed verbatim as
+# proof artifacts (regenerate from the paired *.workflow.yaml and diff). They are
+# linting-exempt on purpose: formatting them would make the committed copy diverge
+# from real generator output. Mirrors test_cases/ being mypy-excluded below.
+extend-exclude = ["docs/examples/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]

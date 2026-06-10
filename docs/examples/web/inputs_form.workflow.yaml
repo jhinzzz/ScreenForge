@@ -1,0 +1,18 @@
+version: 1
+name: inputs_form
+platform: web
+vars:
+  url: "https://the-internet.herokuapp.com/inputs"
+steps:
+  - name: Navigate to the inputs page
+    action: goto
+    extra_value: "{{ url }}"
+  - name: Type a number into the field
+    action: input
+    locator_type: css
+    locator_value: "input[type=number]"
+    extra_value: "42"
+  - name: Assert the number field is present
+    action: assert_exist
+    locator_type: css
+    locator_value: "input[type=number]"
