@@ -6,7 +6,9 @@
 
 **[中文](https://github.com/jhinzzz/ScreenForge/blob/main/README_CN.md)** | English
 
-> Describe what to test. Watch it happen. Get a pytest script.
+> **Your AI agent runs the test. You keep the pytest file.**
+>
+> Describe the flow in plain language. Watch the agent click through a live site. Walk away with a self-healing pytest script that survives UI changes — and runs in CI. _(Drives real iOS + Android devices too, not just Chrome.)_
 
 ScreenForge is an AI-driven UI automation engine that turns natural language into executable test scripts. Unlike record-and-replay tools, you don't perform the actions yourself — the AI does it for you.
 
@@ -20,6 +22,7 @@ ScreenForge is an AI-driven UI automation engine that turns natural language int
 | Generates replayable test scripts? | Yes | No | No | **Yes (pytest)** |
 | Self-healing when UI changes? | No | No | No | **Yes** |
 | Works as AI Agent tool (MCP)? | No | Yes | No | **Yes** |
+| Drives real iOS / Android devices? | No | No | No | **Yes** |
 
 **Core architecture**: Your AI Agent is the brain (understands requirements, makes decisions). ScreenForge is the hands (executes UI actions, generates code).
 
@@ -62,8 +65,10 @@ Each step: **inspect → decide → act → verify**. The AI decides, ScreenForg
 
 ## Features
 
-- **Cross-platform**: Android (uiautomator2), iOS (wda), Web (Playwright)
-- **Self-healing engine**: When tests break due to UI changes, the engine auto-repairs locators with confidence scoring and AST validation
+- **Keep a real pytest file**: Every run emits a replayable `pytest` script (Allure-instrumented) you can drop straight into CI — not a black-box agent run.
+- **Self-healing engine**: When the UI changes and a locator breaks, the engine auto-repairs it with confidence scoring and AST validation, so your committed test survives.
+- **The agent does the clicking**: You (or your AI agent) describe intent; ScreenForge inspects the DOM, acts, and verifies — you never record by hand.
+- **Real devices, not just browsers**: Drives Android (uiautomator2) and iOS (wda) physical devices over the same protocol — the one thing pure-web agents (Playwright MCP, Browser Use) can't do.
 - **L1/L2 semantic cache**: Same page + same instruction = instant response, no LLM call needed
 - **Visual fallback**: When DOM can't locate elements (Canvas, games), VLM parses screenshots
 - **MCP server**: Any MCP-compatible Agent can drive ScreenForge natively
@@ -161,6 +166,8 @@ If ScreenForge generates tests for your project, add this badge to your README:
 | [MCP Setup (3 min)](https://github.com/jhinzzz/ScreenForge/blob/main/docs/mcp-setup.md) | Connect to Claude Desktop / Cursor / Cline / Claude Code |
 | [Agent Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/agent_guide.md) | Integration protocol for AI Agents |
 | [Capability Matrix](https://github.com/jhinzzz/ScreenForge/blob/main/docs/capability-matrix.md) | Supported platforms, actions, and locators |
+| [Architecture Deep-Dive](https://github.com/jhinzzz/ScreenForge/blob/main/docs/architecture-deep-dive.md) | Brain/hands split, semantic cache, self-heal AST gates, hygiene-as-feature |
+| [Examples](https://github.com/jhinzzz/ScreenForge/tree/main/docs/examples) | Real committed workflows + the green pytest they generated |
 | [Playground Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/playground-guide.md) | Live Mirror — watch code + screenshots grow as the test runs |
 | [Workflow Examples](https://github.com/jhinzzz/ScreenForge/tree/main/docs/workflows) | YAML workflow templates |
 | [CHANGELOG](https://github.com/jhinzzz/ScreenForge/blob/main/CHANGELOG.md) | Version history |

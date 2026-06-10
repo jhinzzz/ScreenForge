@@ -6,7 +6,9 @@
 
 **中文** | [English](./README.md)
 
-> 描述你要测试什么，看着它执行，拿到 pytest 脚本。
+> **让你的 AI agent 跑测试，你留下那个 pytest 文件。**
+>
+> 用自然语言描述流程，看着 agent 在真实站点上点击，最后带走一个会自愈、能进 CI、UI 改版也不挂的 pytest 脚本。_（还能驱动真机 iOS + Android，不只是 Chrome。）_
 
 ScreenForge 是一个 AI 驱动的 UI 自动化引擎，将自然语言转化为可执行的测试脚本。与录制回放工具不同，你不需要自己操作——AI 替你完成。
 
@@ -18,6 +20,7 @@ ScreenForge 是一个 AI 驱动的 UI 自动化引擎，将自然语言转化为
 | 生成可回放的测试脚本？ | 是 | 否 | 否 | **是 (pytest)** |
 | UI 变更时自愈？ | 否 | 否 | 否 | **是** |
 | 可作为 AI Agent 工具 (MCP)？ | 否 | 是 | 否 | **是** |
+| 能驱动真机 iOS / Android？ | 否 | 否 | 否 | **是** |
 
 **核心架构**：你的 AI Agent 是大脑（理解需求、做决策），ScreenForge 是手脚（执行 UI 动作、生成代码）。
 
@@ -82,8 +85,10 @@ screenforge inspect
 
 ## 核心特性
 
-- **跨平台**：Android (uiautomator2)、iOS (wda)、Web (Playwright)
-- **自愈引擎**：UI 变更导致测试失败时，引擎自动修复定位器（置信度评分 + AST 校验）
+- **留下真实的 pytest 文件**：每次运行都产出可回放的 `pytest` 脚本（含 Allure 注解），可直接进 CI —— 不是一次性的黑盒 agent 运行。
+- **自愈引擎**：UI 改版、定位器失效时，引擎用置信度评分 + AST 校验自动修复，让你提交进仓库的测试存活下来。
+- **由 agent 来点击**：你（或你的 AI agent）描述意图，ScreenForge 负责读 DOM、执行、校验 —— 你永远不用手工录制。
+- **真机，而不只是浏览器**：通过同一套协议驱动 Android(uiautomator2) 和 iOS(wda) 真机 —— 这是纯 Web agent（Playwright MCP、Browser Use）做不到的唯一一件事。
 - **L1/L2 语义缓存**：相同页面 + 相同指令 = 即时响应，无需 LLM 调用
 - **视觉 fallback**：DOM 无法定位时（Canvas、游戏），VLM 从截图解析坐标
 - **MCP Server**：任何 MCP 兼容的 Agent 可原生驱动 ScreenForge
@@ -155,6 +160,8 @@ export MODEL_NAME=gpt-4o
 |------|------|
 | [Agent 集成指南](docs/agent_guide.md) | AI Agent 集成协议 |
 | [能力矩阵](docs/capability-matrix_CN.md) | 支持的平台、动作和定位器 |
+| [架构深挖](docs/architecture-deep-dive.md) | 大脑/手脚分工、语义缓存、自愈 AST 门禁、工程素养即特性 |
+| [示例](docs/examples/) | 真实提交的 workflow + 它生成的绿色 pytest |
 | [实时镜像台指南](docs/playground-guide_CN.md) | Live Mirror — 边跑用例边看代码与截图实时增长 |
 | [Workflow 示例](docs/workflows/) | YAML workflow 模板 |
 | [变更日志](CHANGELOG_CN.md) | 版本历史 |
