@@ -8,8 +8,8 @@ shell --action --json.
 
 import cli.dispatch as dispatch
 import cli.tool_protocol_handlers as tph
-from common.tool_protocol import ActionToolControl, ToolRequest
 from cli.shared import _SharedAdapterManager
+from common.tool_protocol import ActionToolControl, ToolRequest
 
 
 def _patch_handler_io(monkeypatch):

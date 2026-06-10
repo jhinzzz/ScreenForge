@@ -30,7 +30,6 @@ from common.tool_protocol import (
     load_tool_request_from_stdin,
 )
 
-
 # Agent-facing fields projected from the live execute observation onto the MCP
 # response — the exact superset of --action --json success + engine_error shapes,
 # plus the single-observation workflow markers. Curated allowlist so it never

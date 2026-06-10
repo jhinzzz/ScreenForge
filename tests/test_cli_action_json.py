@@ -6,7 +6,7 @@ ui_tree; assertion_failed stays a bare verdict) is the contract an agent
 branches on, so it must be locked.
 """
 
-from cli.modes.action import build_failure_payload
+from cli.modes.action import build_failure_payload, build_success_payload
 
 
 def test_engine_error_payload_has_diagnosis_and_uitree():
@@ -49,9 +49,6 @@ def test_assertion_failed_payload_is_bare_verdict():
     assert "recommended_next_step" not in payload
     assert "current_url" not in payload
     assert "element_count" not in payload
-
-
-from cli.modes.action import build_success_payload
 
 
 def test_success_payload_shape_matches_shell_json():

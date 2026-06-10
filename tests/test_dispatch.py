@@ -65,7 +65,7 @@ class TestDispatchExecution:
     def test_workflow_run_dispatches(self, mock_wf_default):
         args = _make_args(workflow="flow.yaml")
         result = _dispatch_execution(args, MODE_RUN, "out.py", "", {})
-        mock_wf_default.assert_called_once_with(args, "out.py", {})
+        mock_wf_default.assert_called_once_with(args, "out.py", {}, shared_adapter_manager=None)
         assert result == 0
 
     @patch("cli.dispatch.run_action_plan_only_mode", return_value=0)
