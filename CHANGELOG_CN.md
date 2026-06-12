@@ -6,6 +6,22 @@
 
 ## [未发布]
 
+## [0.6.1] - 2026-06-12
+
+### Docs
+- **围绕楔子重新定位:「让你的 AI agent 跑测试，你留下那个 pytest 文件。」**
+  重写 README 首屏(中英双语),功能列表改由 pytest 产物 + 自愈领衔，并把真机护城河
+  （驱动真机 iOS/Android，不只是 Chrome）从从句提到正文。发布物料包(Show HN /
+  Reddit / Twitter)也对齐到同一句楔子。
+- **新增真实、已提交的示例画廊**(`docs/examples/`):每个 Web 示例是一份
+  `*.workflow.yaml` 加上 ScreenForge 由它生成的 pytest(可回放、绿色)，并附
+  `SELFHEAL.md` 记录一次真实自愈(置信度 0.90——故意改坏定位器，引擎修好，自愈后测试通过)。
+- **全新 Live Mirror hero GIF**:通过 playground 驱动真实 workflow 录制(生成的
+  pytest 在真实页面旁逐行长出)，替换过时的 `demo.gif`。
+- **新增架构深挖文档**(`docs/architecture-deep-dive.md`):大脑/手脚分工、L1/L2
+  语义缓存、自愈 AST 门禁、工程素养即特性。
+- 无代码改动——本次发版用于以新 README 和资产刷新 PyPI 页面。
+
 ### Changed
 - **MCP `ui_agent_execute` 现在返回动作后的实时观测**，与 shell `--action --json`
   对齐。此前通过 MCP（面向 Claude Desktop / Cursor / Cline 主推的接入方式）驱动

@@ -6,6 +6,26 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-12
+
+### Docs
+- **Repositioned around the wedge: "Your AI agent runs the test. You keep the
+  pytest file."** Rewrote the README hero (EN + CN), re-led Features with
+  pytest-output + self-healing, and surfaced the real-device moat (drives physical
+  iOS/Android, not just Chrome) instead of burying it. The launch kit (Show HN /
+  Reddit / Twitter) is aligned to the same wedge.
+- **Added a real, committed example gallery** under `docs/examples/`: each web
+  example is a `*.workflow.yaml` plus the pytest ScreenForge generated from it
+  (replays green), with a `SELFHEAL.md` capturing a real self-heal (confidence
+  0.90 — break a selector, the engine repairs it, the healed test passes).
+- **Fresh Live Mirror hero GIF** recorded by driving a real workflow through the
+  playground (the generated pytest grows beside the live page), replacing the
+  stale `demo.gif`.
+- **Added an architecture deep-dive** (`docs/architecture-deep-dive.md`):
+  brain/hands split, L1/L2 semantic cache, self-heal AST gates, hygiene-as-feature.
+- No code changes — this release exists to refresh the PyPI page with the new
+  README and assets.
+
 ### Changed
 - **MCP `ui_agent_execute` now returns the live post-action observation**, at
   parity with shell `--action --json`. Previously an agent driving ScreenForge
