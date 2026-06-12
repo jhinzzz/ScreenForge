@@ -6,13 +6,13 @@ Ready-to-post templates for announcing ScreenForge.
 
 ## Show HN (Hacker News)
 
-**Title:** Show HN: ScreenForge – Describe what to test, AI does it, outputs a pytest script
+**Title:** Show HN: ScreenForge – Your AI agent runs the test, you keep the pytest file
 
 **Body:**
 
 Hi HN,
 
-I built ScreenForge because I was tired of the gap between "AI can browse for me" and "I need a repeatable test suite." Tools like Browser Use let AI click around, and Playwright Codegen records what *you* do — but nothing turns AI-driven exploration into deterministic pytest scripts you can run in CI.
+I built ScreenForge because I was tired of the gap between "AI can browse for me" and "I need a repeatable test suite." Tools like Browser Use let AI click around, and Playwright Codegen records what *you* do — but nothing turns AI-driven exploration into deterministic pytest scripts you can run in CI. The pitch in one line: **your AI agent runs the test, you keep the pytest file.**
 
 ScreenForge fills that gap:
 
@@ -21,11 +21,11 @@ ScreenForge fills that gap:
 3. ScreenForge executes each action and generates a pytest script with Allure reporting
 4. If the UI changes later, the self-healing engine auto-repairs locators (with confidence scoring + AST validation)
 
-It works as an MCP server, so any MCP-compatible Agent can drive it natively. Also supports Android (uiautomator2) and iOS (WebDriverAgent) — same API surface.
+It works as an MCP server, so any MCP-compatible Agent can drive it natively. And here's the part pure-web agents (Playwright MCP, Browser Use) structurally can't match: it drives **real physical Android (uiautomator2) and iOS (WebDriverAgent) devices** over the same API surface — not just Chrome.
 
 Key design choice: your Agent is the brain, ScreenForge is the hands. No hidden LLM calls burning tokens behind your back — you control the reasoning loop.
 
-- Demo: https://github.com/jhinzzz/ScreenForge (GIF in README)
+- Demo: https://github.com/jhinzzz/ScreenForge (Live Mirror GIF in README — the generated pytest grows beside the live page as the agent runs)
 - MCP setup (3 min): https://github.com/jhinzzz/ScreenForge/blob/main/docs/mcp-setup.md
 - pip install screenforge
 
@@ -37,7 +37,7 @@ Would love feedback on the Agent integration protocol and the self-healing appro
 
 ## Reddit (r/Python, r/testing, r/MachineLearning)
 
-**Title:** I built an AI-driven UI test generator that outputs real pytest scripts (not just recordings)
+**Title:** Your AI agent runs the test, you keep the pytest file — and it drives real iOS/Android devices, not just Chrome
 
 **Body:**
 
@@ -46,7 +46,7 @@ Most UI automation tools fall into two camps:
 - **Record-and-replay** (Playwright Codegen): You do the actions, it records. Breaks when UI changes.
 - **AI browsers** (Browser Use): AI clicks around, but no replayable output.
 
-ScreenForge combines both: AI does the clicking, you get a pytest script.
+ScreenForge combines both: your AI agent runs the test, you keep the pytest file. And it self-heals when the UI changes.
 
 **How it works:**
 - Your AI Agent calls `inspect_ui` → gets the DOM/XML tree
@@ -70,11 +70,11 @@ Happy to answer questions about the architecture!
 
 **Tweet 1 (hook):**
 
-I built an open-source tool that lets AI Agents generate real pytest scripts from UI interactions.
+Your AI agent runs the test. You keep the pytest file.
 
-Not record-and-replay. Not "AI browsing."
+Not record-and-replay. Not "AI browsing." And it drives real iOS + Android devices, not just Chrome.
 
-Your Agent thinks. ScreenForge executes. You get a test suite.
+Your Agent thinks. ScreenForge executes. You walk away with a self-healing test suite.
 
 🧵 How it works:
 
@@ -104,7 +104,7 @@ Works as an MCP server out of the box.
 
 Claude Desktop, Cursor, Cline, Claude Code — 3-minute setup.
 
-Cross-platform: Web + Android + iOS, same API.
+Drives real Android + iOS devices over the same API — the one thing pure-web agents can't do.
 
 **Tweet 5 (CTA):**
 

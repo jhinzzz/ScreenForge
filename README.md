@@ -12,7 +12,7 @@
 
 ScreenForge is an AI-driven UI automation engine that turns natural language into executable test scripts. Unlike record-and-replay tools, you don't perform the actions yourself — the AI does it for you.
 
-![ScreenForge Demo](https://raw.githubusercontent.com/jhinzzz/ScreenForge/main/docs/assets/demo.gif)
+![ScreenForge Live Mirror — the generated pytest grows beside the live page as the agent runs](https://raw.githubusercontent.com/jhinzzz/ScreenForge/main/docs/assets/hero.gif)
 
 ## Why ScreenForge?
 
