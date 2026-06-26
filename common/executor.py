@@ -1253,6 +1253,114 @@ class UIExecutor:
                 return el
         return None
 
+    def _recover_web_ref(self, handler, action, l_value, extra_value, result: dict) -> dict:
+        """Web @N ref that get_actual_element couldn't resolve. Try, in order:
+        a recovered stable locator (re-driven through the action's own handler),
+        then a live coordinate click for `click` only (persisted as a skip, never
+        a rotting coordinate). Always terminal — returns the result dict."""
+        el_data = self.resolve_ref(l_value)
+        # The id→text chain in get_actual_element missed this ref, but the
+        # element dict may still carry name/role/desc/placeholder. Recover
+        # the SAME stable locator we'd emit (build_fallback_locator) as a
+        # LIVE handle and re-drive the action's own handler on it — so an
+        # input stays an input, a hover stays a hover, etc. The handler's
+        # execute() validates the locator resolves (discharges the "locator
+        # points at a different element than the pixel" trap) and its
+        # generate_code() persists that stable locator — never a pixel.
+        fb_element = get_fallback_element(self.d, el_data) if el_data else None
+        if fb_element is not None and build_fallback_locator(el_data):
+            try:
+                if handler.execute(self.d, fb_element, self.platform, extra_value):
+                    # generate_code with u2_key="ref" + the live resolve_ref
+                    # rebuilds the SAME stable fragment build_fallback_locator
+                    # produced (build_code's ref branch calls it) — so the
+                    # persisted locator exactly matches the handle we just
+                    # acted on. Then humanize the [@N] labels to readable.
+                    code_lines = handler.generate_code(
+                        self.platform, "ref", l_value, extra_value,
+                        config.DEFAULT_TIMEOUT, resolve_ref=self.resolve_ref,
+                    )
+                    readable = readable_ref_target(el_data)
+                    if readable and readable != l_value:
+                        code_lines = humanize_step_labels(code_lines, l_value, readable)
+                    result["success"] = True
+                    result["code_lines"] = code_lines
+                    result["action_description"] = (
+                        f"🔁 [Ref] {action} {l_value} via recovered locator"
+                    )
+                    return result
+                log.warning(f"⚠️ [Ref] Recovered locator did not satisfy {action}")
+            except Exception as e:
+                log.warning(f"⚠️ [Ref] Recovered locator failed to act: {e}")
+        # No stable locator. Act LIVE via coordinate ONLY for click (the
+        # sole action a bare coordinate can perform) so a recording session
+        # still advances; persist an honest, non-passing skip rather than a
+        # silently-rotting coordinate. For non-click actions there is
+        # nothing a coordinate can do — report a real engine failure.
+        if action == "click" and el_data and el_data.get("w", 0) > 0:
+            cx = el_data["x"] + el_data["w"] // 2
+            cy = el_data["y"] + el_data["h"] // 2
+            try:
+                self.d.mouse.click(cx, cy)
+                log.info(f"🎯 [Ref] {l_value} clicked at ({cx}, {cy}) live (not persisted)")
+            except Exception as e:
+                log.error(f"❌ [Error] Coordinate click failed: {e}")
+                return result
+            log.warning(
+                f"[E036] Ref {l_value} has no stable locator (only coordinates). "
+                f"Emitting pytest.skip so the test isn't silently green."
+            )
+            code_lines = [
+                f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE)'):\n",
+                "        import pytest\n",
+                f"        # Ref {l_value} could only be located by coordinate at record time;\n",
+                "        # no durable selector exists. Provide one before treating this as real.\n",
+                f"        pytest.skip('Ref {l_value} has no durable locator (coordinate-only at record time)')\n",
+            ]
+            result["success"] = True
+            result["code_lines"] = code_lines
+            result["action_description"] = f"⏭️ [Ref] {l_value} unreplayable — skip emitted"
+            return result
+        log.error(format_log("E037") + f" (ref={l_value}, action='{action}')")
+        result["error_code"] = "E037"
+        return result
+
+    def _try_visual_fallback(self, l_type, l_value, result: dict) -> dict | None:
+        """VLM screenshot-coordinate click recovery (web click only). Returns the
+        result dict on a hit (persisted as a skip — a VLM point has no durable
+        locator), or None to fall through to the standard not-found path."""
+        try:
+            from common.visual_fallback import visual_locate
+            screenshot_bytes = self.d.screenshot()
+            coords = visual_locate(
+                screenshot_bytes,
+                f"{l_type}={l_value}",
+            )
+            if coords:
+                cx, cy = coords
+                log.info(f"👁️ [Visual Fallback] Using VLM coordinates: ({cx}, {cy})")
+                # Click live so the session advances, but the visual
+                # fallback has NO DOM node — only a VLM screenshot hit —
+                # so there is no durable locator to emit. Persist a skip
+                # (with the coordinate kept as a comment hint) rather than
+                # a coordinate that will rot and pass green against the
+                # wrong pixel later.
+                self.d.mouse.click(cx, cy)
+                code_lines = [
+                    f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE: visual)'):\n",
+                    "        import pytest\n",
+                    f"        # Located only via VLM screenshot at ({cx}, {cy}); no DOM locator exists.\n",
+                    f"        # d.mouse.click({cx}, {cy})  # original visual hit, reference only\n",
+                    f"        pytest.skip('Visual-fallback step for [{l_value}] has no durable locator; add a selector to make it replayable')\n",
+                ]
+                result["success"] = True
+                result["code_lines"] = code_lines
+                result["action_description"] = f"⏭️ [Visual Fallback] {l_value} unreplayable — skip emitted"
+                return result
+        except Exception as e:
+            log.warning(f"⚠️ [Visual Fallback] Attempt failed: {e}")
+        return None
+
     def execute_and_record(self, action_data: dict, file_obj=None) -> dict:
         action = action_data.get("action")
         l_type = action_data.get("locator_type", "global")
@@ -1332,106 +1440,14 @@ class UIExecutor:
                 return result
 
             if element is None and u2_key == "ref" and self.platform == "web":
-                el_data = self.resolve_ref(l_value)
-                # The id→text chain in get_actual_element missed this ref, but the
-                # element dict may still carry name/role/desc/placeholder. Recover
-                # the SAME stable locator we'd emit (build_fallback_locator) as a
-                # LIVE handle and re-drive the action's own handler on it — so an
-                # input stays an input, a hover stays a hover, etc. The handler's
-                # execute() validates the locator resolves (discharges the "locator
-                # points at a different element than the pixel" trap) and its
-                # generate_code() persists that stable locator — never a pixel.
-                fb_element = get_fallback_element(self.d, el_data) if el_data else None
-                if fb_element is not None and build_fallback_locator(el_data):
-                    try:
-                        if handler.execute(self.d, fb_element, self.platform, extra_value):
-                            # generate_code with u2_key="ref" + the live resolve_ref
-                            # rebuilds the SAME stable fragment build_fallback_locator
-                            # produced (build_code's ref branch calls it) — so the
-                            # persisted locator exactly matches the handle we just
-                            # acted on. Then humanize the [@N] labels to readable.
-                            code_lines = handler.generate_code(
-                                self.platform, "ref", l_value, extra_value,
-                                config.DEFAULT_TIMEOUT, resolve_ref=self.resolve_ref,
-                            )
-                            readable = readable_ref_target(el_data)
-                            if readable and readable != l_value:
-                                code_lines = humanize_step_labels(code_lines, l_value, readable)
-                            result["success"] = True
-                            result["code_lines"] = code_lines
-                            result["action_description"] = (
-                                f"🔁 [Ref] {action} {l_value} via recovered locator"
-                            )
-                            return result
-                        log.warning(f"⚠️ [Ref] Recovered locator did not satisfy {action}")
-                    except Exception as e:
-                        log.warning(f"⚠️ [Ref] Recovered locator failed to act: {e}")
-                # No stable locator. Act LIVE via coordinate ONLY for click (the
-                # sole action a bare coordinate can perform) so a recording session
-                # still advances; persist an honest, non-passing skip rather than a
-                # silently-rotting coordinate. For non-click actions there is
-                # nothing a coordinate can do — report a real engine failure.
-                if action == "click" and el_data and el_data.get("w", 0) > 0:
-                    cx = el_data["x"] + el_data["w"] // 2
-                    cy = el_data["y"] + el_data["h"] // 2
-                    try:
-                        self.d.mouse.click(cx, cy)
-                        log.info(f"🎯 [Ref] {l_value} clicked at ({cx}, {cy}) live (not persisted)")
-                    except Exception as e:
-                        log.error(f"❌ [Error] Coordinate click failed: {e}")
-                        return result
-                    log.warning(
-                        f"[E036] Ref {l_value} has no stable locator (only coordinates). "
-                        f"Emitting pytest.skip so the test isn't silently green."
-                    )
-                    code_lines = [
-                        f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE)'):\n",
-                        "        import pytest\n",
-                        f"        # Ref {l_value} could only be located by coordinate at record time;\n",
-                        "        # no durable selector exists. Provide one before treating this as real.\n",
-                        f"        pytest.skip('Ref {l_value} has no durable locator (coordinate-only at record time)')\n",
-                    ]
-                    result["success"] = True
-                    result["code_lines"] = code_lines
-                    result["action_description"] = f"⏭️ [Ref] {l_value} unreplayable — skip emitted"
-                    return result
-                log.error(format_log("E037") + f" (ref={l_value}, action='{action}')")
-                result["error_code"] = "E037"
-                return result
+                return self._recover_web_ref(handler, action, l_value, extra_value, result)
 
             # Visual fallback can only CLICK (a VLM returns a point, nothing
             # else) — never engage it for input/hover/assert/etc.
             if element is None and self.platform == "web" and action == "click":
-                try:
-                    from common.visual_fallback import visual_locate
-                    screenshot_bytes = self.d.screenshot()
-                    coords = visual_locate(
-                        screenshot_bytes,
-                        f"{l_type}={l_value}",
-                    )
-                    if coords:
-                        cx, cy = coords
-                        log.info(f"👁️ [Visual Fallback] Using VLM coordinates: ({cx}, {cy})")
-                        # Click live so the session advances, but the visual
-                        # fallback has NO DOM node — only a VLM screenshot hit —
-                        # so there is no durable locator to emit. Persist a skip
-                        # (with the coordinate kept as a comment hint) rather than
-                        # a coordinate that will rot and pass green against the
-                        # wrong pixel later.
-                        self.d.mouse.click(cx, cy)
-                        code_lines = [
-                            f"    with allure.step('Click: [{l_value}] (UNREPLAYABLE: visual)'):\n",
-                            "        import pytest\n",
-                            f"        # Located only via VLM screenshot at ({cx}, {cy}); no DOM locator exists.\n",
-                            f"        # d.mouse.click({cx}, {cy})  # original visual hit, reference only\n",
-                            f"        pytest.skip('Visual-fallback step for [{l_value}] has no durable locator; add a selector to make it replayable')\n",
-                        ]
-                        result["success"] = True
-                        result["code_lines"] = code_lines
-                        result["action_description"] = f"⏭️ [Visual Fallback] {l_value} unreplayable — skip emitted"
-                        return result
-                except Exception as e:
-                    log.warning(f"⚠️ [Visual Fallback] Attempt failed: {e}")
+                recovered = self._try_visual_fallback(l_type, l_value, result)
+                if recovered is not None:
+                    return recovered
 
             if element is None:
                 log.error(format_log("E033"))
