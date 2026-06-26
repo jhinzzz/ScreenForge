@@ -9,6 +9,20 @@ from common.logs import log
 from common.progress import ai_status
 
 
+def _strip_json_fences(text: str) -> str:
+    """Unwrap markdown code fences the model may add despite being told not to.
+
+    Single source for the 3 brain call sites. Once the configured backend
+    supports response_format=json_object this becomes unnecessary (see
+    optimization doc T4.4).
+    """
+    if "```json" in text:
+        return text.split("```json")[1].split("```")[0].strip()
+    if "```" in text:
+        return text.replace("```", "").strip()
+    return text
+
+
 class AIBrain:
     def __init__(self):
         # 实例化文本专属客户端
@@ -262,13 +276,7 @@ class AIBrain:
                     temperature=0.1,
                 )
 
-            result_text = response.choices[0].message.content.strip()
-
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.replace("```", "").strip()
-
+            result_text = _strip_json_fences(response.choices[0].message.content.strip())
             parsed_json = json.loads(result_text)
             return parsed_json.get("result", {})
 

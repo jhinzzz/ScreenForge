@@ -1,7 +1,7 @@
 import json
 
 import config.config as config
-from common.ai import AIBrain
+from common.ai import AIBrain, _strip_json_fences
 from common.logs import log
 from common.progress import ai_status
 
@@ -62,14 +62,10 @@ class AutonomousBrain(AIBrain):
             )
 
         if screenshot_base64:
-            active_client = getattr(self, "vision_client", None) or getattr(
-                self, "text_client", None
-            )
+            active_client = self.vision_client or self.text_client
             active_model = config.VISION_MODEL_NAME
         else:
-            active_client = getattr(self, "text_client", None) or getattr(
-                self, "client", None
-            )
+            active_client = self.text_client
             active_model = config.MODEL_NAME
 
         if not active_client:
@@ -92,13 +88,7 @@ class AutonomousBrain(AIBrain):
                     ],
                     temperature=0.1,
                 )
-            result_text = response.choices[0].message.content.strip()
-
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.replace("```", "").strip()
-
+            result_text = _strip_json_fences(response.choices[0].message.content.strip())
             parsed_json = json.loads(result_text)
             parsed_json.setdefault("current_state_summary", "")
             parsed_json.setdefault("planned_steps", [])
@@ -216,14 +206,10 @@ class AutonomousBrain(AIBrain):
             )
 
         if screenshot_base64:
-            active_client = getattr(self, "vision_client", None) or getattr(
-                self, "text_client", None
-            )  # 兼容配置
+            active_client = self.vision_client or self.text_client  # 兼容配置
             active_model = config.VISION_MODEL_NAME
         else:
-            active_client = getattr(self, "text_client", None) or getattr(
-                self, "client", None
-            )
+            active_client = self.text_client
             active_model = config.MODEL_NAME
 
         if not active_client:
@@ -248,13 +234,7 @@ class AutonomousBrain(AIBrain):
                     temperature=0.1,
                 )
 
-            result_text = response.choices[0].message.content.strip()
-
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.replace("```", "").strip()
-
+            result_text = _strip_json_fences(response.choices[0].message.content.strip())
             parsed_json = json.loads(result_text)
 
             thought = parsed_json.get("thought", "无")
