@@ -265,6 +265,7 @@ class AIBrain:
         """
         封装底层的 LLM 网络调用
         """
+        result_text = ""
         try:
             with ai_status(f"Thinking ({model_name})..."):
                 response = client.chat.completions.create(
@@ -281,5 +282,8 @@ class AIBrain:
             return parsed_json.get("result", {})
 
         except Exception as e:
-            log.error(f"[Error] Model ({model_name}) request or parse failed: {e}")
+            # Log the raw model output (when we got that far) so a parse failure is
+            # distinguishable from a network error instead of a silent empty decision.
+            # Return {} is the caller contract: main.py treats falsy as "retry without cache".
+            log.error(f"[Error] Model ({model_name}) request or parse failed: {e}\nRaw response: {result_text}")
             return {}
