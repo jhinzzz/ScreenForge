@@ -41,25 +41,6 @@ def mock_page():
 
 
 @pytest.fixture
-def mock_openai_client(monkeypatch):
-    """Patch OpenAI client to return configurable responses."""
-    client = MagicMock()
-
-    def make_response(content: str):
-        response = MagicMock()
-        response.choices = [MagicMock()]
-        response.choices[0].message.content = content
-        return response
-
-    client.chat.completions.create = MagicMock(
-        return_value=make_response('{"x": 100, "y": 200}')
-    )
-    client._make_response = make_response
-
-    return client
-
-
-@pytest.fixture
 def sample_ui_elements():
     """Known element list with ref/coordinates."""
     return [

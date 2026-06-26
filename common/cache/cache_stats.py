@@ -48,11 +48,6 @@ class CacheStats:
     def last_cache_date(self) -> Optional[str]:
         return self._last_cache_date
 
-    def increment_query(self) -> None:
-        self._total_queries += 1
-        self._update_last_cache_date()
-        self._save_stats()
-
     def increment_hit(self) -> None:
         self._total_queries += 1
         self._cache_hits += 1

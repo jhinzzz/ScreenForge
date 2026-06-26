@@ -1213,8 +1213,6 @@ class DragHandler(ActionHandler):
 
 
 class UIExecutor:
-    _handlers = {}
-
     def __init__(self, device, platform="android"):
         self.d = device
         self.platform = platform
@@ -1223,33 +1221,28 @@ class UIExecutor:
         # and a follow-up `ref @N` action in the same MCP session share this
         # cache while separate sessions/pages can never leak into each other.
         self._cached_ui_elements: list[dict] = []
-        if not self._handlers:
-            self._handlers = {
-                "click": ClickHandler(),
-                "long_click": LongClickHandler(),
-                "hover": HoverHandler(),
-                "input": InputHandler(),
-                "swipe": SwipeHandler(),
-                "press": PressHandler(),
-                "goto": GotoHandler(),
-                "scroll_into_view": ScrollIntoViewHandler(),
-                "select": SelectHandler(),
-                "upload": UploadHandler(),
-                "double_click": DoubleClickHandler(),
-                "right_click": RightClickHandler(),
-                "drag": DragHandler(),
-                "wait_for": WaitForHandler(),
-                "assert_exist": AssertExistHandler(),
-                "assert_not_exist": AssertNotExistHandler(),
-                "assert_text_equals": AssertTextEqualsHandler(),
-                "assert_text_contains": AssertTextContainsHandler(),
-                "assert_value": AssertValueHandler(),
-                "assert_url": AssertUrlHandler(),
-            }
-
-    @classmethod
-    def register_handler(cls, action_type: str, handler: ActionHandler):
-        cls._handlers[action_type] = handler
+        self._handlers = {
+            "click": ClickHandler(),
+            "long_click": LongClickHandler(),
+            "hover": HoverHandler(),
+            "input": InputHandler(),
+            "swipe": SwipeHandler(),
+            "press": PressHandler(),
+            "goto": GotoHandler(),
+            "scroll_into_view": ScrollIntoViewHandler(),
+            "select": SelectHandler(),
+            "upload": UploadHandler(),
+            "double_click": DoubleClickHandler(),
+            "right_click": RightClickHandler(),
+            "drag": DragHandler(),
+            "wait_for": WaitForHandler(),
+            "assert_exist": AssertExistHandler(),
+            "assert_not_exist": AssertNotExistHandler(),
+            "assert_text_equals": AssertTextEqualsHandler(),
+            "assert_text_contains": AssertTextContainsHandler(),
+            "assert_value": AssertValueHandler(),
+            "assert_url": AssertUrlHandler(),
+        }
 
     def set_ui_elements(self, elements: list[dict]) -> None:
         self._cached_ui_elements = list(elements) if elements else []

@@ -3,12 +3,6 @@
 import base64
 import time
 
-from common.capabilities import (
-    ACTIONS_REQUIRING_EXTRA_VALUE,
-    GLOBAL_ACTIONS,
-    SUPPORTED_ACTIONS,
-)
-
 
 class _LazyProxy:
     def __init__(self, loader):
@@ -62,9 +56,6 @@ load_workflow_file = None
 WorkflowLoadError = None
 parse_workflow_var_overrides = None
 resolve_workflow_definition = None
-SUPPORTED_INLINE_ACTIONS = SUPPORTED_ACTIONS
-GLOBAL_INLINE_ACTIONS = GLOBAL_ACTIONS
-INLINE_ACTIONS_REQUIRING_EXTRA_VALUE = ACTIONS_REQUIRING_EXTRA_VALUE
 
 
 def _slug_to_test_name(label: str) -> str:

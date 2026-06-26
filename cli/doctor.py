@@ -373,10 +373,6 @@ def _build_doctor_summary(checks: list[dict]) -> dict:
     }
 
 
-def _build_doctor_remediation_items(checks: list[dict]) -> list[str]:
-    return _build_doctor_summary(checks).get("top_items", [])
-
-
 def _build_doctor_check_failure_message(check: dict) -> str:
     details = []
 

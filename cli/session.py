@@ -18,10 +18,6 @@ def _session_file(session_id: str) -> str:
     return os.path.join(_SESSION_DIR, f"{session_id}.json")
 
 
-def session_exists(session_id: str) -> bool:
-    return os.path.exists(_session_file(session_id))
-
-
 def load_session(session_id: str) -> dict | None:
     path = _session_file(session_id)
     if not os.path.exists(path):
@@ -125,7 +121,7 @@ def stop_session_recording(session_id: str) -> str:
         pgid = os.getpgid(pid)
         os.killpg(pgid, signal.SIGINT)
         os.waitpid(pid, 0)
-    except (OSError, ChildProcessError):
+    except OSError:
         try:
             os.kill(pid, signal.SIGINT)
             time.sleep(2)

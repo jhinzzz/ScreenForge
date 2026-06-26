@@ -43,15 +43,14 @@ AUTO_HEAL_MIN_CONFIDENCE = float(os.getenv("AUTO_HEAL_MIN_CONFIDENCE", 0.7))
 # ==========================================
 # 5. 自动化测试框架配置
 # ==========================================
-# 使用绝对路径，彻底杜绝不同命令路径下生成文件夹位置错乱的问题
-OUTPUT_SCRIPT_FILE = str(BASE_DIR / "test_cases" / "test_auto_generated.py")
-
 # 全局隐式等待时间，强转为 float 确保安全
 DEFAULT_TIMEOUT = float(os.getenv("DEFAULT_TIMEOUT", 30.0))
 
 # ==========================================
 # 6. App 环境配置
 # ==========================================
+# 用户填入各环境/平台的 App 包名或 URL 后，launch_app 会自动拉起；默认留空=不自动启动。
+# 这是文档化的用户旋钮（见 docs/capability-matrix.md），不是死代码。
 APP_ENV_CONFIG = {
     "dev": {
         "android": "",
@@ -68,7 +67,6 @@ CACHE_ENABLED = str(os.getenv("CACHE_ENABLED", "True")).lower() in ('true', '1',
 CACHE_DIR = str(BASE_DIR / '.cache')
 CACHE_TTL_DAYS = int(os.getenv("CACHE_TTL_DAYS", 7))
 CACHE_MAX_SIZE_MB = int(os.getenv("CACHE_MAX_SIZE_MB", 100))
-CACHE_COMPRESSION = str(os.getenv("CACHE_COMPRESSION", "False")).lower() in ('true', '1', 't', 'yes')
 
 CACHE_SIMILARITY_THRESHOLD = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", "0.90"))
 CACHE_EXACT_MATCH_THRESHOLD = float(os.getenv("CACHE_EXACT_MATCH_THRESHOLD", "0.98"))
