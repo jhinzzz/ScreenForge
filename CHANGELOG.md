@@ -6,6 +6,29 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **Internal cleanup pass — no behavior change.** Removed dead code (unused
+  `session_exists`, the `*_INLINE_ACTIONS` re-export aliases, a dead doctor
+  helper, the unused `register_handler` extension point, the `OUTPUT_SCRIPT_FILE`
+  / `CACHE_COMPRESSION` config keys, and an unused test fixture). Deduped the
+  brain's markdown-fence JSON parsing into one `_strip_json_fences` helper across
+  the three call sites, and deleted the unreachable hand-rolled `.env` fallback
+  parser (`python-dotenv` is a hard dependency). Extracted the two web-only
+  recovery blocks out of `UIExecutor.execute_and_record` (241 → ~150 lines) into
+  named `_recover_web_ref` / `_try_visual_fallback` methods.
+
+### Added
+- **Tests for the cache-key fingerprint** (`compute_ui_hash` /
+  `_extract_semantic_fingerprint` / `compute_instruction_hash`), the previously
+  untested logic whose failure mode is a wrong cache hit replaying the wrong
+  action: determinism, render-order independence, dynamic-data immunity, the
+  volatile-term blocklist, and instruction normalization.
+
+### Fixed
+- `AIBrain._call_llm` now logs the raw model output on a parse failure, so a
+  malformed response is distinguishable from a network error instead of
+  collapsing to a silent empty decision.
+
 ## [0.6.1] - 2026-06-12
 
 ### Docs

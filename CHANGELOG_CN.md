@@ -6,6 +6,24 @@
 
 ## [未发布]
 
+### Changed
+- **内部清理，无行为变更。** 删除死代码（未被调用的 `session_exists`、
+  `*_INLINE_ACTIONS` 重导出别名、一个无用的 doctor 辅助函数、从未使用的
+  `register_handler` 扩展点、`OUTPUT_SCRIPT_FILE` / `CACHE_COMPRESSION` 配置项，
+  以及一个未使用的测试 fixture）。将大模型的 markdown 代码块 JSON 解析在三处调用点
+  收敛为单一的 `_strip_json_fences` 辅助函数，并删除永不可达的手写 `.env` 兜底解析器
+  （`python-dotenv` 是硬依赖）。把 `UIExecutor.execute_and_record` 中两段仅 Web 的
+  恢复逻辑（241 → ~150 行）提取为 `_recover_web_ref` / `_try_visual_fallback` 方法。
+
+### Added
+- **为缓存键指纹补充测试**（`compute_ui_hash` / `_extract_semantic_fingerprint` /
+  `compute_instruction_hash`）——此前未覆盖、且一旦出错会导致「错误缓存命中、回放错误
+  动作」的关键逻辑：确定性、忽略渲染顺序、对动态数据免疫、波动词黑名单、指令归一化。
+
+### Fixed
+- `AIBrain._call_llm` 现在会在解析失败时记录原始模型输出，使格式错误的响应可与网络错误
+  区分，而非静默坍缩为空决策。
+
 ## [0.6.1] - 2026-06-12
 
 ### Docs

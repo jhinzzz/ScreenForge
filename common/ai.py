@@ -10,12 +10,7 @@ from common.progress import ai_status
 
 
 def _strip_json_fences(text: str) -> str:
-    """Unwrap markdown code fences the model may add despite being told not to.
-
-    Single source for the 3 brain call sites. Once the configured backend
-    supports response_format=json_object this becomes unnecessary (see
-    optimization doc T4.4).
-    """
+    """Unwrap markdown code fences the model may add despite being told not to."""
     if "```json" in text:
         return text.split("```json")[1].split("```")[0].strip()
     if "```" in text:
@@ -282,8 +277,6 @@ class AIBrain:
             return parsed_json.get("result", {})
 
         except Exception as e:
-            # Log the raw model output (when we got that far) so a parse failure is
-            # distinguishable from a network error instead of a silent empty decision.
-            # Return {} is the caller contract: main.py treats falsy as "retry without cache".
+            # {} = "retry without cache" per caller contract; log raw text so parse-fail ≠ network-fail.
             log.error(f"[Error] Model ({model_name}) request or parse failed: {e}\nRaw response: {result_text}")
             return {}

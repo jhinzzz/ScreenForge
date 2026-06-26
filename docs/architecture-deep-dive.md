@@ -97,7 +97,7 @@ can't match.**
 The output is only as trustworthy as the engine, so the engine is held to a
 production bar:
 
-- **551 tests** (`pytest tests/`), spanning the cache, the self-heal gates, the MCP
+- **557 tests** (`pytest tests/`), spanning the cache, the self-heal gates, the MCP
   payload builders, and the platform compressors — driven with fakes so the suite
   runs without a browser or a live model.
 - **CI matrix** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) on Python
