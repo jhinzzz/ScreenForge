@@ -2,6 +2,7 @@
 
 import base64
 import io
+import json
 from pathlib import Path
 
 from loguru import logger as log
@@ -34,3 +35,15 @@ def save_screenshot(page, out_dir: Path, step_index: int) -> tuple:
         log.debug(f"[review] thumbnail skip: {e}")
         thumb = ""
     return rel, thumb
+
+
+def write_review_json(recorder, out_dir: Path) -> Path:
+    """把 recorder 的数据写成 out_dir/review.json（数据产物，解锁后续方向）。"""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "review.json"
+    path.write_text(
+        json.dumps(recorder.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return path
