@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ScreenForge 执行回放 Review</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b35; --text:#d6dae0; --dim:#8b94a3; --ember:#ff7849; --blue:#60a5fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:13px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; }
+  header .meta { color:var(--dim); font-size:11px; }
+  .scrub { padding:10px 16px; border-bottom:1px solid var(--line); }
+  .scrub input { width:100%; }
+  main { display:grid; grid-template-columns: 1fr 1fr; gap:0; height:calc(100vh - 120px); }
+  .shot, .side { overflow:auto; padding:12px; }
+  .shot { border-right:1px solid var(--line); position:relative; }
+  .shot img { max-width:100%; border:1px solid var(--line); border-radius:6px; display:block; }
+  .bbox { position:absolute; border:2px solid var(--ember); background:rgba(255,120,73,.10); border-radius:3px; pointer-events:none; }
+  .side h3 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 6px; }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; overflow:auto; margin:0 0 16px; }
+  .tree { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  .tnode { padding:1px 0 1px 0; white-space:nowrap; }
+  .tcls { color:var(--blue); } .tref { color:#a5b4fc; } .ttext { color:var(--text); }
+  .tflag { color:var(--ember); font-size:10px; margin-left:4px; }
+  .steplist { list-style:none; margin:0; padding:0; }
+  .steplist li { padding:5px 8px; border:1px solid var(--line); border-radius:6px; margin-bottom:5px; cursor:pointer; }
+  .steplist li.sel { border-color:var(--ember); background:rgba(255,120,73,.08); }
+  .steplist li.fail { border-color:#ef4444; }
+  .badge { font-size:10px; color:var(--dim); }
+</style>
+</head>
+<body>
+<header>
+  <strong>ScreenForge 执行回放</strong>
+  <span class="meta" id="meta"></span>
+</header>
+<div class="scrub">
+  <input type="range" id="scrub" min="0" max="0" value="0" />
+</div>
+<main>
+  <div class="shot">
+    <img id="shot" alt="step screenshot" />
+    <div class="bbox" id="bbox" style="display:none"></div>
+  </div>
+  <div class="side">
+    <h3>触发代码</h3>
+    <pre><code id="code" class="language-python"></code></pre>
+    <h3>步骤</h3>
+    <ol class="steplist" id="steps"></ol>
+    <h3>DOM 树</h3>
+    <div class="tree" id="tree"></div>
+  </div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script>
+const REVIEW = /*__REVIEW_DATA__*/ null;
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+// 递归渲染 DOM 树（移植自 index.html:3806 renderTree 的嵌套思路，精简版）。
+// 平台诚实降级：ref/bbox 仅当字段存在时渲染（web 有、移动端无）。
+function renderTreeHtml(nodes, depth){
+  if(!nodes || !nodes.length) return '';
+  let out = '';
+  for(const n of nodes){
+    const pad = '&nbsp;'.repeat(depth*2);
+    const ref = n.ref ? `<span class="tref">${esc(n.ref)}</span> ` : '';
+    const label = esc(n.text || n.desc || n.id || '');
+    const flags = (n.disabled?'<span class="tflag">DISABLED</span>':'') + (n.inert?'<span class="tflag">INERT</span>':'');
+    out += `<div class="tnode">${pad}${ref}<span class="tcls">${esc(n.class||'?')}</span> <span class="ttext">${label}</span>${flags}</div>`;
+    out += renderTreeHtml(n.children, depth+1);
+  }
+  return out;
+}
+
+let cur = 0;
+function selectStep(i){
+  const steps = (REVIEW && REVIEW.steps) || [];
+  if(!steps.length) return;
+  cur = Math.max(0, Math.min(i, steps.length-1));
+  const s = steps[cur];
+  document.getElementById('scrub').value = cur;
+  // 截图：优先全分辨相对路径，回退缩略图
+  const img = document.getElementById('shot');
+  img.src = s.screenshot || s.screenshot_thumb_b64 || '';
+  // 代码行
+  const code = document.getElementById('code');
+  code.textContent = s.code_line || '(no source line)';
+  if(window.Prism) Prism.highlightElement(code);
+  // 步骤列表选中态
+  document.querySelectorAll('#steps li').forEach((li,idx)=>li.classList.toggle('sel', idx===cur));
+  // DOM 树
+  const tree = s.dom_tree && s.dom_tree.nodes ? renderTreeHtml(s.dom_tree.nodes, 0) : '<span class="badge">无 DOM 树</span>';
+  document.getElementById('tree').innerHTML = tree;
+  // bbox：仅 web 且目标有坐标时（这里简单不画，hover 增强留后续）
+  document.getElementById('bbox').style.display = 'none';
+}
+
+function boot(){
+  if(!REVIEW){ document.body.innerHTML = '<p style="padding:16px">no review data</p>'; return; }
+  document.getElementById('meta').textContent =
+    `${REVIEW.platform} · ${REVIEW.test_file} · ${(REVIEW.steps||[]).length} 步`;
+  const ol = document.getElementById('steps');
+  (REVIEW.steps||[]).forEach((s,idx)=>{
+    const li = document.createElement('li');
+    li.className = s.success ? '' : 'fail';
+    li.innerHTML = `<strong>#${s.step_index}</strong> ${esc(s.action)} <span class="badge">${esc(s.code_loc||'')}</span>`;
+    li.addEventListener('click', ()=>selectStep(idx));
+    ol.appendChild(li);
+  });
+  const scrub = document.getElementById('scrub');
+  scrub.max = Math.max(0, (REVIEW.steps||[]).length-1);
+  scrub.addEventListener('input', e=>selectStep(parseInt(e.target.value,10)));
+  selectStep(0);
+}
+boot();
+</script>
+</body>
+</html>

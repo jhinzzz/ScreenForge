@@ -47,3 +47,18 @@ def write_review_json(recorder, out_dir: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+_TEMPLATE_PATH = Path(__file__).parent / "report_template.html"
+
+
+def render_html(recorder, out_dir: Path) -> Path:
+    """把 review 数据烘焙进自包含 HTML（替换模板里的 /*__REVIEW_DATA__*/ 占位）。"""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    data_json = json.dumps(recorder.to_dict(), ensure_ascii=False)
+    html = template.replace("/*__REVIEW_DATA__*/ null", data_json, 1)
+    path = out / "report.html"
+    path.write_text(html, encoding="utf-8")
+    return path
