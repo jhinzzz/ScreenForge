@@ -64,13 +64,15 @@ class ReviewRecorder:
         self.created_at: float = 0.0
         self.video: Optional[str] = None
         self.records: list[StepRecord] = []
+        self.out_dir: str = ""   # 报告输出目录（截图落这里的 screenshots/ 子目录）
 
     def start_run(self, run_id: str, platform: str, test_file: str,
-                  created_at: float = 0.0) -> None:
+                  created_at: float = 0.0, out_dir: str = "") -> None:
         self.run_id = run_id
         self.platform = platform
         self.test_file = test_file
         self.created_at = created_at
+        self.out_dir = out_dir
 
     def add(self, record: StepRecord) -> None:
         self.records.append(record)

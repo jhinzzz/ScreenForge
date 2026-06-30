@@ -46,9 +46,13 @@ def _resolve_page(receiver):
 
 
 def _persist_screenshot(page, step_index: int) -> tuple:
-    """抓全分辨 PNG → 返回 (相对路径, 缩略图b64)。在 Task 6 接真实现；
-    此处给一个 import-safe 的占位，单测会 monkeypatch 它。"""
-    return "", ""
+    from pathlib import Path
+
+    from review.render import save_screenshot
+    out_dir = getattr(get_recorder(), "out_dir", None)
+    if not out_dir:
+        return "", ""
+    return save_screenshot(page, Path(out_dir), step_index)
 
 
 def _record_after(receiver, method_name: str, exc, *, action: str) -> None:
