@@ -7,7 +7,7 @@ pytest_sessionfinish 读 to_dict() 渲染报告。本模块零浏览器依赖、
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class StepRecord(BaseModel):
