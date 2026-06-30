@@ -156,6 +156,15 @@
 
 > `agent_cli.py` 是 6 行 shim，所有逻辑实现在 `cli/` 包内。
 
+## pytest 执行回放（2026-06）
+
+`REVIEW_RECORD=1` pytest 模式在 `report/reviews/<run_id>/` 产出自包含、可离线查看的回放报告：`report.html`（可拖拽时间轴）、`review.json`（数据产物）、`video.gif`（仅 Web 胶片）。
+
+- **采集**：类级 monkeypatch（非代理对象，保留真实适配器 API）拦截非断言操作（断言不入轴，便于聚焦）。默认关、零回归。
+- **平台支持**：Web 已实现并验证；移动端（Android/iOS）注册表与录像 seam 就位但**本版未验证**；iOS DOM 树暂不支持（WDA XML 谓词不同于 Android，`dom_capture.py:82-113` 暂未补）。
+- **产物**：每份 review 包含逐步截图 + 测试源代码行 + DOM 树（Web 带 `@N` ref + bbox；移动端诚实降级为分层 XML，无 ref/bbox）。Web 通过 `review/render.py make_filmstrip` 生成胶片 `video.gif`（逐操作 ffmpeg，独立于录像 seam）。
+- **后续门（`review.json` 前向兼容字段）**：`type`（步骤分类：action/assertion/setup）、`timestamp`（绝对 ms）；字段名复用 `PlaygroundStepEvent` 便于下游一致（自愈可视化、回归对比）。
+
 ## 已落地动作类型
 
 | 动作 | Android | iOS | Web | 说明 |
