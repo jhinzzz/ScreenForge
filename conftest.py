@@ -1,6 +1,8 @@
 import base64
 import io
 import os
+import uuid as _uuid
+from datetime import datetime
 from pathlib import Path
 
 import allure
@@ -11,6 +13,16 @@ from common.ai_heal import HealerBrain, HealResult
 from common.logs import log
 from utils.utils_web import compress_web_dom
 from utils.utils_xml import compress_android_xml
+
+
+def _review_enabled() -> bool:
+    return str(os.getenv("REVIEW_RECORD", "")).lower() in ("1", "true", "t", "yes")
+
+
+def _new_review_run_id() -> str:
+    # mirror run_reporter.py:198 的命名
+    return f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(_uuid.uuid4())[:8]}"
+
 
 _failure_tracker = {}
 _LIVE_PLATFORM_DIRS = {"android", "ios", "web"}
@@ -232,6 +244,29 @@ def d():
     log.info(f"🏁 [Pytest Teardown] {platform} test environment cleaned up")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _review_capture():
+    """REVIEW_RECORD=1 时安装类级捕获，session 结束卸载。默认零成本。"""
+    if not _review_enabled():
+        yield
+        return
+    from review.patching import install_capture, uninstall_capture
+    from review.recorder import get_recorder, reset_recorder
+
+    platform = os.getenv("TEST_PLATFORM", "web").lower()
+    run_id = _new_review_run_id()
+    out_dir = str(Path(config.RUN_REPORT_BASE_DIR).parent / "reviews" / run_id)
+    reset_recorder()
+    get_recorder().start_run(run_id=run_id, platform=platform,
+                             test_file="", out_dir=out_dir)
+    install_capture(platform)
+    log.info(f"📹 [review] recording enabled → {out_dir}")
+    try:
+        yield
+    finally:
+        uninstall_capture()
+
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
@@ -261,3 +296,25 @@ def pytest_runtest_makereport(item, call):
             and config.AUTO_HEAL_ENABLED
         ):
             _trigger_self_healing(device, platform_name, item, call, img_bytes)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """session 结束：把内存里的 review 数据渲染成 json + html + 胶片。"""
+    if not _review_enabled():
+        return
+    try:
+        from pathlib import Path as _Path
+
+        from review.recorder import get_recorder
+        from review.render import make_filmstrip, render_html, write_review_json
+        recorder = get_recorder()
+        if not recorder.records:
+            log.info("[review] no steps recorded; skip report")
+            return
+        out = _Path(recorder.out_dir)
+        recorder.video = make_filmstrip(out)   # 先拼胶片，回填 video 字段
+        write_review_json(recorder, out)
+        html = render_html(recorder, out)
+        log.info(f"📊 [review] report ready: {html}")
+    except Exception as e:
+        log.warning(f"[review] report render skipped: {e}")
