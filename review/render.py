@@ -57,7 +57,9 @@ def render_html(recorder, out_dir: Path) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-    data_json = json.dumps(recorder.to_dict(), ensure_ascii=False)
+    # 转义 "</"：DOM 文本里若含 </script> 会提前关闭 <script> 块、整页白屏。
+    # json.dumps 默认不转义斜杠，故此处补一刀（script-tag 内联 JSON 的标准缓解）。
+    data_json = json.dumps(recorder.to_dict(), ensure_ascii=False).replace("</", "<\\/")
     html = template.replace("/*__REVIEW_DATA__*/ null", data_json, 1)
     path = out / "report.html"
     path.write_text(html, encoding="utf-8")
