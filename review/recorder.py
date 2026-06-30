@@ -5,9 +5,34 @@ pytest_sessionfinish 读 to_dict() 渲染报告。本模块零浏览器依赖、
 字段名复用 PlaygroundStepEvent（cli/playground_sink.py:32-46）以留 viewer 收敛门。
 """
 
+import inspect
+import linecache
+import os
 from typing import Optional
 
 from pydantic import BaseModel
+
+# 框架/本层帧的 basename 特征：定位测试行时跳过它们。
+_FRAME_SKIP_DEFAULT = ("recorder.py", "patching.py", "_pytest", "allure", "site-packages")
+
+
+def locate_test_frame(skip_files: tuple[str, ...] = ()) -> tuple[str, str]:
+    """上溯调用栈，返回第一个测试帧的 (code_loc, code_line)，定位不到则 ("", "")。
+
+    判定测试帧：basename 以 'test_' 开头，且不在 skip 名单里。按文件名特征过滤
+    （而非固定栈深偏移），以容忍 allure.step 等上下文管理器插入的额外帧。
+    """
+    skip = tuple(skip_files) + _FRAME_SKIP_DEFAULT
+    for frame_info in inspect.stack():
+        filename = frame_info.filename
+        base = os.path.basename(filename)
+        if any(s in filename or s == base for s in skip):
+            continue
+        if base.startswith("test_"):
+            lineno = frame_info.lineno
+            src = linecache.getline(filename, lineno).strip()
+            return f"{base}:{lineno}", src
+    return "", ""
 
 
 class StepRecord(BaseModel):
