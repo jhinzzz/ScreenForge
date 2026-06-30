@@ -2,7 +2,6 @@
 
 import base64
 import io
-from pathlib import Path
 
 from PIL import Image
 

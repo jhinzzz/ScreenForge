@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from review.recorder import ReviewRecorder, StepRecord
 from review.render import write_review_json
