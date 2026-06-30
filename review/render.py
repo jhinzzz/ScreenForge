@@ -3,6 +3,8 @@
 import base64
 import io
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 from loguru import logger as log
@@ -64,3 +66,30 @@ def render_html(recorder, out_dir: Path) -> Path:
     path = out / "report.html"
     path.write_text(html, encoding="utf-8")
     return path
+
+
+def make_filmstrip(out_dir: Path, fps: float = 1.5) -> str | None:
+    """把 screenshots/*.png 拼成 video.gif（web 胶片）。无图/无 ffmpeg → None。"""
+    out = Path(out_dir)
+    shots = sorted((out / "screenshots").glob("step_*.png"))
+    if not shots:
+        return None
+    if not shutil.which("ffmpeg"):
+        log.warning("[review] ffmpeg not found; skipping filmstrip")
+        return None
+    gif = out / "video.gif"
+    cmd = [
+        "ffmpeg", "-y", "-framerate", str(fps),
+        "-pattern_type", "glob", "-i", str(out / "screenshots" / "step_*.png"),
+        "-vf", "scale=900:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse",
+        str(gif),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True)
+        if result.returncode != 0 or not gif.exists():
+            log.warning("[review] ffmpeg filmstrip failed")
+            return None
+    except Exception as e:
+        log.warning(f"[review] ffmpeg error: {e}")
+        return None
+    return "video.gif"
