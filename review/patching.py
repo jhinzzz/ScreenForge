@@ -73,7 +73,7 @@ def _record_after(receiver, method_name: str, exc, *, action: str) -> None:
             step_index=idx,
             timestamp=time.time(),
             action=action,
-            action_description=f"{action}",
+            action_description=action,
             code_line=code_line,
             code_loc=code_loc,
             success=exc is None,
@@ -99,8 +99,8 @@ def _wrap(cls, method_name: str):
         _record_after(self, method_name, None, action=method_name)
         return result
 
-    _ORIGINALS.append((cls, method_name, original))
     setattr(cls, method_name, wrapper)
+    _ORIGINALS.append((cls, method_name, original))   # 仅在 setattr 成功后登记，避免幻影还原项
 
 
 def install_capture(platform: str) -> None:
