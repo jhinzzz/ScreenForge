@@ -26,7 +26,9 @@ def locate_test_frame(skip_files: tuple[str, ...] = ()) -> tuple[str, str]:
     for frame_info in inspect.stack():
         filename = frame_info.filename
         base = os.path.basename(filename)
-        if any(s in filename or s == base for s in skip):
+        # 锚定 "/token" 而非裸子串：否则 skip 项 "recorder.py" 会误命中
+        # 合法测试文件 test_recorder.py。"/{s}" 命中路径组件，s == base 兜底裸 basename。
+        if any(f"/{s}" in filename or s == base for s in skip):
             continue
         if base.startswith("test_"):
             lineno = frame_info.lineno

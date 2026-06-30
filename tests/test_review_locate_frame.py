@@ -23,8 +23,10 @@ def test_skips_wrapper_frames_via_skip_files():
     assert code_loc == "" and code_line == ""
 
 
-def test_returns_empty_when_no_test_frame(monkeypatch):
-    # 不在任何 test_ 文件里调用时（理论上极少），优雅返回空而不抛。
-    import review.recorder as rec
-    # 直接验证契约：skip 掉当前文件即无 test_ 帧可用。
-    assert rec.locate_test_frame(skip_files=("test_review_locate_frame.py",)) == ("", "")
+def test_skip_token_anchored_not_bare_substring():
+    # 回归：skip 项按 "/token" 路径组件锚定匹配，不是裸子串匹配。
+    # "frame.py" 只是本文件 basename(test_review_locate_frame.py) 的部分子串、
+    # 非路径组件、非完整 basename → 不应误跳本帧（裸子串匹配会误跳，返回空）。
+    code_loc, code_line = locate_test_frame(skip_files=("frame.py",))
+    assert code_loc.startswith("test_review_locate_frame.py:")
+    assert "locate_test_frame(skip_files=" in code_line
