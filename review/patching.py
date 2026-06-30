@@ -4,6 +4,9 @@
 代理对象会让 conftest.py:252 的 `__class__.__name__ == "Page"` 判定失败 → 平台误判
 → self-heal 崩在 dump_hierarchy()。类级 patch 保留真 Page，isinstance/类名都正常，
 且链式调用 d.locator(x).first.click() 的 .click 天然命中 Locator.click 补丁。
+
+平台通用 seam 见下方 PLATFORM_PATCH_TABLE：web 填真值并实现；android/ios 留文档化
+stub（接口就位、本次不验证 —— 见 spec §8 与 docs/capability-matrix.md 的 review 小节）。
 """
 
 import functools
