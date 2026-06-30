@@ -80,7 +80,8 @@ def _record_after(receiver, method_name: str, exc, *, action: str) -> None:
             step_index=idx,
             timestamp=time.time(),
             action=action,
-            action_description=action,
+            # action_description 留空（默认 ""）：捕获层只知方法名，无更丰富描述时
+            # 不写冗余副本 —— 诚实空值，viewer 据此隐藏该行（report_template.html:407）。
             code_line=code_line,
             code_loc=code_loc,
             success=exc is None,
@@ -112,6 +113,8 @@ def _wrap(cls, method_name: str):
 
 def install_capture(platform: str) -> None:
     """按平台安装类级 patch。web 表惰性构建（避免无浏览器环境 import 失败）。"""
+    # web 表按进程缓存（键是不变的 Playwright 类，跨 session 复用安全）；
+    # 防重复 wrap 的真正护栏是 _ORIGINALS（每个 (cls,method) 仅 wrap 一次）。
     if platform == "web" and "web" not in PLATFORM_PATCH_TABLE:
         try:
             PLATFORM_PATCH_TABLE["web"] = _build_web_table()

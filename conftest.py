@@ -267,10 +267,36 @@ def _review_capture():
         uninstall_capture()
 
 
+def pytest_runtest_setup(item):
+    """每个用例开始前，把 nodeid 交给 recorder，使其后的 step 归属到本用例。"""
+    if not _review_enabled():
+        return
+    from review.recorder import get_recorder
+    get_recorder().current_test = item.nodeid
+
+
+def pytest_runtest_teardown(item):
+    """用例结束即清空归属，避免 session fixture 拆解期的操作误挂到上个用例。"""
+    if not _review_enabled():
+        return
+    from review.recorder import get_recorder
+    get_recorder().current_test = ""
+
+
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
+
+    # review：登记权威判定（setup/call 任一失败即 failed；skip 单列）。
+    if _review_enabled() and report.when in ("setup", "call"):
+        from review.recorder import get_recorder
+        verdict = "failed" if report.failed else ("skipped" if report.skipped else "passed")
+        err = None
+        if report.failed and report.longrepr is not None:
+            err = str(report.longrepr).strip().splitlines()[-1][:300]
+        get_recorder().record_case_result(
+            item.nodeid, verdict, getattr(report, "duration", 0.0), err)
 
     if report.when == "call" and report.failed:
         nodeid = item.nodeid

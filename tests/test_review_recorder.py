@@ -41,9 +41,20 @@ def test_to_dict_shape():
     assert d["created_at"] == 1751253600.0
     assert d["test_file"] == "t.py"
     assert d["video"] is None
+    assert d["cases"] == []          # 无归属信息 → 空，viewer 退化为单条时间轴
     assert len(d["steps"]) == 1
     assert d["steps"][0]["code_loc"] == "t.py:18"
     assert d["steps"][0]["screenshot"] == "screenshots/step_001.png"
+
+
+def test_to_dict_excludes_thumbs_when_asked():
+    # review.json 数据产物路径剔除 base64 缩略图；HTML 路径保留。
+    rec = ReviewRecorder()
+    rec.start_run(run_id="r1", platform="web", test_file="t.py")
+    rec.add(StepRecord(step_index=1, action="click",
+                       screenshot_thumb_b64="data:image/jpeg;base64,AAAA"))
+    assert "screenshot_thumb_b64" in rec.to_dict()["steps"][0]
+    assert "screenshot_thumb_b64" not in rec.to_dict(include_thumbs=False)["steps"][0]
 
 
 def test_module_singleton_reset():

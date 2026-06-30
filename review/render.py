@@ -45,7 +45,7 @@ def write_review_json(recorder, out_dir: Path) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     path = out / "review.json"
     path.write_text(
-        json.dumps(recorder.to_dict(), ensure_ascii=False, indent=2),
+        json.dumps(recorder.to_dict(include_thumbs=False), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return path

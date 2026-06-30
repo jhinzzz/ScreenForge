@@ -243,6 +243,8 @@ _WEB_TREE_JS = r"""
   }
 
   const nodes = walkForest(document.documentElement, 0, 0, 0, false);
-  return { nodes };
+  // 坐标系标尺：节点 x/y/w/h 是 CSS 像素，截图是物理像素（Retina DPR≠1）。
+  // 存 CSS 视口宽高，viewer 据此把坐标换算成百分比，免去 DPR 猜测。
+  return { nodes, vw: window.innerWidth, vh: window.innerHeight, dpr: window.devicePixelRatio || 1 };
 }
 """
