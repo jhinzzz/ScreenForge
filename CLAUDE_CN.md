@@ -131,6 +131,13 @@ docs/                     # Agent integration guide and capability matrix
 - Do not commit `.env` files; use `.env_template` as the reference.
 - `conftest.py` at project root handles cross-platform fixture dispatch and attaches video/screenshot artifacts to Allure reports.
 
+## 提交前检查清单（无需提醒，主动执行）
+
+每次 commit 或开 PR 前，务必跑这两项检查 —— 不要等用户提醒：
+
+1. **提交里不得含过程产物。** 永不暂存/提交工作文档：`docs/superpowers/**`（plans/specs）、`docs/optimization-*.md`、`specs/`、`report/`、生成的 `test_cases/<platform>/`、`.omc/`、`*demo*` 产物。这些已被 `.gitignore`；每次提交前确认 `git status` / `git diff --cached --name-only` 不含它们。若某个文件历史上已被误跟踪，作为本次改动的一部分 `git rm --cached` 掉。
+2. **行为变更必须同步对外文档。** 任何用户可见的功能/开关/CLI 变更，必须在同一个 PR 里更新：`README.md` **和** `README_CN.md`（EN 正典、CN 镜像），以及 `CHANGELOG.md` **和** `CHANGELOG_CN.md` 的 `## [Unreleased]`。不许静默发布功能。
+
 ## 第一性原则
 
 从需求和问题本质出发，不从惯例或模板出发。

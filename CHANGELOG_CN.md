@@ -16,6 +16,14 @@
   恢复逻辑（241 → ~150 行）提取为 `_recover_web_ref` / `_try_visual_fallback` 方法。
 
 ### Added
+- **pytest 执行回放报告** (`REVIEW_RECORD=1`) —— 自包含、可分享的离线 `report.html`：
+  可拖拽时间轴、逐步截图 + 测试源代码行 + DOM 树（Web 带 `@N` ref / bbox 字段；移动端诚实降级为分层 XML）。
+  外加 `review.json` 数据产物（携带 `type`/`timestamp` 前向兼容门、字段名复用 `PlaygroundStepEvent` 便于下游自愈/回归用）。
+  采集通过类级 monkeypatch（非代理、保留真实适配器 API）拦截非断言操作（断言不入轴以便聚焦）。
+  默认关、零回归。Web：已实现并验证。移动端（Android/iOS）：注册表与录像 seam 就位但本版未验证。
+  iOS DOM 树暂不支持（WDA XML 谓词不同；后续补）。Web 通过 `review/render.py make_filmstrip`
+  生成胶片 `video.gif`（逐操作 ffmpeg，独立于录像 seam；web 的 `start_record`/`stop_record_and_get_path` 作 no-op 返回 ""）。
+
 - **为缓存键指纹补充测试**（`compute_ui_hash` / `_extract_semantic_fingerprint` /
   `compute_instruction_hash`）——此前未覆盖、且一旦出错会导致「错误缓存命中、回放错误
   动作」的关键逻辑：确定性、忽略渲染顺序、对动态数据免疫、波动词黑名单、指令归一化。

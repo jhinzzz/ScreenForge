@@ -94,6 +94,7 @@ screenforge inspect
 - **MCP Server**：任何 MCP 兼容的 Agent 可原生驱动 ScreenForge
 - **结构化输出**：JSON Lines 事件流 + `report/runs/<id>/` 产物，便于 CI 集成
 - **实时镜像台（Live Mirror）**：一边跑用例，一边在浏览器里看生成的 pytest 代码逐行长出 + 实时截图 —— `screenforge --playground`。见 [实时镜像台指南](docs/playground-guide_CN.md)
+- **执行回放 Review 报告**：任意用例加 `REVIEW_RECORD=1` 跑，即产出自包含、可分享的离线 `report.html` —— 可拖动时间轴逐步看「操作截图 + 触发它的测试源码行 + DOM 树」，外加 `video.gif` 胶片。默认关、零开销。（Web 已验证；移动端注册表/录像 seam 就位但未验证。）
 
 ## Agent 集成 (Claude Code / Cursor / Codex)
 

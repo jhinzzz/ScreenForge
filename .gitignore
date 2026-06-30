@@ -39,5 +39,7 @@ test_cases/__pycache__/
 test_cases/test_auto_generated*.py
 report/
 specs/
+docs/superpowers/
+docs/optimization-*.md
 memory/*.json
 .omc/

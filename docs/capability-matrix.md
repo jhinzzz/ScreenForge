@@ -156,6 +156,15 @@ A read-only, live, hierarchical panel showing the **filtered element set the AI 
 
 > `agent_cli.py` is a 6-line shim; all logic is implemented inside the `cli/` package.
 
+## Pytest Execution Review (2026-06)
+
+`REVIEW_RECORD=1` pytest mode produces self-contained offline reports under `report/reviews/<run_id>/`: `report.html` (interactive drag-timeline), `review.json` (data artifact), and `video.gif` (Web filmstrip only).
+
+- **Capture**: Class-level monkeypatch (non-proxy objects preserve the real adapter API) intercepts non-assertion operations (assertions excluded from timeline for clarity). Default off, zero regression.
+- **Platform support**: Web fully implemented + verified. Mobile (Android/iOS) registry + recording seam in place but **unverified** this round. iOS DOM tree unsupported (WDA XML predicates differ from Android; `dom_capture.py:82-113` remains incomplete).
+- **Payload**: Each review includes step-by-step screenshots + test source-code lines + DOM tree (`web` has `@N` ref + bbox; mobile degrades to hierarchical XML, no ref/bbox). Web generates a filmstrip `video.gif` via `review/render.py make_filmstrip` (per-operation ffmpeg, independent of the recording seam).
+- **Future gates** (`review.json` forward-compat fields): `type` (step classification: action/assertion/setup), `timestamp` (absolute ms); field names copy `PlaygroundStepEvent` for downstream consistency (self-heal visualization, regression comparison).
+
 ## Shipped Action Types
 
 | Action | Android | iOS | Web | Notes |

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ScreenForge 执行回放 Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0a0b0d; --bg-2:#0e1014;
+    --ink:#ECE7DD; --ink-2:#9CA0A8; --ink-3:#5C616B;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
+    --signal:#FFB84D; --signal-soft:rgba(255,184,77,.13); --signal-line:rgba(255,184,77,.45);
+    --pass:#7DDFB0; --fail:#FF6B6B; --skip:#C9A24B; --cool:#6E7B8F;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --disp:"Bricolage Grotesque","Bricolage Grotesque Fallback",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.5;
+    background:var(--bg);
+    background-image:
+      radial-gradient(1200px 700px at 30% -10%, rgba(255,184,77,.07), transparent 60%),
+      radial-gradient(1000px 800px at 110% 120%, rgba(60,80,110,.10), transparent 55%),
+      linear-gradient(180deg,var(--bg),var(--bg-2));
+    display:grid; grid-template-rows:auto 1fr auto auto; height:100vh; overflow:hidden;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+    background-image:
+      linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:46px 46px; mask-image:radial-gradient(circle at 50% 40%,#000,transparent 85%);
+  }
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.05;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  body>*{position:relative; z-index:1;}
+
+  /* ── Masthead ─────────────────────────────────────────── */
+  .masthead{
+    display:flex; align-items:center; gap:22px; padding:14px 22px;
+    border-bottom:1px solid var(--line-2);
+    background:linear-gradient(180deg,rgba(255,255,255,.025),transparent);
+  }
+  .brand{display:flex; align-items:baseline; gap:12px;}
+  .rec{width:9px; height:9px; border-radius:50%; background:var(--fail); align-self:center;
+       box-shadow:0 0 0 0 rgba(255,107,107,.6); animation:pulse 2.2s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,107,107,.55);}70%{box-shadow:0 0 0 7px rgba(255,107,107,0);}100%{box-shadow:0 0 0 0 rgba(255,107,107,0);}}
+  .brand h1{font-family:var(--disp); font-weight:800; font-size:21px; letter-spacing:-.02em; margin:0;}
+  .brand .sub{font-size:10px; letter-spacing:.28em; color:var(--ink-3); text-transform:uppercase;}
+  .eq{display:flex; align-items:flex-end; gap:2px; height:16px; margin-left:2px;}
+  .eq i{width:2px; background:var(--signal); opacity:.8; animation:eq 1.1s ease-in-out infinite;}
+  .eq i:nth-child(1){animation-delay:0s} .eq i:nth-child(2){animation-delay:.18s}
+  .eq i:nth-child(3){animation-delay:.36s} .eq i:nth-child(4){animation-delay:.1s}
+  @keyframes eq{0%,100%{height:3px}50%{height:15px}}
+  .run-meta{margin-left:auto; display:flex; gap:18px; color:var(--ink-2); font-size:11.5px; flex-wrap:wrap;}
+  .run-meta b{color:var(--ink); font-weight:500;}
+  .run-meta .k{color:var(--ink-3); text-transform:uppercase; letter-spacing:.1em; font-size:9.5px; display:block;}
+  /* session tally + verdict */
+  .tally{display:flex; align-items:center; gap:10px; font-size:11px; color:var(--ink-2);}
+  .tally .seg{display:flex; align-items:center; gap:5px;}
+  .tally .swatch{width:8px; height:8px; border-radius:2px;}
+  .status{font-family:var(--disp); font-weight:800; font-size:12px; letter-spacing:.14em;
+          padding:7px 14px; border-radius:999px; text-transform:uppercase; white-space:nowrap;}
+  .status.pass{color:var(--pass); border:1px solid rgba(125,223,176,.4); background:rgba(125,223,176,.08);}
+  .status.fail{color:var(--fail); border:1px solid rgba(255,107,107,.45); background:rgba(255,107,107,.1);}
+
+  /* ── Deck (stage + inspector) ─────────────────────────── */
+  .deck{display:grid; grid-template-columns:1fr 372px; min-height:0;}
+  .stage-wrap{display:grid; place-items:center; padding:26px; min-height:0; overflow:auto;}
+  .stage{position:relative; display:inline-block; max-width:100%; border-radius:12px;
+         background:#000; padding:10px;
+         border:1px solid var(--line-2);
+         box-shadow:0 40px 90px -30px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.03), inset 0 0 120px rgba(0,0,0,.5);}
+  /* canvas 紧贴截图：bbox 的百分比坐标据此映射，避免 stage padding 造成的偏移/缩放错位 */
+  .canvas{position:relative; display:block; line-height:0;}
+  .canvas img{display:block; max-width:100%; max-height:calc(100vh - 340px); border-radius:5px;
+             transition:opacity .28s ease; opacity:1;}
+  .canvas img.swap{opacity:0;}
+  .frame-no{position:absolute; right:18px; bottom:14px; font-family:var(--disp); font-weight:800;
+            font-size:46px; line-height:1; color:rgba(255,255,255,.10); letter-spacing:-.04em; pointer-events:none;}
+  /* outline-offset：框画在元素矩形外 4px 处，框住元素（含其原生 focus ring）而非压在上面。
+     用 outline 而非 border，不改变盒尺寸，百分比坐标仍精确贴合元素 rect。 */
+  .bbox{position:absolute; outline:2px solid var(--signal); outline-offset:4px; border-radius:3px;
+        box-shadow:0 0 22px var(--signal-soft); background:transparent;
+        pointer-events:none; display:none; animation:reticle .35s cubic-bezier(.2,.8,.2,1);}
+  .bbox::before,.bbox::after{content:""; position:absolute; width:9px; height:9px; border:2px solid var(--signal);}
+  .bbox::before{top:-7px; left:-7px; border-right:0; border-bottom:0;}
+  .bbox::after{bottom:-7px; right:-7px; border-left:0; border-top:0;}
+  @keyframes reticle{from{opacity:0; transform:scale(1.06);}to{opacity:1; transform:scale(1);}}
+  .bbox.fail{outline-color:var(--fail); background:rgba(255,107,107,.08);
+             box-shadow:0 0 26px rgba(255,107,107,.45);}
+  .bbox.fail::before,.bbox.fail::after{border-color:var(--fail);}
+  /* empty-stage state: a case that failed before any UI op was captured */
+  .stage-empty{display:grid; place-items:center; padding:60px 30px; text-align:center;
+               max-width:560px; border-radius:12px; border:1px dashed var(--line-2); background:rgba(255,107,107,.04);}
+  .stage-empty .big{font-family:var(--disp); font-weight:800; font-size:22px; color:var(--fail); margin-bottom:8px;}
+  .stage-empty .msg{color:var(--ink-2); font-size:12px; word-break:break-word;}
+
+  .inspector{border-left:1px solid var(--line-2); padding:20px 18px; overflow:auto;
+             background:linear-gradient(180deg,rgba(255,255,255,.018),transparent);
+             display:flex; flex-direction:column; gap:20px; min-height:0;}
+  .insp-action .verb{font-family:var(--disp); font-weight:800; font-size:30px; letter-spacing:-.02em; line-height:1;}
+  .insp-action .verb .dot{display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:10px; vertical-align:middle;}
+  .insp-action .desc{color:var(--ink-2); margin-top:6px; font-size:12px;}
+  .insp-action .loc{display:inline-block; margin-top:10px; font-size:10.5px; color:var(--ink-2);
+                    border:1px solid var(--line-2); padding:3px 8px; border-radius:6px;}
+  .insp-action .err{margin-top:10px; font-size:11px; color:var(--fail); border:1px solid rgba(255,107,107,.4);
+                    background:rgba(255,107,107,.08); padding:6px 9px; border-radius:7px; word-break:break-word;}
+  .insp-h{font-size:9.5px; letter-spacing:.22em; color:var(--ink-3); text-transform:uppercase; margin-bottom:8px;}
+  .code{margin:0; padding:12px 13px; border-radius:9px; background:rgba(0,0,0,.34);
+        border:1px solid var(--line); overflow:auto; font-size:12px;}
+  .code code{font-family:var(--mono); color:var(--ink); white-space:pre-wrap; word-break:break-word;}
+  .c-str{color:var(--pass);} .c-fn{color:var(--signal);} .c-num{color:#E69BB0;}
+  .tree-block{flex:1; min-height:0; display:flex; flex-direction:column;}
+  .tree{flex:1; overflow:auto; font-family:var(--mono); font-size:12px; line-height:1.85;
+        border:1px solid var(--line); border-radius:9px; padding:8px 6px; background:rgba(0,0,0,.22);}
+  .tnode{display:flex; align-items:center; gap:6px; padding:1px 8px; border-radius:5px; cursor:pointer; white-space:nowrap;}
+  .tnode:hover{background:var(--signal-soft);}
+  .tnode.hot{background:var(--signal-soft); outline:1px solid var(--signal-line);}
+  .tguide{color:var(--ink-3); opacity:.5; white-space:pre;}
+  .tref{color:var(--signal); font-weight:500;}
+  .tcls{color:#8FC7E8;}
+  .ttext{color:var(--ink);}
+  .tflag{color:var(--fail); font-size:9px; letter-spacing:.06em; border:1px solid currentColor; padding:0 4px; border-radius:4px;}
+  .tclick{width:5px; height:5px; border-radius:50%; background:var(--pass); opacity:.8; flex:none;}
+  .empty{color:var(--ink-3); padding:6px 8px;}
+
+  /* ── Transport ───────────────────────────────────────── */
+  .transport{display:flex; align-items:center; gap:18px; padding:11px 22px;
+             border-top:1px solid var(--line-2); background:rgba(0,0,0,.25);}
+  .tp-controls{display:flex; gap:8px;}
+  .tp-btn{font-family:var(--mono); width:34px; height:34px; border-radius:8px; cursor:pointer;
+          background:rgba(255,255,255,.04); color:var(--ink); border:1px solid var(--line-2);
+          font-size:15px; display:grid; place-items:center; transition:.15s;}
+  .tp-btn:hover{border-color:var(--signal-line); color:var(--signal);}
+  .tp-btn.play{background:var(--signal); color:#1a1206; border-color:var(--signal); font-size:13px; width:40px;}
+  .tp-btn.play:hover{filter:brightness(1.08);}
+  .tp-now{font-size:11.5px; color:var(--ink-2); display:flex; align-items:center; gap:8px; min-width:0;}
+  .tp-now .nm{color:var(--ink); font-weight:500; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .tp-now .vd{font-size:9px; font-weight:700; letter-spacing:.1em; padding:1px 6px; border-radius:5px; text-transform:uppercase;}
+  .tp-now .vd.passed{color:var(--pass); background:rgba(125,223,176,.12);}
+  .tp-now .vd.failed{color:var(--fail); background:rgba(255,107,107,.14);}
+  .tp-now .vd.skipped{color:var(--skip); background:rgba(201,162,75,.14);}
+  .tp-clock{font-size:12px; color:var(--ink-2); min-width:112px; text-align:right;}
+  .tp-clock b{color:var(--ink);}
+  .tp-progress{flex:1; height:3px; border-radius:3px; background:var(--line-2); overflow:hidden; min-width:60px;}
+  .tp-bar{height:100%; width:0; background:linear-gradient(90deg,var(--signal),#FFD79A); transition:width .28s ease;}
+  .tp-count{font-family:var(--disp); font-weight:800; font-size:14px; letter-spacing:.02em; color:var(--ink-2);}
+  .tp-count b{color:var(--ink);}
+
+  /* ── Footer: case rail + filmstrip ───────────────────── */
+  .reel{border-top:1px solid var(--line-2); background:rgba(0,0,0,.3);}
+  /* case rail — the overview tier (only shown when cases exist) */
+  .caserail{display:flex; gap:8px; align-items:center; padding:11px 22px 0; overflow-x:auto; scrollbar-width:thin;}
+  .caserail .lbl{font-size:9px; letter-spacing:.2em; color:var(--ink-3); text-transform:uppercase; flex:none; margin-right:2px;}
+  .case-pill{display:flex; align-items:center; gap:8px; flex:none; cursor:pointer; color:inherit;
+             border:1px solid var(--line-2); background:rgba(255,255,255,.025); border-radius:9px;
+             padding:7px 12px; font-family:var(--mono); font-size:11.5px; transition:.15s; border-left-width:3px;}
+  .case-pill:hover{background:rgba(255,255,255,.06);}
+  .case-pill .vdot{width:8px; height:8px; border-radius:50%; flex:none;}
+  .case-pill .cn{font-weight:500; color:var(--ink); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .case-pill .meta{color:var(--ink-3); font-size:10px;}
+  .case-pill.passed{border-left-color:var(--pass);} .case-pill.passed .vdot{background:var(--pass);}
+  .case-pill.failed{border-left-color:var(--fail);} .case-pill.failed .vdot{background:var(--fail);}
+  .case-pill.skipped{border-left-color:var(--skip);} .case-pill.skipped .vdot{background:var(--skip);}
+  .case-pill.unknown{border-left-color:var(--cool);} .case-pill.unknown .vdot{background:var(--cool);}
+  .case-pill.active{background:var(--signal-soft); border-color:var(--signal-line); border-left-color:var(--signal);}
+  .case-pill.active .cn{color:var(--signal);}
+
+  .filmstrip{display:flex; gap:0; align-items:flex-end; overflow-x:auto; overflow-y:hidden;
+             padding:16px 22px 18px; scrollbar-width:thin;}
+  .frame{position:relative; flex:none; width:120px; background:none; border:0; cursor:pointer;
+         padding:0 9px; color:inherit; text-align:left;
+         opacity:0; transform:translateY(8px); animation:rise .42s forwards; animation-delay:var(--d);}
+  @keyframes rise{to{opacity:1; transform:none;}}
+  .frame::after{content:""; position:absolute; left:0; right:0; bottom:-9px; height:1px; background:var(--line-2);}
+  .frame:first-child::after{left:50%;} .frame:last-child::after{right:50%;}
+  .frame-top{display:flex; align-items:center; gap:6px; padding:0 2px 6px; border-top:2px solid var(--hue,var(--cool)); padding-top:6px;}
+  .frame-idx{font-family:var(--disp); font-weight:800; font-size:12px; color:var(--ink-2);}
+  .frame-act{font-size:10px; color:var(--ink-3); text-transform:lowercase; letter-spacing:.04em;
+             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .frame-st{width:6px; height:6px; border-radius:50%; margin-left:auto; flex:none; background:var(--pass);}
+  .frame-st.fail{background:var(--fail);}
+  .frame-thumb{display:block; border-radius:6px; overflow:hidden; border:1px solid var(--line-2);
+               background:#000; aspect-ratio:16/10; filter:grayscale(.55) brightness(.62) contrast(1.02); transition:.22s;}
+  .frame-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .frame-time{display:block; text-align:center; font-size:9.5px; color:var(--ink-3); margin-top:7px;}
+  .frame:hover .frame-thumb{filter:grayscale(.2) brightness(.85); transform:translateY(-2px);}
+  .frame.live .frame-thumb{filter:none; border-color:var(--signal); transform:translateY(-4px) scale(1.02);
+                           box-shadow:0 14px 30px -12px rgba(255,184,77,.5), 0 0 0 1px var(--signal);}
+  .frame.live .frame-idx{color:var(--signal);}
+  .frame.live .frame-time{color:var(--signal);}
+  .frame.live::before{content:""; position:absolute; left:50%; transform:translateX(-50%); bottom:-13px;
+                      width:9px; height:9px; border-radius:50%; background:var(--signal); box-shadow:0 0 12px var(--signal);}
+  .frame.failframe .frame-thumb{border-color:rgba(255,107,107,.55); box-shadow:0 0 0 1px rgba(255,107,107,.4);}
+  .frame.failframe.live .frame-thumb{border-color:var(--fail); box-shadow:0 14px 30px -12px rgba(255,107,107,.55), 0 0 0 1px var(--fail);}
+  .frame.failframe .frame-idx{color:var(--fail);}
+  .strip-empty{padding:26px 22px; color:var(--ink-3); font-size:12px;}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="brand">
+    <span class="rec"></span>
+    <h1>ScreenForge</h1>
+    <span class="eq"><i></i><i></i><i></i><i></i></span>
+    <span class="sub">执行回放 / Replay</span>
+  </div>
+  <div class="run-meta" id="runMeta"></div>
+  <div class="tally" id="tally"></div>
+  <div class="status" id="status"></div>
+</header>
+
+<main class="deck">
+  <section class="stage-wrap">
+    <div class="stage" id="stage">
+      <div class="canvas" id="canvas">
+        <img id="shot" alt="step screenshot" />
+        <div class="bbox" id="bbox"></div>
+      </div>
+      <div class="frame-no" id="frameNo"></div>
+    </div>
+  </section>
+  <aside class="inspector">
+    <div class="insp-action" id="inspAction"></div>
+    <div>
+      <div class="insp-h">触发代码 · Trigger</div>
+      <pre class="code"><code id="code"></code></pre>
+    </div>
+    <div class="tree-block">
+      <div class="insp-h">DOM 树 · Structure</div>
+      <div class="tree" id="tree"></div>
+    </div>
+  </aside>
+</main>
+
+<div class="transport">
+  <div class="tp-controls">
+    <button class="tp-btn" id="prev" title="上一步 (←)">‹</button>
+    <button class="tp-btn play" id="play" title="播放 / 暂停 (Space)">▶</button>
+    <button class="tp-btn" id="next" title="下一步 (→)">›</button>
+  </div>
+  <div class="tp-now" id="tpNow"></div>
+  <div class="tp-progress"><div class="tp-bar" id="tpBar"></div></div>
+  <div class="tp-clock"><b id="clock">00:00.0</b> / <span id="clockTotal">00:00.0</span></div>
+  <div class="tp-count"><b id="curN">1</b> / <span id="totN">1</span></div>
+</div>
+
+<footer class="reel">
+  <nav class="caserail" id="caserail" style="display:none"></nav>
+  <div class="filmstrip" id="filmstrip"></div>
+</footer>
+
+<script>
+const REVIEW = /*__REVIEW_DATA__*/ null;
+
+const HUES = {
+  goto:"#7FA8D9", fill:"#FFB84D", click:"#7DDFB0", check:"#6FD7C9",
+  select_option:"#B6A6E6", press:"#E69BB0", hover:"#8FC7E8", long_click:"#E0B26A",
+  assert_exist:"#D9C36B", assert_text_equals:"#D9C36B"
+};
+const hueOf = a => HUES[a] || "var(--cool)";
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function clock(sec){
+  sec = Math.max(0, sec||0);
+  const m = Math.floor(sec/60), s = Math.floor(sec%60), d = Math.floor((sec*10)%10);
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${d}`;
+}
+
+// 自包含代码高亮：切出字符串字面量，给方法名/数字上色（去 CDN 依赖）。
+function hl(line){
+  const out=[]; const re=/("[^"]*"|'[^']*')/g; let last=0,m;
+  while((m=re.exec(line))){ out.push(['c',line.slice(last,m.index)]); out.push(['s',m[0]]); last=re.lastIndex; }
+  out.push(['c',line.slice(last)]);
+  return out.map(([t,s])=>{
+    s=esc(s);
+    if(t==='s') return `<span class="c-str">${s}</span>`;
+    return s.replace(/\.([a-zA-Z_]\w*)/g,'.<span class="c-fn">$1</span>')
+            .replace(/\b(\d+)\b/g,'<span class="c-num">$1</span>');
+  }).join('');
+}
+
+let FLAT = [];
+function buildTree(nodes, depth, out){
+  if(!nodes) return;
+  for(const n of nodes){
+    const i = FLAT.length; FLAT.push(n);
+    const guide = depth ? '│ '.repeat(depth-1)+'└ ' : '';
+    const ref = n.ref ? `<span class="tref">${esc(n.ref)}</span>` : '';
+    const click = n.clickable ? '<span class="tclick"></span>' : '';
+    const label = esc(n.text || n.desc || n.id || n.placeholder || '');
+    const flags = (n.disabled?'<span class="tflag">DIS</span>':'')+(n.inert?'<span class="tflag">INERT</span>':'');
+    out.push(`<div class="tnode" data-i="${i}">${click}<span class="tguide">${guide}</span>${ref}<span class="tcls">${esc(n.class||'?')}</span> <span class="ttext">${label}</span>${flags}</div>`);
+    buildTree(n.children, depth+1, out);
+  }
+}
+
+function resolveTarget(step){
+  const line = step.code_line || '';
+  const m = line.match(/locator\(\s*["']([^"']+)["']/);
+  if(!m) return null;
+  const sel = m[1];
+  if(sel[0]==='#'){ const id=sel.slice(1); return FLAT.find(n=>n.id===id)||null; }
+  if(sel.startsWith('text=')){ const t=sel.slice(5); return FLAT.find(n=>(n.text||'').includes(t))||null; }
+  return null;
+}
+
+const $ = id => document.getElementById(id);
+const steps = (REVIEW && REVIEW.steps) || [];
+const cases = (REVIEW && REVIEW.cases) || [];
+const t0 = (REVIEW && REVIEW.created_at) || (steps[0] && steps[0].timestamp) || 0;
+const relTime = s => (s && s.timestamp ? s.timestamp - t0 : 0);   // 会话起点相对（meta 用）
+const caseOf = nid => cases.find(c=>c.nodeid===nid) || null;
+// 用例内相对时间：以该用例首个 step 的时间戳为 0（与案件徽章的 duration 一致）。
+function caseStart(nid){
+  const f = steps.find(s=>s.test===nid);
+  return f && f.timestamp ? f.timestamp : t0;
+}
+const caseTime = s => (s && s.timestamp ? Math.max(0, s.timestamp - caseStart(s.test)) : 0);
+
+let cur = 0;            // 绝对 step 下标（指向 steps）
+let activeCase = null;  // 当前作用域用例 nodeid；null = 全部（无分组的旧数据）
+let playing = false, timer = null;
+
+// 当前可见的 step 绝对下标列表（受 activeCase 过滤）。
+function view(){
+  if(!activeCase) return steps.map((_,i)=>i);
+  return steps.map((_,i)=>i).filter(i=>steps[i].test===activeCase);
+}
+
+let curDims = null;   // 当前步骤的 CSS 视口 {vw,vh}（坐标换算标尺，DPR 无关）
+// node 坐标是 CSS 像素；用截图所属步骤的 CSS 视口换成百分比。
+// 旧数据无 vw/vh 时回退到截图物理尺寸 / dpr 估算。
+function drawBox(node, {fail=false}={}){
+  const box = $('bbox'), img = $('shot');
+  if(!box || !img || !node || !(node.w>0) || !(node.h>0)){ if(box) box.style.display='none'; return; }
+  let W, H;
+  if(curDims && curDims.vw>0 && curDims.vh>0){ W=curDims.vw; H=curDims.vh; }
+  else if(img.naturalWidth){ const dpr=(curDims&&curDims.dpr)||1; W=img.naturalWidth/dpr; H=img.naturalHeight/dpr; }
+  else { box.style.display='none'; return; }
+  if(node.x+node.w > W+2 || node.y+node.h > H+2){ box.style.display='none'; return; }  // 在视口外（fold 以下）
+  box.classList.toggle('fail', fail);
+  box.style.left=(node.x/W*100)+'%'; box.style.top=(node.y/H*100)+'%';
+  box.style.width=(node.w/W*100)+'%'; box.style.height=(node.h/H*100)+'%';
+  box.style.display='block';
+  box.style.animation='none'; void box.offsetWidth; box.style.animation='';
+}
+
+// 用例无任何被捕获操作（如断言阶段失败）→ 舞台显示空态 + 失败信息。
+function showEmptyCase(c){
+  $('stage').innerHTML =
+    `<div class="stage-empty"><div class="big">${c && c.outcome==='failed'?'✕ 该用例无 UI 步骤':'— 无步骤'}</div>`+
+    `<div class="msg">${c && c.error ? esc(c.error) : '此用例未触发任何被记录的页面操作（可能在断言或前置阶段结束）。'}</div></div>`;
+  $('inspAction').innerHTML = c
+    ? `<div class="verb">${esc(c.name)}</div><div class="loc">${esc(c.nodeid)}</div>`+
+      (c.error?`<div class="err">${esc(c.error)}</div>`:'')
+    : '';
+  $('code').innerHTML = '<span class="empty">—</span>';
+  $('tree').innerHTML = '<div class="empty">—</div>';
+  $('frameNo').textContent='';
+  $('tpNow').innerHTML = c ? caseChip(c) : '';
+}
+
+function caseChip(c){
+  return `<span class="nm">${esc(c.name)}</span><span class="vd ${c.outcome}">${esc(c.outcome)}</span>`;
+}
+
+function selectStep(absIdx, {scroll=true}={}){
+  if(!steps.length) return;
+  cur = Math.max(0, Math.min(absIdx, steps.length-1));
+  const s = steps[cur];
+  // 确保 stage 是图片视图（可能上次是空态）
+  if(!$('shot')){
+    $('stage').innerHTML =
+      '<div class="canvas" id="canvas"><img id="shot" alt="step screenshot" /><div class="bbox" id="bbox"></div></div><div class="frame-no" id="frameNo"></div>';
+  }
+  const c = caseOf(s.test);
+  const v = view(); const pos = v.indexOf(cur);
+  const localNo = pos>=0 ? pos+1 : s.step_index;   // 用例内 1-based 序号（非全局 step_index）
+  const stepFail = !s.success;
+
+  const img = $('shot');
+  // 切步先清场：隐藏旧定位框、清掉上一步遗留的 onload 闭包（否则延迟换图时旧框会复现）。
+  const box = $('bbox'); if(box) box.style.display='none';
+  img.onload = null;
+  img.classList.add('swap');
+  const next = s.screenshot || s.screenshot_thumb_b64 || '';
+  const apply = ()=>{ img.src = next; };
+  if(img.src && !img.src.endsWith(next)) setTimeout(apply,120); else apply();
+  setTimeout(()=>img.classList.remove('swap'),130);
+  $('frameNo').textContent = String(localNo).padStart(2,'0');
+
+  const hue = hueOf(s.action);
+  // 失败信息：优先该步自身异常；步无异常但所属用例失败（如断言阶段失败）→ 显示用例级错误。
+  const errMsg = s.error || (c && c.outcome==='failed' && stepFail ? c.error : '')
+                 || (c && c.outcome==='failed' && pos===v.length-1 ? c.error : '');
+  $('inspAction').innerHTML =
+    `<div class="verb"><span class="dot" style="background:${stepFail?'var(--fail)':hue}"></span>${esc(s.action)}</div>`+
+    (s.action_description && s.action_description!==s.action ? `<div class="desc">${esc(s.action_description)}</div>` : '')+
+    (s.code_loc ? `<div class="loc">${esc(s.code_loc)}</div>` : '')+
+    (errMsg ? `<div class="err">⚠ ${esc(errMsg)}</div>` : '');
+  $('code').innerHTML = s.code_line ? hl(s.code_line) : '<span class="empty">(no source line)</span>';
+
+  FLAT = [];
+  const rows = [];
+  buildTree(s.dom_tree && s.dom_tree.nodes, 0, rows);
+  $('tree').innerHTML = rows.length ? rows.join('') : '<div class="empty">无 DOM 树 · no tree</div>';
+
+  // 坐标标尺取自本步骤的 DOM 树（CSS 视口），DPR 无关 → 不依赖图片加载，立即绘制本步定位框。
+  // 仅当本步真的有可定位目标时才画；红色仅用于失败步，普通步为琥珀色。
+  curDims = s.dom_tree || null;
+  const target = resolveTarget(s);
+  drawBox(target, {fail:stepFail});
+
+  // transport：当前用例名 + 时间码（用例内相对）+ 进度（在可见集合内）
+  $('tpNow').innerHTML = c ? caseChip(c) : '';
+  // 作用域到单个用例时用 caseTime，否则（全部）用会话相对
+  const tnow = activeCase ? caseTime(s) : relTime(s);
+  $('clock').textContent = clock(tnow);
+  if(v.length){ const last=steps[v[v.length-1]]; $('clockTotal').textContent = clock(activeCase ? caseTime(last) : relTime(last)); }
+  $('curN').textContent = localNo;
+  $('tpBar').style.width = v.length>1 ? (Math.max(0,pos)/(v.length-1)*100)+'%' : '100%';
+  $('totN').textContent = v.length || steps.length;
+
+  document.querySelectorAll('.frame').forEach(f=>f.classList.toggle('live', +f.dataset.i===cur));
+  if(scroll){ const live=document.querySelector('.frame.live'); if(live) live.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'}); }
+}
+
+// 渲染当前 activeCase 作用域的胶片（或全部）。
+function renderStrip(){
+  const v = view();
+  const fs = $('filmstrip');
+  if(!v.length){
+    fs.innerHTML = `<div class="strip-empty">该用例无被记录的页面操作步骤。</div>`;
+    showEmptyCase(caseOf(activeCase));
+    return;
+  }
+  fs.innerHTML = v.map((absI,n)=>{
+    const s = steps[absI];
+    return `<button class="frame${s.success?'':' failframe'}" data-i="${absI}" style="--d:${(n*0.04).toFixed(2)}s; --hue:${s.success?hueOf(s.action):'var(--fail)'}">
+      <span class="frame-top">
+        <span class="frame-idx">${String(n+1).padStart(2,'0')}</span>
+        <span class="frame-act">${esc(s.action)}</span>
+        <span class="frame-st ${s.success?'':'fail'}"></span>
+      </span>
+      <span class="frame-thumb">${s.screenshot_thumb_b64?`<img src="${s.screenshot_thumb_b64}" alt="">`:''}</span>
+      <span class="frame-time">+${clock(activeCase ? caseTime(s) : relTime(s))}</span>
+    </button>`;
+  }).join('');
+}
+
+// 切换作用域用例：渲染胶片，失败用例落到失败步（否则首步）；无 step → 空态。
+function selectCase(nid, {scroll=true}={}){
+  play(false);
+  activeCase = nid;
+  document.querySelectorAll('.case-pill').forEach(p=>p.classList.toggle('active', p.dataset.nid===nid));
+  renderStrip();
+  const v = view();
+  if(v.length){
+    const c = caseOf(nid);
+    const failAbs = v.find(i=>!steps[i].success);   // 有失败步 → 直达
+    // 用例失败但无失败步（断言阶段失败，断言未被 patch）→ 落到最后一步（失败发生处最近）
+    const land = failAbs!=null ? failAbs : (c && c.outcome==='failed' ? v[v.length-1] : v[0]);
+    selectStep(land, {scroll});
+  }
+  if(scroll){ const ap=document.querySelector('.case-pill.active'); if(ap) ap.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'}); }
+}
+
+function play(on){
+  playing = on===undefined ? !playing : on;
+  $('play').textContent = playing ? '❚❚' : '▶';
+  clearInterval(timer);
+  if(!playing) return;
+  const v = view(); if(!v.length){ play(false); return; }
+  if(v.indexOf(cur) >= v.length-1) selectStep(v[0]);
+  timer = setInterval(()=>{
+    const vv = view(); const pos = vv.indexOf(cur);
+    if(pos >= vv.length-1){ play(false); return; }
+    selectStep(vv[pos+1]);
+  }, 950);
+}
+function nudge(delta){
+  play(false);
+  const v = view(); if(!v.length) return;
+  const pos = v.indexOf(cur);
+  const np = Math.max(0, Math.min((pos<0?0:pos)+delta, v.length-1));
+  selectStep(v[np]);
+}
+
+function boot(){
+  if(!REVIEW || !steps.length){ document.body.innerHTML = '<p style="padding:24px;font-family:'+`'JetBrains Mono',monospace`+'">no review data</p>'; return; }
+
+  // 会话判定：有 cases 用 pytest 权威结果；否则回退到 step 推断（兼容旧数据）。
+  let failed, passed, allPass;
+  if(cases.length){
+    failed = cases.filter(c=>c.outcome==='failed').length;
+    passed = cases.filter(c=>c.outcome==='passed').length;
+    allPass = failed===0;
+  } else {
+    failed = steps.some(s=>!s.success) ? 1 : 0;
+    passed = failed ? 0 : 1; allPass = !failed;
+  }
+  const st = $('status'); st.className='status '+(allPass?'pass':'fail');
+  st.textContent = allPass ? '● Passed' : '✕ Failed';
+
+  // 会话计数（多用例才显示分项）
+  if(cases.length){
+    const skipped = cases.filter(c=>c.outcome==='skipped').length;
+    const seg = [];
+    if(passed) seg.push(`<span class="seg"><span class="swatch" style="background:var(--pass)"></span>${passed} passed</span>`);
+    if(failed) seg.push(`<span class="seg"><span class="swatch" style="background:var(--fail)"></span>${failed} failed</span>`);
+    if(skipped) seg.push(`<span class="seg"><span class="swatch" style="background:var(--skip)"></span>${skipped} skipped</span>`);
+    $('tally').innerHTML = seg.join('');
+  }
+
+  const created = t0 ? new Date(t0*1000).toLocaleString() : '—';
+  const dur = steps.length ? relTime(steps[steps.length-1]) : 0;
+  $('runMeta').innerHTML = [
+    ['Platform', esc(REVIEW.platform||'—')],
+    ['Cases', cases.length || 1],
+    ['Steps', steps.length],
+    ['Duration', clock(dur)],
+    ['Recorded', esc(created)],
+  ].map(([k,v])=>`<div><span class="k">${k}</span><b>${v}</b></div>`).join('');
+  $('clockTotal').textContent = clock(dur);
+
+  // 案件栏（overview tier）：仅多用例时显示。失败的排在自然顺序里但默认选中首个失败用例。
+  if(cases.length > 1){
+    const rail = $('caserail'); rail.style.display='flex';
+    rail.innerHTML = `<span class="lbl">Cases</span>` + cases.map(c=>{
+      const n = (c.step_to>=c.step_from && c.step_from>0) ? (c.step_to-c.step_from+1) : 0;
+      return `<button class="case-pill ${c.outcome}" data-nid="${esc(c.nodeid)}" title="${esc(c.nodeid)}">
+        <span class="vdot"></span><span class="cn">${esc(c.name)}</span>
+        <span class="meta">${n}步 · ${clock(c.duration)}</span></button>`;
+    }).join('');
+    rail.addEventListener('click', e=>{ const p=e.target.closest('.case-pill'); if(p) selectCase(p.dataset.nid); });
+  }
+
+  // 事件代理
+  $('filmstrip').addEventListener('click', e=>{ const f=e.target.closest('.frame'); if(f){ play(false); selectStep(+f.dataset.i); } });
+  document.addEventListener('click', e=>{
+    const r = e.target.closest('.tnode'); if(!r) return;
+    document.querySelectorAll('.tnode.hot').forEach(n=>n.classList.remove('hot'));
+    r.classList.add('hot'); drawBox(FLAT[+r.dataset.i]);
+  });
+  $('prev').onclick = ()=>nudge(-1);
+  $('next').onclick = ()=>nudge(1);
+  $('play').onclick = ()=>play();
+  document.addEventListener('keydown', e=>{
+    if(e.key==='ArrowLeft') nudge(-1);
+    else if(e.key==='ArrowRight') nudge(1);
+    else if(e.key===' '){ e.preventDefault(); play(); }
+  });
+
+  // 默认作用域：多用例 → 首个失败用例（报告最常为查失败而开），否则首个用例 / 全部。
+  if(cases.length > 1){
+    const firstFail = cases.find(c=>c.outcome==='failed');
+    selectCase((firstFail||cases[0]).nodeid, {scroll:false});
+  } else {
+    activeCase = cases.length===1 ? cases[0].nodeid : null;
+    renderStrip();
+    const v = view(); if(v.length) selectStep(v[0], {scroll:false}); else showEmptyCase(cases[0]||null);
+  }
+}
+boot();
+</script>
+</body>
+</html>

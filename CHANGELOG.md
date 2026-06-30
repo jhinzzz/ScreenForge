@@ -18,6 +18,19 @@ All notable changes to ScreenForge will be documented in this file.
   named `_recover_web_ref` / `_try_visual_fallback` methods.
 
 ### Added
+- **pytest execution-review report** (`REVIEW_RECORD=1`) — self-contained, shareable
+  offline `report.html` with interactive drag-timeline: step-by-step screenshots +
+  test source-code lines + DOM tree (Web carries `@N` ref / bbox fields; mobile
+  honestly degrades to hierarchical XML). Plus `review.json` data artifact (carries
+  `type`/`timestamp` forward-compat gate, field names copy `PlaygroundStepEvent` for
+  downstream self-heal / regression use). Capture via class-level monkeypatch
+  (non-proxy, real adapter API preserved); non-assertion ops only (assertions excluded
+  for clarity). Default off, zero regression. Web: implemented + verified. Mobile
+  (Android/iOS): registry + recording seam in place but unverified this round. iOS DOM
+  tree unsupported (WDA XML predicates differ; future addition). Web generates filmstrip
+  `video.gif` via `review/render.py make_filmstrip` (per-op ffmpeg, independent of the
+  recording seam; `start_record`/`stop_record_and_get_path` return "" for web as no-op).
+
 - **Tests for the cache-key fingerprint** (`compute_ui_hash` /
   `_extract_semantic_fingerprint` / `compute_instruction_hash`), the previously
   untested logic whose failure mode is a wrong cache hit replaying the wrong

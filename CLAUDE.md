@@ -143,6 +143,13 @@ docs/                     # Agent integration guide and capability matrix
 - Do not commit `.env` files; use `.env_template` as the reference.
 - `conftest.py` at project root handles cross-platform fixture dispatch and attaches video/screenshot artifacts to Allure reports.
 
+## Pre-Commit Checklist (enforce without being asked)
+
+Before committing or opening a PR, always run these two checks — do not wait for the user to remind you:
+
+1. **No process artifacts in the commit.** Never stage or commit working docs: `docs/superpowers/**` (plans/specs), `docs/optimization-*.md`, `specs/`, `report/`, generated `test_cases/<platform>/`, `.omc/`, `*demo*` outputs. These are `.gitignore`d — verify `git status`/`git diff --cached --name-only` is clean of them before every commit. If one is already tracked from the past, `git rm --cached` it as part of the change.
+2. **Update outward-facing docs when behavior changes.** Any user-visible feature/flag/CLI change must update, in the same PR: `README.md` **and** `README_CN.md` (EN canonical, CN mirror), plus `CHANGELOG.md` **and** `CHANGELOG_CN.md` under `## [Unreleased]`. No silent feature shipping.
+
 ## First Principles
 
 Start from the essence of the problem, not from convention or templates.

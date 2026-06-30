@@ -71,6 +71,15 @@ ignore_missing_imports = true
 no_implicit_optional = false
 exclude = ["test_cases/", "scripts/", "\\.worktrees/"]
 
+# numpy 2.4+ ships PEP 695 `type X = ...` in its bundled stubs, which mypy rejects
+# under our 3.11 target (requires-python >=3.11, CI matrix tests 3.11). We don't
+# type-check against numpy (cache_manager.py array math only) — skip its stubs so a
+# third-party stub's syntax can't break the whole run. Treats numpy as Any.
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
 [[tool.mypy.overrides]]
 module = [
     "common.runtime_modes",

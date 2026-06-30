@@ -74,6 +74,7 @@ Each step: **inspect → decide → act → verify**. The AI decides, ScreenForg
 - **MCP server**: Any MCP-compatible Agent can drive ScreenForge natively
 - **Structured output**: JSON Lines events + `report/runs/<id>/` artifacts for CI integration
 - **Live Mirror playground**: Watch the generated pytest code grow line-by-line beside a live screenshot as the test runs — `screenforge --playground`. See the [Playground Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/playground-guide.md)
+- **Execution-replay review report**: Run any test with `REVIEW_RECORD=1` and get a self-contained, shareable offline `report.html` — a drag-timeline of each step's screenshot + the test source line that triggered it + the DOM tree, plus a `video.gif` filmstrip. Default off, zero overhead. (Web verified; mobile registry/recording seam in place but unverified.)
 
 ## Agent Integration (Claude Code / Cursor / Codex)
 
