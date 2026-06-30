@@ -6,6 +6,8 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-30
+
 ### Changed
 - **Internal cleanup pass — no behavior change.** Removed dead code (unused
   `session_exists`, the `*_INLINE_ACTIONS` re-export aliases, a dead doctor
