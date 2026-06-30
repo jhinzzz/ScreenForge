@@ -2,7 +2,8 @@
 
 捕获层（review/patching.py）在每个非断言操作后调 get_recorder().add(...)；
 pytest_sessionfinish 读 to_dict() 渲染报告。本模块零浏览器依赖、纯数据，便于单测。
-字段名复用 PlaygroundStepEvent（cli/playground_sink.py:32-46）以留 viewer 收敛门。
+重叠字段（action/action_description/success/step_index）刻意与 PlaygroundStepEvent
+（cli/playground_sink.py）对齐，以留将来 viewer 收敛门；其余字段为本报告专有。
 """
 
 import inspect
@@ -120,22 +121,26 @@ class ReviewRecorder:
 
         viewer 据此分组；cases 为空时 viewer 退化为单条 session 时间轴（向后兼容旧数据）。
         """
-        order: list[str] = []
         spans: dict[str, list[int]] = {}
         for r in self.records:
             nid = r.test
             if not nid:
                 continue
             if nid not in spans:
-                order.append(nid)
                 spans[nid] = [r.step_index, r.step_index]
             else:
                 spans[nid][1] = r.step_index
-        # 有判定但无 step 的用例（如断言阶段失败、未触发任何被 patch 操作）也要present。
-        for nid in self.case_results:
-            if nid not in spans:
-                order.append(nid)
-                spans[nid] = [0, 0]
+        # 执行顺序以 case_results 为准：makereport 按真实执行序为每个用例插入（含断言阶段
+        # 失败、无任何被 patch 操作的无 step 用例）。落到其后的是只有 step 却无判定的 nid
+        # （纯单测便利路径 / 旧数据），按首个 step_index 补齐 —— 避免无 step 用例被一律甩到末尾。
+        order: list[str] = list(self.case_results.keys())
+        step_only = sorted(
+            (nid for nid in spans if nid not in self.case_results),
+            key=lambda n: spans[n][0],
+        )
+        order += step_only
+        for nid in order:
+            spans.setdefault(nid, [0, 0])
         cases = []
         for nid in order:
             res = self.case_results.get(nid, {})

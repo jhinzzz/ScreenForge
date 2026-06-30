@@ -329,15 +329,13 @@ def pytest_sessionfinish(session, exitstatus):
     if not _review_enabled():
         return
     try:
-        from pathlib import Path as _Path
-
         from review.recorder import get_recorder
         from review.render import make_filmstrip, render_html, write_review_json
         recorder = get_recorder()
         if not recorder.records:
             log.info("[review] no steps recorded; skip report")
             return
-        out = _Path(recorder.out_dir)
+        out = Path(recorder.out_dir)
         recorder.video = make_filmstrip(out)   # 先拼胶片，回填 video 字段
         write_review_json(recorder, out)
         html = render_html(recorder, out)

@@ -267,7 +267,7 @@ const HUES = {
 };
 const hueOf = a => HUES[a] || "var(--cool)";
 
-function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function clock(sec){
   sec = Math.max(0, sec||0);

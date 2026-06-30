@@ -72,3 +72,27 @@ def test_build_cases_merges_verdict_onto_stepful_case():
 def test_build_cases_empty_when_no_attribution():
     rec = _rec_with_steps()  # 无 step、无判定
     assert rec._build_cases() == []
+
+
+def test_record_case_result_skipped_outcome():
+    # makereport 的 skip 分支：单列 skipped，不被当作 passed/failed。
+    rec = ReviewRecorder()
+    rec.record_case_result("t.py::s", "skipped", duration=0.0)
+    (c,) = rec._build_cases()
+    assert c["outcome"] == "skipped"
+    assert (c["step_from"], c["step_to"]) == (0, 0)
+
+
+def test_build_cases_preserves_execution_order_with_stepless_case():
+    # 真实执行序: a(有 step) → b(断言阶段失败、无 step) → c(有 step)。
+    # 顺序以 case_results 的插入序（makereport 真实执行序）为准，b 不得被甩到末尾。
+    rec = ReviewRecorder()
+    rec.start_run(run_id="r1", platform="web", test_file="t.py")
+    rec.current_test = "t.py::a"
+    rec.add(StepRecord(step_index=1, action="click"))
+    rec.record_case_result("t.py::a", "passed")
+    rec.record_case_result("t.py::b", "failed", error="assert 1==2")  # 无 step
+    rec.current_test = "t.py::c"
+    rec.add(StepRecord(step_index=2, action="goto"))
+    rec.record_case_result("t.py::c", "passed")
+    assert [c["nodeid"] for c in rec._build_cases()] == ["t.py::a", "t.py::b", "t.py::c"]

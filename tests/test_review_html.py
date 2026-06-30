@@ -46,3 +46,28 @@ def test_render_html_escapes_script_close_in_data(tmp_path):
     # 原始 </script> 不得出现在数据里；只应是被转义的 <\/script>
     assert "</script><h1>pwned" not in html
     assert "<\\/script>" in html
+
+
+def test_render_html_escapes_js_line_separators(tmp_path):
+    # U+2028/U+2029 是 JS 行分隔符，ensure_ascii=False 下会裸落进 <script> 断掉解析。
+    # 用码点构造输入与断言，避免源码里出现不可见字符。
+    sep = "a\u2028b\u2029c"
+    rec = ReviewRecorder()
+    rec.start_run(run_id="r1", platform="web", test_file="t.py")
+    rec.add(StepRecord(step_index=1, action="click", action_description=sep))
+    html = render_html(rec, tmp_path).read_text(encoding="utf-8")
+    assert "\u2028" not in html and "\u2029" not in html   # 无裸分隔符
+    assert "\\u2028" in html and "\\u2029" in html        # 已转义
+
+
+def test_render_html_bakes_cases(tmp_path):
+    # cases 数组是分组视图依赖；占位符替换或序列化漏掉时最易回归。
+    rec = ReviewRecorder()
+    rec.start_run(run_id="r1", platform="web", test_file="t.py")
+    rec.current_test = "t.py::test_login"
+    rec.add(StepRecord(step_index=1, action="goto"))
+    rec.record_case_result("t.py::test_login", "passed", duration=0.3)
+    html = render_html(rec, tmp_path).read_text(encoding="utf-8")
+    assert "const REVIEW = null" not in html       # 占位符确实被替换
+    assert "test_login" in html
+    assert '"outcome": "passed"' in html or '"outcome":"passed"' in html

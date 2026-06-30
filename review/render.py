@@ -59,10 +59,20 @@ def render_html(recorder, out_dir: Path) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-    # 转义 "</"：DOM 文本里若含 </script> 会提前关闭 <script> 块、整页白屏。
-    # json.dumps 默认不转义斜杠，故此处补一刀（script-tag 内联 JSON 的标准缓解）。
-    data_json = json.dumps(recorder.to_dict(), ensure_ascii=False).replace("</", "<\\/")
-    html = template.replace("/*__REVIEW_DATA__*/ null", data_json, 1)
+    # script-tag 内联 JSON 的标准缓解：
+    #   </  → 防 DOM 文本里的 </script> 提前关闭 <script> 块、整页白屏；
+    #   U+2028/U+2029 → JS 行分隔符，ensure_ascii=False 下会原样落进 <script>，
+    #     裸字符直接断掉 const REVIEW=... 解析（页面文本含这两个码点时）。
+    data_json = (
+        json.dumps(recorder.to_dict(), ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
+    token = "/*__REVIEW_DATA__*/ null"
+    if token not in template:  # 占位符与模板漂移时早失败，别静默产出 REVIEW=null 的白屏报告
+        raise ValueError(f"review template missing data placeholder: {token!r}")
+    html = template.replace(token, data_json, 1)
     path = out / "report.html"
     path.write_text(html, encoding="utf-8")
     return path

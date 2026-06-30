@@ -1,7 +1,7 @@
 """捕获层：对 Playwright Locator/Page 的操作方法做类级 monkeypatch。
 
-为何不用代理对象：conftest.py:230 的 `d` 是 Playwright Page，不是 adapter。
-代理对象会让 conftest.py:252 的 `__class__.__name__ == "Page"` 判定失败 → 平台误判
+为何不用代理对象：conftest 的 `d` fixture 产出的是 Playwright Page，不是 adapter。
+代理对象会让 self-heal 路径的 `__class__.__name__ == "Page"` 判定失败 → 平台误判
 → self-heal 崩在 dump_hierarchy()。类级 patch 保留真 Page，isinstance/类名都正常，
 且链式调用 d.locator(x).first.click() 的 .click 天然命中 Locator.click 补丁。
 
@@ -95,6 +95,11 @@ def _record_after(receiver, method_name: str, exc, *, action: str) -> None:
 
 
 def _wrap(cls, method_name: str):
+    # 幂等护栏：同一 (cls, method) 已 wrap 过就跳过，避免重复 install 导致每步双记录
+    # + _ORIGINALS 残留把 wrapper 当 "original" 还原。session fixture 正常 1:1
+    # install/uninstall，此处是防御 install 被调两次的情形。
+    if any(c is cls and m == method_name for c, m, _ in _ORIGINALS):
+        return
     original = getattr(cls, method_name)
 
     @functools.wraps(original)
@@ -114,7 +119,7 @@ def _wrap(cls, method_name: str):
 def install_capture(platform: str) -> None:
     """按平台安装类级 patch。web 表惰性构建（避免无浏览器环境 import 失败）。"""
     # web 表按进程缓存（键是不变的 Playwright 类，跨 session 复用安全）；
-    # 防重复 wrap 的真正护栏是 _ORIGINALS（每个 (cls,method) 仅 wrap 一次）。
+    # 重复 wrap 由 _wrap 的幂等护栏拦截（见 _wrap）。
     if platform == "web" and "web" not in PLATFORM_PATCH_TABLE:
         try:
             PLATFORM_PATCH_TABLE["web"] = _build_web_table()
