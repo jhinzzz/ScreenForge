@@ -12,6 +12,10 @@ All notable changes to ScreenForge will be documented in this file.
   (`memory`), so the agent sees it BEFORE deciding rather than in the execute
   result afterwards. Omit `task` and `memory` is `{}` — behavior unchanged.
   The hint is never auto-replayed: the agent weighs it against the live tree.
+  `task` must match the recorded label exactly (case-sensitive); the default
+  label is `"{action}:{locator_value}"`, and `--action-name` /
+  `action.action_name` sets a human-readable one. `load_case_memory` lists
+  what is stored.
 - **`inspect_ui` accepts an optional `intent` phrase and returns `candidates`.**
   Describe the target in plain language ("登录按钮") and the payload returns up
   to 3 ranked elements with ready-to-use locators. Below the similarity floor it

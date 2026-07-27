@@ -11,7 +11,10 @@
   提供 `task` 时，payload 会携带该任务上次成功的信息（`memory`），
   让 agent 在**决策前**就能看到，而不是像以前那样只出现在执行结果里。
   不传 `task` 则 `memory` 为 `{}`——行为不变。该提示从不会被自动重放：
-  agent 会结合实时的 UI 树自行判断是否采信。
+  agent 会结合实时的 UI 树自行判断是否采信。`task` 必须与记录的标签完全一致
+  （区分大小写）；默认标签格式为 `"{action}:{locator_value}"`，用
+  `--action-name` / `action.action_name` 可指定人话标签。用 `load_case_memory`
+  可查看已记录的标签。
 - **`inspect_ui` 支持可选的 `intent` 短语，并返回 `candidates`。**
   用人话描述目标（如"登录按钮"），payload 会返回最多 3 个排序后的候选元素，
   以及可直接使用的定位器。低于相似度阈值时返回空数组，而不是瞎猜。匹配是
