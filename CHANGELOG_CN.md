@@ -4,7 +4,51 @@
 
 **中文** | [English](./CHANGELOG.md)
 
-## [未发布]
+## [0.10.0] - 2026-07-27
+
+### Added
+- **`inspect_ui` 支持可选的 `task` 标签，并返回 `memory` 提示。**
+  提供 `task` 时，payload 会携带该任务上次运行做了什么（`memory`）——
+  定位器、成功/失败计数与结果，让 agent 在**决策前**就能看到，而不是像以前
+  那样只出现在执行结果里。失败的运行同样会被记录，用
+  `last_status`/`success_count` 判断提示的成色。
+  不传 `task` 则 `memory` 为 `{}`——行为不变。该提示从不会被自动重放：
+  agent 会结合实时的 UI 树自行判断是否采信。`task` 必须与记录的标签完全一致
+  （区分大小写）；默认标签格式为 `"{action}:{locator_value}"`，用
+  `--action-name` / `action.action_name` 可指定人话标签。用 `load_case_memory`
+  可查看已记录的标签。
+- **`inspect_ui` 支持可选的 `intent` 短语，并返回 `candidates`。**
+  用人话描述目标（如"登录按钮"），payload 会返回最多 3 个排序后的候选元素，
+  以及可直接使用的定位器。低于相似度阈值时返回空数组，而不是瞎猜。匹配是
+  字面相似度（基于标准库 `difflib`），不是语义匹配——中英文混排的页面很可能
+  返回空。
+
+### Changed
+- **`inspect_ui` 返回体精简 —— 对读取 `ui_json` 的 agent 是破坏性变更。**
+  重复的 `ui_json` 响应键已移除，改用 `ui_tree`（同一份数据，已解析）。
+  `annotated_screenshot_base64` 也已移除 —— 需要标注时（Web 平台，压缩器会输出
+  `ref` + bbox），标注后的图片会原地替换 `screenshot_base64`，因此只会返回一张图片。
+- **MCP 工具结果不再重复携带 payload。** `structuredContent` 就是 payload 本身；
+  `content[0].text` 现在只是一段简短摘要，不再是第二份完整序列化内容。
+
+### Fixed
+- **`inspect_ui` 现在会遵循 `--vision` 开关。** 此前有一条 fallback 分支即使在
+  vision 关闭时也会截图并标注，与 `docs/agent_guide.md` 的描述矛盾。`--vision`
+  关闭时，`screenshot_base64` 为 `""`，且不会截图。
+- **移动端候选定位器现在会建议 `resourceId`。** Android 的 UI 树带有 `id`
+  但没有 `ref`，导致建议悄悄退化成 `text`，尽管按定位器优先级 `resourceId`
+  本应排在 `text` 之前。
+- **`candidates` / `intent` 在 iOS 上现在才真正可用。** 匹配器此前只读
+  `text`/`desc`/`name`，而 iOS 压缩器输出的是 `label`/`name`，并且当 `name` 与
+  `label` 相同时会丢弃 `name` —— 于是常见的 iOS 控件一个候选都匹配不到；而唯一
+  能匹配上的形态又被返回成 `description` 定位器，它会被映射到 `label`，查错了
+  属性。现在会匹配 `label`，并且 `name` 命中会正确报告为 `resourceId`。
+- **案例记忆不再把所有即时动作挤进同一条记录。** 所有 `--action` 运行都会写入
+  同一个哨兵 `source_ref`（`inline://action`），而它此前被当作身份标识 —— 于是
+  某个平台上第一条被记录的即时动作会吞掉之后所有的动作。`--action-name` 无法
+  建立自己的记录（只是给一条无关记录加了次数），`task=<该名称>` 也永远无法
+  命中。现在哨兵只作为来源信息，不再作为身份；真实的 `source_ref` 路径
+  （工作流）依然能在重命名后继续识别。
 
 ## [0.7.0] - 2026-06-30
 

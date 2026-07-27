@@ -4,7 +4,56 @@ All notable changes to ScreenForge will be documented in this file.
 
 [中文](./CHANGELOG_CN.md) | **English**
 
-## [Unreleased]
+## [0.10.0] - 2026-07-27
+
+### Added
+- **`inspect_ui` accepts an optional `task` label and returns a `memory` hint.**
+  When `task` is given, the payload carries what the last run of that task did
+  (`memory`) — locator, counts, and outcome — so the agent sees it BEFORE
+  deciding rather than in the execute result afterwards. Failed runs are
+  recorded too; `last_status`/`success_count` say which a hint was. Omit `task` and `memory` is `{}` — behavior unchanged.
+  The hint is never auto-replayed: the agent weighs it against the live tree.
+  `task` must match the recorded label exactly (case-sensitive); the default
+  label is `"{action}:{locator_value}"`, and `--action-name` /
+  `action.action_name` sets a human-readable one. `load_case_memory` lists
+  what is stored.
+- **`inspect_ui` accepts an optional `intent` phrase and returns `candidates`.**
+  Describe the target in plain language ("登录按钮") and the payload returns up
+  to 3 ranked elements with ready-to-use locators. Below the similarity floor it
+  returns an empty list rather than a guess. Matching is literal (stdlib
+  `difflib`), not semantic — mixed-language pages will often return empty.
+
+### Changed
+- **`inspect_ui` payload slimmed — BREAKING for agents reading `ui_json`.**
+  The duplicate `ui_json` response key is gone; use `ui_tree` (same data,
+  already parsed). `annotated_screenshot_base64` is gone too — when annotation
+  applies (Web, where the compressor emits `ref` + bbox), the annotated image
+  now replaces `screenshot_base64` in place, so exactly one image ships.
+- **MCP tool results no longer carry the payload twice.** `structuredContent`
+  is the payload; `content[0].text` is now a short summary instead of a second
+  full serialization.
+
+### Fixed
+- **`inspect_ui` now honors `--vision`.** A fallback branch captured and
+  annotated a screenshot even with vision disabled, contradicting
+  `docs/agent_guide.md`. With `--vision` off, `screenshot_base64` is `""` and
+  no screenshot is taken.
+- **Mobile candidate locators now suggest `resourceId`.** Android trees carry
+  `id` but no `ref`, so suggestions silently degraded to `text` even though
+  `resourceId` outranks it.
+- **`candidates` and `intent` now work on iOS at all.** The matcher only read
+  `text`/`desc`/`name`, but the iOS compressor emits `label`/`name` and drops
+  `name` when it duplicates `label` — so the ordinary iOS control produced zero
+  candidates, and the one shape that did match was returned as a `description`
+  locator, which resolves to `label` and therefore queried the wrong attribute.
+  `label` is now matched, and a `name` match is reported as `resourceId`.
+- **Case memory no longer collapses every inline action into one entry.** All
+  `--action` runs record the same sentinel `source_ref` (`inline://action`),
+  and that sentinel was matched as an identity — so the first inline action
+  recorded on a platform absorbed every later one. `--action-name` could not
+  create its own entry (it only bumped the unrelated one's counter), and
+  `task=<that name>` could never hit. The sentinel is now provenance, not
+  identity; real `source_ref` paths (workflows) still identify across a rename.
 
 ## [0.7.0] - 2026-06-30
 

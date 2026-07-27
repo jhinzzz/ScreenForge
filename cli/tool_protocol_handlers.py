@@ -20,6 +20,8 @@ from cli.shared import (
     current_url,
     log,
 )
+from common.failure_diagnosis import rank_candidates
+from common.observation import build_observation
 from common.run_resume import RunContextLoadError, load_run_bundle
 from common.runtime_modes import MODE_DOCTOR, resolve_execution_mode
 from common.tool_protocol import (
@@ -137,6 +139,30 @@ def _find_case_memory_hit(args, execution_mode: str) -> dict | None:
     )
 
 
+def _lookup_task_memory(platform: str, task: str) -> dict:
+    """Case-memory hint for an inspect_ui request, or {} when there's nothing.
+
+    A HINT, not an instruction — see common/observation.py. Matching is fuzzy by
+    design (find_entry ORs control_label with source_ref), so a wrong hit costs
+    one useless hint, never a wrong click. control_kind is "action" because an
+    inspect precedes a single action, and that's the kind those runs record under.
+    Any read failure degrades to {}: a missing hint must never cost the agent
+    its UI tree.
+    """
+    if not str(task).strip():
+        return {}
+    try:
+        entry = _load_case_memory_store().find_entry(
+            platform=platform,
+            control_kind="action",
+            control_label=task,
+        )
+    except Exception as e:
+        log.warning(f"⚠️ [Warning] Case-memory lookup failed, continuing without hint: {e}")
+        return {}
+    return entry or {}
+
+
 def build_load_case_memory_payload(
     platform: str = "",
     control_kind: str = "",
@@ -182,13 +208,6 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             1,
         )
 
-        if not screenshot_base64:
-            try:
-                img_bytes = adapter.take_screenshot()
-                screenshot_base64 = base64.b64encode(img_bytes).decode("utf-8")
-            except Exception as e:
-                log.warning(f"⚠️ [Warning] inspect_ui screenshot capture failed: {e}")
-
         try:
             ui_tree = json.loads(ui_json)
         except json.JSONDecodeError:
@@ -207,17 +226,18 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Failed to sync ref cache from inspect_ui: {e}")
 
-        annotated_screenshot_base64 = ""
+        # Annotate in place: ref labels are only meaningful where the compressor
+        # emits ref + bbox + clickable (web). Mobile trees carry none of those, so
+        # annotate_screenshot draws nothing and just re-encodes the image — same
+        # picture, no labels. Either way exactly ONE image ships.
         if screenshot_base64 and ui_tree.get("ui_elements"):
             try:
                 from utils.screenshot_annotator import annotate_screenshot
                 raw_bytes = base64.b64decode(screenshot_base64)
                 annotated_bytes = annotate_screenshot(raw_bytes, ui_tree["ui_elements"])
-                annotated_screenshot_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
+                screenshot_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Annotated screenshot generation failed: {e}")
-
-        page_url = current_url(adapter, request.platform)
 
         return {
             "ok": True,
@@ -225,12 +245,17 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "exit_code": 0,
             "platform": request.platform,
             "env": request.env,
-            "ui_json": ui_json,
-            "ui_tree": ui_tree,
-            "element_count": len(ui_tree.get("ui_elements", []) or []),
-            "screenshot_base64": screenshot_base64 or "",
-            "annotated_screenshot_base64": annotated_screenshot_base64,
-            "current_url": page_url,
+            **build_observation(
+                ui_tree=ui_tree,
+                current_url=current_url(adapter, request.platform),
+                screenshot_base64=screenshot_base64 or "",
+                memory=_lookup_task_memory(request.platform, request.task),
+                candidates=(
+                    rank_candidates(request.intent, ui_tree.get("ui_elements") or [])
+                    if str(request.intent).strip()
+                    else []
+                ),
+            ),
         }
     except Exception as e:
         return {
@@ -241,6 +266,8 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "env": request.env,
             "error": str(e),
             "current_url": "",
+            "memory": {},
+            "candidates": [],
         }
     finally:
         if owns_adapter and adapter:

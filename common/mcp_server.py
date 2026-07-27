@@ -167,6 +167,14 @@ def _build_inspect_ui_tool_schema() -> dict:
                 "type": "boolean",
                 "description": "是否同时返回截图 base64",
             },
+            "task": {
+                "type": "string",
+                "description": "可选的任务标签（如 \"点击登录\"）。提供时，返回该任务上次成功的定位器作为提示（memory 字段）；不提供则 memory 为空对象。",
+            },
+            "intent": {
+                "type": "string",
+                "description": "可选的人话短语（如 \"登录按钮\"）。提供时，返回按字面相似度排序的候选元素及可直接使用的定位器（candidates 字段）；匹配不到则为空数组，不会瞎猜。",
+            },
         },
         "additionalProperties": False,
     }
@@ -280,15 +288,25 @@ def _build_initialize_result(protocol_version: str) -> dict:
 
 
 def _build_tool_result(payload: dict) -> dict:
+    # structuredContent IS the payload — the MCP client reads it directly. The
+    # content array must be present and non-empty per spec, so it carries a SHORT
+    # summary rather than a second json.dumps of the same dict. Duplicating a
+    # payload that holds a UI tree plus a screenshot was the largest avoidable
+    # cost on the wire.
+    ok = bool(payload.get("ok", False))
+    operation = payload.get("operation", "unknown")
+    if ok:
+        summary = f"{operation}: ok"
+        count = payload.get("element_count")
+        if count is not None:
+            summary += f" ({count} elements)"
+    else:
+        detail = str(payload.get("error", "") or payload.get("result", "") or "failed")
+        summary = f"{operation}: failed — {detail[:120]}"
     return {
-        "content": [
-            {
-                "type": "text",
-                "text": json.dumps(payload, ensure_ascii=False, indent=2),
-            }
-        ],
+        "content": [{"type": "text", "text": summary}],
         "structuredContent": payload,
-        "isError": not bool(payload.get("ok", False)),
+        "isError": not ok,
     }
 
 

@@ -28,6 +28,66 @@ echo '{"operation":"inspect_ui","platform":"web"}' | screenforge --tool-stdin
 
 Returns a cleaned DOM/XML tree (Web returns JSON, Android returns compressed XML). **You analyze this tree and locate target elements.**
 
+The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64, memory, candidates`.
+`screenshot_base64` is `""` unless `--vision` is on — with vision off, no screenshot is captured at all.
+
+**Optional `task` label → `memory` hint.** Pass a `task` string alongside
+`operation`/`platform` and the payload's `memory` carries what the last run of
+that task did (locator, counts, outcome) — a HINT you weigh against the live
+`ui_tree`, never an instruction to replay blindly. Omit `task` and `memory` is
+always `{}`, with zero extra cost — this is opt-in and behavior is otherwise
+unchanged.
+
+**A hint is not a success record.** `locator_hints` records what the last run
+*tried*, whether or not it worked, so read `last_status` and
+`success_count`/`failure_count` before trusting a hint: `last_status: "failed"`
+with `success_count: 0` means that locator has only ever failed, and
+`successful_actions` is the list that is empty unless something actually
+succeeded. Weighing the hint against the live tree is your job either way.
+
+**`task` must match the stored label exactly** — same string, case-sensitive,
+whitespace stripped. `"click:login"` will not match `"click:Login"`. By default
+an action records itself as `"{action}:{locator_value}"`, so a plain
+`--action click --locator-value Login` run stores `click:Login`:
+
+```bash
+echo '{"operation":"inspect_ui","platform":"android","task":"click:Login"}' | screenforge --tool-stdin
+```
+
+To get a human-readable label instead, name the action when you run it —
+`--action-name` on the CLI, or `action.action_name` in the MCP `execute` tool.
+That name becomes the stored label, and the same string then hits as `task`:
+
+```bash
+screenforge --action click --platform android --locator-type text --locator-value "Login" --action-name "点击登录"
+echo '{"operation":"inspect_ui","platform":"android","task":"点击登录"}' | screenforge --tool-stdin
+```
+
+Unsure what is stored? List it — `load_case_memory` returns the recorded
+entries with their `control_label` values, which are exactly the strings `task`
+accepts:
+
+```bash
+echo '{"operation":"load_case_memory","platform":"android","control_kind":"action"}' | screenforge --tool-stdin
+```
+
+A miss is silent and free: `memory` is `{}` and the `ui_tree` is unaffected.
+
+**Optional `intent` phrase → `candidates`.** Pass an `intent` string (e.g.
+`"登录按钮"`) alongside `operation`/`platform` and the payload's `candidates`
+returns up to 3 ranked elements matching that phrase, each `{text, score,
+locator}` with a ready-to-use locator — the same shape as the failure-path
+`candidates` above. The full `ui_tree` still ships alongside it (candidates are
+additive, never a replacement). Below the similarity floor, `candidates` is `[]`
+rather than a guess. **Matching is literal string similarity (stdlib
+`difflib`), not semantic** — it will not connect "Sign in" to "登录"; phrase
+your `intent` in the same language as the UI. Omit `intent` and `candidates` is
+always `[]`, zero extra cost:
+
+```bash
+echo '{"operation":"inspect_ui","platform":"android","intent":"登录按钮"}' | screenforge --tool-stdin
+```
+
 ### 2. Execute single-step actions
 
 Based on your analysis of the UI tree, execute step by step:

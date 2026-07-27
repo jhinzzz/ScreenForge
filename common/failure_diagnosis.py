@@ -17,9 +17,12 @@ from common.error_codes import lookup
 CANDIDATE_THRESHOLD = 0.55  # difflib ratio floor; below this is not a candidate
 MAX_CANDIDATES = 3
 
-# Element text fields to match against, in locator-priority order. `ref` is web
-# only; mobile elements omit it, so a text/description match is the fallback.
-_MATCH_FIELDS = ("text", "desc", "name")
+# Element text fields to match against. Every compressor's label-bearing keys
+# must appear here or that platform silently yields zero candidates:
+# utils_xml.py (Android) writes text/desc, utils_web.py writes text/desc/name,
+# utils_ios.py writes ONLY label/name — and suppresses `name` when it equals
+# `label`, so without "label" the typical iOS control matched nothing at all.
+_MATCH_FIELDS = ("text", "desc", "label", "name")
 
 
 @dataclass
@@ -62,12 +65,27 @@ def _best_field(el: dict, target: str) -> tuple[float, str, str]:
 
 
 def _suggested_locator(el: dict, matched_text: str, matched_field: str) -> dict:
-    """Locator priority: ref (web) > text > description. Mirrors agent_guide."""
+    """Locator priority: ref (web) > resourceId > text > description.
+
+    Mirrors the repo's locator law (CLAUDE.md, and the brain prompt in
+    common/ai.py). Mobile compressors (utils/utils_xml.py, utils/utils_ios.py)
+    emit `id` but never `ref`, so without the resourceId branch every mobile
+    candidate degraded to a text locator — weaker than what the page offered.
+    """
     ref = str(el.get("ref", "")).strip()
     if ref:
         return {"type": "ref", "value": ref}
+    resource_id = str(el.get("id", "")).strip()
+    if resource_id:
+        return {"type": "resourceId", "value": resource_id}
     if matched_field == "text":
         return {"type": "text", "value": matched_text}
+    # iOS is the only platform that reaches here on a `name` match (web always
+    # carries a ref, Android an id). executor.py's ios_key_map sends
+    # resourceId->name and description->label, so a name match MUST say
+    # resourceId or the agent would query the wrong attribute.
+    if matched_field == "name":
+        return {"type": "resourceId", "value": matched_text}
     return {"type": "description", "value": matched_text}
 
 
@@ -89,6 +107,24 @@ def _rank_candidates(locator_value: str, ui_elements: list[dict]) -> list[Candid
         )
     scored.sort(key=lambda c: c.score, reverse=True)
     return scored[:MAX_CANDIDATES]
+
+
+def rank_candidates(phrase: str, ui_elements: list[dict]) -> list[dict]:
+    """Rank elements against a plain-language phrase; JSON-ready dicts.
+
+    The forward half of did-you-mean: instead of explaining a locator that just
+    failed, answer "which elements could the agent mean by this sentence?" Same
+    ranking, same 0.55 floor, same at-most-3, same rather-nothing-than-a-guess.
+
+    ponytail: difflib is LITERAL similarity, not semantic — "登录" vs "Sign in"
+    scores ~0, so this returns [] on mixed-language pages. Upgrade path if that
+    matters: embed phrase + labels and rank by cosine, reusing the embedding
+    infrastructure already behind the L2 semantic cache (common/cache/).
+    """
+    return [
+        {"text": c.text, "score": c.score, "locator": c.locator}
+        for c in _rank_candidates(phrase, ui_elements)
+    ]
 
 
 def _recommend(error_code: str, fix: str, candidates: list[Candidate]) -> dict:

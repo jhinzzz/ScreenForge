@@ -95,6 +95,8 @@ screenforge inspect
 - **结构化输出**：JSON Lines 事件流 + `report/runs/<id>/` 产物，便于 CI 集成
 - **实时镜像台（Live Mirror）**：一边跑用例，一边在浏览器里看生成的 pytest 代码逐行长出 + 实时截图 —— `screenforge --playground`。见 [实时镜像台指南](docs/playground-guide_CN.md)
 - **执行回放 Review 报告**：任意用例加 `REVIEW_RECORD=1` 跑，即产出自包含、可分享的离线 `report.html` —— 可拖动时间轴逐步看「操作截图 + 触发它的测试源码行 + DOM 树」，外加 `video.gif` 胶片。默认关、零开销。（Web 已验证；移动端注册表/录像 seam 就位但未验证。）
+- **`inspect_ui` 案例记忆提示**：传入可选的 `task` 标签，返回体的 `memory` 字段会携带该任务上次运行做了什么 —— 定位器、成功/失败计数与结果 —— Agent 在**行动前**看到的提示，结合实时 UI 树自行判断，绝不会被自动重放。失败的运行也会被记录，所以采信提示前请先看 `last_status`/`success_count`。标签需与上一次运行记录的一致（`--action-name`，否则为 `"{action}:{locator_value}"`）；用 `load_case_memory` 可查看已记录的标签。详见 [Agent 指南](docs/agent_guide.md)。
+- **`inspect_ui` 人话找元素**：传入可选的 `intent` 短语（如 `"登录按钮"`），返回体的 `candidates` 字段会给出最多 3 个排序后的候选元素及可直接使用的定位器 —— 是对完整 `ui_tree` 的补充，而不是替代。匹配是字面字符串相似度，不是语义匹配，请用与 UI 相同的语言描述 `intent`。详见 [Agent 指南](docs/agent_guide.md)。
 
 ## Agent 集成 (Claude Code / Cursor / Codex)
 
