@@ -20,6 +20,7 @@ from cli.shared import (
     current_url,
     log,
 )
+from common.observation import build_observation
 from common.run_resume import RunContextLoadError, load_run_bundle
 from common.runtime_modes import MODE_DOCTOR, resolve_execution_mode
 from common.tool_protocol import (
@@ -182,13 +183,6 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             1,
         )
 
-        if not screenshot_base64:
-            try:
-                img_bytes = adapter.take_screenshot()
-                screenshot_base64 = base64.b64encode(img_bytes).decode("utf-8")
-            except Exception as e:
-                log.warning(f"⚠️ [Warning] inspect_ui screenshot capture failed: {e}")
-
         try:
             ui_tree = json.loads(ui_json)
         except json.JSONDecodeError:
@@ -207,17 +201,18 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Failed to sync ref cache from inspect_ui: {e}")
 
-        annotated_screenshot_base64 = ""
+        # Annotate in place: ref labels are only meaningful where the compressor
+        # emits ref + bbox + clickable (web). Mobile trees carry none of those, so
+        # annotate_screenshot draws nothing and just re-encodes the image — same
+        # picture, no labels. Either way exactly ONE image ships.
         if screenshot_base64 and ui_tree.get("ui_elements"):
             try:
                 from utils.screenshot_annotator import annotate_screenshot
                 raw_bytes = base64.b64decode(screenshot_base64)
                 annotated_bytes = annotate_screenshot(raw_bytes, ui_tree["ui_elements"])
-                annotated_screenshot_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
+                screenshot_base64 = base64.b64encode(annotated_bytes).decode("utf-8")
             except Exception as e:
                 log.warning(f"⚠️ [Warning] Annotated screenshot generation failed: {e}")
-
-        page_url = current_url(adapter, request.platform)
 
         return {
             "ok": True,
@@ -225,12 +220,11 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "exit_code": 0,
             "platform": request.platform,
             "env": request.env,
-            "ui_json": ui_json,
-            "ui_tree": ui_tree,
-            "element_count": len(ui_tree.get("ui_elements", []) or []),
-            "screenshot_base64": screenshot_base64 or "",
-            "annotated_screenshot_base64": annotated_screenshot_base64,
-            "current_url": page_url,
+            **build_observation(
+                ui_tree=ui_tree,
+                current_url=current_url(adapter, request.platform),
+                screenshot_base64=screenshot_base64 or "",
+            ),
         }
     except Exception as e:
         return {
