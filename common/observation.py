@@ -25,6 +25,7 @@ def build_observation(
     ui_tree: dict,
     current_url: str = "",
     screenshot_base64: str = "",
+    memory: dict | None = None,
 ) -> dict:
     elements = (ui_tree or {}).get("ui_elements") or []
     return {
@@ -32,4 +33,9 @@ def build_observation(
         "element_count": len(elements),
         "current_url": current_url,
         "screenshot_base64": screenshot_base64,
+        # A HINT, never an instruction: what worked for this task last run. The
+        # agent reads it alongside the live tree and decides whether to trust it.
+        # We deliberately do NOT replay it (that is Midscene's XPath-cache route,
+        # which silently clicks the wrong thing after a redesign).
+        "memory": memory or {},
     }

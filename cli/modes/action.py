@@ -72,6 +72,7 @@ def build_failure_payload(
     payload.update(diag.to_dict())
     observation = build_observation(ui_tree=ui_tree, current_url=current_url)
     observation.pop("screenshot_base64")  # engine_error has never carried one
+    observation.pop("memory")             # decision-time hint; action is post-decision
     payload.update(observation)
     return payload
 
@@ -91,6 +92,7 @@ def build_success_payload(
     """
     observation = build_observation(ui_tree=ui_tree, current_url=current_url)
     observation.pop("screenshot_base64")  # action payloads have never carried one
+    observation.pop("memory")             # decision-time hint; action is post-decision
     return {
         "ok": True,
         "action": action_name,

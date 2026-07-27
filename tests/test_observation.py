@@ -29,7 +29,9 @@ def test_null_ui_elements_does_not_crash():
 def test_exact_key_set_no_extras():
     # Invariant 3 guard: an unreviewed key added here reaches every mode at once.
     obs = build_observation(ui_tree={"ui_elements": []})
-    assert set(obs) == {"ui_tree", "element_count", "current_url", "screenshot_base64"}
+    assert set(obs) == {
+        "ui_tree", "element_count", "current_url", "screenshot_base64", "memory",
+    }
 
 
 def test_passes_through_url_and_screenshot():
@@ -38,3 +40,20 @@ def test_passes_through_url_and_screenshot():
     )
     assert obs["current_url"] == "https://x.test/a"
     assert obs["screenshot_base64"] == "QUJD"
+
+
+def test_memory_defaults_to_empty_dict():
+    # Invariant 2: no history is an honest empty, never a fabricated hint.
+    obs = build_observation(ui_tree={"ui_elements": []})
+    assert obs["memory"] == {}
+
+
+def test_memory_passes_through():
+    entry = {"control_label": "点击登录", "successful_actions": ["click|text|登录"]}
+    obs = build_observation(ui_tree={"ui_elements": []}, memory=entry)
+    assert obs["memory"] == entry
+
+
+def test_memory_none_normalizes_to_empty_dict():
+    obs = build_observation(ui_tree={"ui_elements": []}, memory=None)
+    assert obs["memory"] == {}
