@@ -24,6 +24,17 @@ def _slugify(value: str) -> str:
     return text.lower() or "memory"
 
 
+# Inline `--action` runs all record this same source_ref: it says "typed on the
+# command line", not "which control". Treating it as an identity made the first
+# inline action on a platform absorb every later one, so a named action could
+# never get its own entry — or be found by its name.
+_NON_IDENTIFYING_SOURCE_REFS = frozenset({"inline://action"})
+
+
+def _identifying_source_ref(source_ref: str) -> str:
+    return "" if source_ref in _NON_IDENTIFYING_SOURCE_REFS else source_ref
+
+
 def _build_memory_id(
     platform: str,
     control_kind: str,
@@ -240,7 +251,7 @@ class CaseMemoryStore:
         normalized_platform = _normalize_text(platform).lower()
         normalized_kind = _normalize_text(control_kind).lower()
         normalized_label = _normalize_text(control_label)
-        normalized_source_ref = _normalize_text(source_ref)
+        normalized_source_ref = _identifying_source_ref(_normalize_text(source_ref))
         document = self.load_document()
 
         for entry in document.entries:
@@ -277,10 +288,11 @@ class CaseMemoryStore:
 
         document = self.load_document()
         existing_entry = None
+        identifying_source_ref = _identifying_source_ref(source_ref)
         for entry in document.entries:
             if entry.platform != platform or entry.control_kind != control_kind:
                 continue
-            if source_ref and entry.source_ref == source_ref:
+            if identifying_source_ref and entry.source_ref == identifying_source_ref:
                 existing_entry = entry
                 break
             if entry.control_label == control_label:

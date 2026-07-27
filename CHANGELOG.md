@@ -40,6 +40,13 @@ All notable changes to ScreenForge will be documented in this file.
 - **Mobile candidate locators now suggest `resourceId`.** Android/iOS trees
   carry `id` but no `ref`, so suggestions silently degraded to `text` even
   though `resourceId` outranks it.
+- **Case memory no longer collapses every inline action into one entry.** All
+  `--action` runs record the same sentinel `source_ref` (`inline://action`),
+  and that sentinel was matched as an identity — so the first inline action
+  recorded on a platform absorbed every later one. `--action-name` could not
+  create its own entry (it only bumped the unrelated one's counter), and
+  `task=<that name>` could never hit. The sentinel is now provenance, not
+  identity; real `source_ref` paths (workflows) still identify across a rename.
 
 ## [0.7.0] - 2026-06-30
 
