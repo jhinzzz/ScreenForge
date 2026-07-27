@@ -8,9 +8,10 @@ All notable changes to ScreenForge will be documented in this file.
 
 ### Added
 - **`inspect_ui` accepts an optional `task` label and returns a `memory` hint.**
-  When `task` is given, the payload carries what worked for that task last run
-  (`memory`), so the agent sees it BEFORE deciding rather than in the execute
-  result afterwards. Omit `task` and `memory` is `{}` — behavior unchanged.
+  When `task` is given, the payload carries what the last run of that task did
+  (`memory`) — locator, counts, and outcome — so the agent sees it BEFORE
+  deciding rather than in the execute result afterwards. Failed runs are
+  recorded too; `last_status`/`success_count` say which a hint was. Omit `task` and `memory` is `{}` — behavior unchanged.
   The hint is never auto-replayed: the agent weighs it against the live tree.
   `task` must match the recorded label exactly (case-sensitive); the default
   label is `"{action}:{locator_value}"`, and `--action-name` /
@@ -37,9 +38,15 @@ All notable changes to ScreenForge will be documented in this file.
   annotated a screenshot even with vision disabled, contradicting
   `docs/agent_guide.md`. With `--vision` off, `screenshot_base64` is `""` and
   no screenshot is taken.
-- **Mobile candidate locators now suggest `resourceId`.** Android/iOS trees
-  carry `id` but no `ref`, so suggestions silently degraded to `text` even
-  though `resourceId` outranks it.
+- **Mobile candidate locators now suggest `resourceId`.** Android trees carry
+  `id` but no `ref`, so suggestions silently degraded to `text` even though
+  `resourceId` outranks it.
+- **`candidates` and `intent` now work on iOS at all.** The matcher only read
+  `text`/`desc`/`name`, but the iOS compressor emits `label`/`name` and drops
+  `name` when it duplicates `label` — so the ordinary iOS control produced zero
+  candidates, and the one shape that did match was returned as a `description`
+  locator, which resolves to `label` and therefore queried the wrong attribute.
+  `label` is now matched, and a `name` match is reported as `resourceId`.
 - **Case memory no longer collapses every inline action into one entry.** All
   `--action` runs record the same sentinel `source_ref` (`inline://action`),
   and that sentinel was matched as an identity — so the first inline action

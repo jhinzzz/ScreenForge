@@ -8,8 +8,10 @@
 
 ### Added
 - **`inspect_ui` 支持可选的 `task` 标签，并返回 `memory` 提示。**
-  提供 `task` 时，payload 会携带该任务上次成功的信息（`memory`），
-  让 agent 在**决策前**就能看到，而不是像以前那样只出现在执行结果里。
+  提供 `task` 时，payload 会携带该任务上次运行做了什么（`memory`）——
+  定位器、成功/失败计数与结果，让 agent 在**决策前**就能看到，而不是像以前
+  那样只出现在执行结果里。失败的运行同样会被记录，用
+  `last_status`/`success_count` 判断提示的成色。
   不传 `task` 则 `memory` 为 `{}`——行为不变。该提示从不会被自动重放：
   agent 会结合实时的 UI 树自行判断是否采信。`task` 必须与记录的标签完全一致
   （区分大小写）；默认标签格式为 `"{action}:{locator_value}"`，用
@@ -33,9 +35,14 @@
 - **`inspect_ui` 现在会遵循 `--vision` 开关。** 此前有一条 fallback 分支即使在
   vision 关闭时也会截图并标注，与 `docs/agent_guide.md` 的描述矛盾。`--vision`
   关闭时，`screenshot_base64` 为 `""`，且不会截图。
-- **移动端候选定位器现在会建议 `resourceId`。** Android/iOS 的 UI 树带有 `id`
+- **移动端候选定位器现在会建议 `resourceId`。** Android 的 UI 树带有 `id`
   但没有 `ref`，导致建议悄悄退化成 `text`，尽管按定位器优先级 `resourceId`
   本应排在 `text` 之前。
+- **`candidates` / `intent` 在 iOS 上现在才真正可用。** 匹配器此前只读
+  `text`/`desc`/`name`，而 iOS 压缩器输出的是 `label`/`name`，并且当 `name` 与
+  `label` 相同时会丢弃 `name` —— 于是常见的 iOS 控件一个候选都匹配不到；而唯一
+  能匹配上的形态又被返回成 `description` 定位器，它会被映射到 `label`，查错了
+  属性。现在会匹配 `label`，并且 `name` 命中会正确报告为 `resourceId`。
 - **案例记忆不再把所有即时动作挤进同一条记录。** 所有 `--action` 运行都会写入
   同一个哨兵 `source_ref`（`inline://action`），而它此前被当作身份标识 —— 于是
   某个平台上第一条被记录的即时动作会吞掉之后所有的动作。`--action-name` 无法

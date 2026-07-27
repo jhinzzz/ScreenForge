@@ -17,10 +17,12 @@ from common.error_codes import lookup
 CANDIDATE_THRESHOLD = 0.55  # difflib ratio floor; below this is not a candidate
 MAX_CANDIDATES = 3
 
-# Element text fields to match against, in locator-priority order. `ref` is web
-# only; mobile elements carry `id` (resourceId) but omit `ref`, so resourceId
-# (Android/iOS) is the next tier, then text/description as fallback.
-_MATCH_FIELDS = ("text", "desc", "name")
+# Element text fields to match against. Every compressor's label-bearing keys
+# must appear here or that platform silently yields zero candidates:
+# utils_xml.py (Android) writes text/desc, utils_web.py writes text/desc/name,
+# utils_ios.py writes ONLY label/name — and suppresses `name` when it equals
+# `label`, so without "label" the typical iOS control matched nothing at all.
+_MATCH_FIELDS = ("text", "desc", "label", "name")
 
 
 @dataclass
@@ -78,6 +80,12 @@ def _suggested_locator(el: dict, matched_text: str, matched_field: str) -> dict:
         return {"type": "resourceId", "value": resource_id}
     if matched_field == "text":
         return {"type": "text", "value": matched_text}
+    # iOS is the only platform that reaches here on a `name` match (web always
+    # carries a ref, Android an id). executor.py's ios_key_map sends
+    # resourceId->name and description->label, so a name match MUST say
+    # resourceId or the agent would query the wrong attribute.
+    if matched_field == "name":
+        return {"type": "resourceId", "value": matched_text}
     return {"type": "description", "value": matched_text}
 
 

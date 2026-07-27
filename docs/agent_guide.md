@@ -32,11 +32,18 @@ The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platfo
 `screenshot_base64` is `""` unless `--vision` is on — with vision off, no screenshot is captured at all.
 
 **Optional `task` label → `memory` hint.** Pass a `task` string alongside
-`operation`/`platform` and the payload's `memory` carries what worked for that
-task last run (locator, success count) — a HINT you weigh against the live
+`operation`/`platform` and the payload's `memory` carries what the last run of
+that task did (locator, counts, outcome) — a HINT you weigh against the live
 `ui_tree`, never an instruction to replay blindly. Omit `task` and `memory` is
 always `{}`, with zero extra cost — this is opt-in and behavior is otherwise
 unchanged.
+
+**A hint is not a success record.** `locator_hints` records what the last run
+*tried*, whether or not it worked, so read `last_status` and
+`success_count`/`failure_count` before trusting a hint: `last_status: "failed"`
+with `success_count: 0` means that locator has only ever failed, and
+`successful_actions` is the list that is empty unless something actually
+succeeded. Weighing the hint against the live tree is your job either way.
 
 **`task` must match the stored label exactly** — same string, case-sensitive,
 whitespace stripped. `"click:login"` will not match `"click:Login"`. By default

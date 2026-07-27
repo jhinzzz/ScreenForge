@@ -34,9 +34,11 @@ def build_observation(
         "element_count": len(elements),
         "current_url": current_url,
         "screenshot_base64": screenshot_base64,
-        # A HINT, never an instruction: what worked for this task last run. The
-        # agent reads it alongside the live tree and decides whether to trust it.
-        # We deliberately do NOT replay it (that is Midscene's XPath-cache route,
+        # A HINT, never an instruction: what the last run of this task DID —
+        # its locator and its outcome, success or failure (case_memory records
+        # both, so `last_status`/`success_count` are what say which). The agent
+        # reads it alongside the live tree and decides whether to trust it. We
+        # deliberately do NOT replay it (that is Midscene's XPath-cache route,
         # which silently clicks the wrong thing after a redesign).
         "memory": memory or {},
         # Elements matching the agent's plain-language phrase, best first. Empty
