@@ -280,15 +280,25 @@ def _build_initialize_result(protocol_version: str) -> dict:
 
 
 def _build_tool_result(payload: dict) -> dict:
+    # structuredContent IS the payload — the MCP client reads it directly. The
+    # content array must be present and non-empty per spec, so it carries a SHORT
+    # summary rather than a second json.dumps of the same dict. Duplicating a
+    # payload that holds a UI tree plus a screenshot was the largest avoidable
+    # cost on the wire.
+    ok = bool(payload.get("ok", False))
+    operation = payload.get("operation", "unknown")
+    if ok:
+        summary = f"{operation}: ok"
+        count = payload.get("element_count")
+        if count is not None:
+            summary += f" ({count} elements)"
+    else:
+        detail = str(payload.get("error", "") or payload.get("result", "") or "failed")
+        summary = f"{operation}: failed — {detail[:120]}"
     return {
-        "content": [
-            {
-                "type": "text",
-                "text": json.dumps(payload, ensure_ascii=False, indent=2),
-            }
-        ],
+        "content": [{"type": "text", "text": summary}],
         "structuredContent": payload,
-        "isError": not bool(payload.get("ok", False)),
+        "isError": not ok,
     }
 
 
