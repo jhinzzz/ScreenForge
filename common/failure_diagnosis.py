@@ -18,7 +18,8 @@ CANDIDATE_THRESHOLD = 0.55  # difflib ratio floor; below this is not a candidate
 MAX_CANDIDATES = 3
 
 # Element text fields to match against, in locator-priority order. `ref` is web
-# only; mobile elements omit it, so a text/description match is the fallback.
+# only; mobile elements carry `id` (resourceId) but omit `ref`, so resourceId
+# (Android/iOS) is the next tier, then text/description as fallback.
 _MATCH_FIELDS = ("text", "desc", "name")
 
 
@@ -62,10 +63,19 @@ def _best_field(el: dict, target: str) -> tuple[float, str, str]:
 
 
 def _suggested_locator(el: dict, matched_text: str, matched_field: str) -> dict:
-    """Locator priority: ref (web) > text > description. Mirrors agent_guide."""
+    """Locator priority: ref (web) > resourceId > text > description.
+
+    Mirrors the repo's locator law (CLAUDE.md, and the brain prompt in
+    common/ai.py). Mobile compressors (utils/utils_xml.py, utils/utils_ios.py)
+    emit `id` but never `ref`, so without the resourceId branch every mobile
+    candidate degraded to a text locator — weaker than what the page offered.
+    """
     ref = str(el.get("ref", "")).strip()
     if ref:
         return {"type": "ref", "value": ref}
+    resource_id = str(el.get("id", "")).strip()
+    if resource_id:
+        return {"type": "resourceId", "value": resource_id}
     if matched_field == "text":
         return {"type": "text", "value": matched_text}
     return {"type": "description", "value": matched_text}
