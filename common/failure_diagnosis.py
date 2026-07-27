@@ -101,6 +101,24 @@ def _rank_candidates(locator_value: str, ui_elements: list[dict]) -> list[Candid
     return scored[:MAX_CANDIDATES]
 
 
+def rank_candidates(phrase: str, ui_elements: list[dict]) -> list[dict]:
+    """Rank elements against a plain-language phrase; JSON-ready dicts.
+
+    The forward half of did-you-mean: instead of explaining a locator that just
+    failed, answer "which elements could the agent mean by this sentence?" Same
+    ranking, same 0.55 floor, same at-most-3, same rather-nothing-than-a-guess.
+
+    ponytail: difflib is LITERAL similarity, not semantic — "登录" vs "Sign in"
+    scores ~0, so this returns [] on mixed-language pages. Upgrade path if that
+    matters: embed phrase + labels and rank by cosine, reusing the embedding
+    infrastructure already behind the L2 semantic cache (common/cache/).
+    """
+    return [
+        {"text": c.text, "score": c.score, "locator": c.locator}
+        for c in _rank_candidates(phrase, ui_elements)
+    ]
+
+
 def _recommend(error_code: str, fix: str, candidates: list[Candidate]) -> dict:
     if candidates:
         top = candidates[0]
