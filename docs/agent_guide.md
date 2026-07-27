@@ -28,8 +28,19 @@ echo '{"operation":"inspect_ui","platform":"web"}' | screenforge --tool-stdin
 
 Returns a cleaned DOM/XML tree (Web returns JSON, Android returns compressed XML). **You analyze this tree and locate target elements.**
 
-The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64`.
+The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64, memory`.
 `screenshot_base64` is `""` unless `--vision` is on — with vision off, no screenshot is captured at all.
+
+**Optional `task` label → `memory` hint.** Pass a `task` string (e.g. `"点击登录"`)
+alongside `operation`/`platform` and the payload's `memory` carries what worked
+for that task last run (locator, success count) — a HINT you weigh against the
+live `ui_tree`, never an instruction to replay blindly. Omit `task` and `memory`
+is always `{}`, with zero extra cost — this is opt-in and behavior is otherwise
+unchanged:
+
+```bash
+echo '{"operation":"inspect_ui","platform":"android","task":"点击登录"}' | screenforge --tool-stdin
+```
 
 ### 2. Execute single-step actions
 

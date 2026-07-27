@@ -6,6 +6,13 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`inspect_ui` accepts an optional `task` label and returns a `memory` hint.**
+  When `task` is given, the payload carries what worked for that task last run
+  (`memory`), so the agent sees it BEFORE deciding rather than in the execute
+  result afterwards. Omit `task` and `memory` is `{}` — behavior unchanged.
+  The hint is never auto-replayed: the agent weighs it against the live tree.
+
 ### Changed
 - **`inspect_ui` payload slimmed — BREAKING for agents reading `ui_json`.**
   The duplicate `ui_json` response key is gone; use `ui_tree` (same data,

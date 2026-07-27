@@ -6,6 +6,13 @@
 
 ## [未发布]
 
+### Added
+- **`inspect_ui` 支持可选的 `task` 标签，并返回 `memory` 提示。**
+  提供 `task` 时，payload 会携带该任务上次成功的信息（`memory`），
+  让 agent 在**决策前**就能看到，而不是像以前那样只出现在执行结果里。
+  不传 `task` 则 `memory` 为 `{}`——行为不变。该提示从不会被自动重放：
+  agent 会结合实时的 UI 树自行判断是否采信。
+
 ### Changed
 - **`inspect_ui` 返回体精简 —— 对读取 `ui_json` 的 agent 是破坏性变更。**
   重复的 `ui_json` 响应键已移除，改用 `ui_tree`（同一份数据，已解析）。
