@@ -4,7 +4,7 @@
 
 **中文** | [English](./CHANGELOG.md)
 
-## [未发布]
+## [0.10.0] - 2026-07-27
 
 ### Added
 - **`inspect_ui` 支持可选的 `task` 标签，并返回 `memory` 提示。**

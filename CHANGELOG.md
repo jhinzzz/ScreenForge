@@ -4,7 +4,7 @@ All notable changes to ScreenForge will be documented in this file.
 
 [中文](./CHANGELOG_CN.md) | **English**
 
-## [Unreleased]
+## [0.10.0] - 2026-07-27
 
 ### Added
 - **`inspect_ui` accepts an optional `task` label and returns a `memory` hint.**
