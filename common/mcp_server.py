@@ -167,6 +167,10 @@ def _build_inspect_ui_tool_schema() -> dict:
                 "type": "boolean",
                 "description": "是否同时返回截图 base64",
             },
+            "task": {
+                "type": "string",
+                "description": "可选的任务标签（如 \"点击登录\"）。提供时，返回该任务上次成功的定位器作为提示（memory 字段）；不提供则 memory 为空对象。",
+            },
         },
         "additionalProperties": False,
     }

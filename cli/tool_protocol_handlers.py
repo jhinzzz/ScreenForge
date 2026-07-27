@@ -138,6 +138,30 @@ def _find_case_memory_hit(args, execution_mode: str) -> dict | None:
     )
 
 
+def _lookup_task_memory(platform: str, task: str) -> dict:
+    """Case-memory hint for an inspect_ui request, or {} when there's nothing.
+
+    A HINT, not an instruction — see common/observation.py. Matching is fuzzy by
+    design (find_entry ORs control_label with source_ref), so a wrong hit costs
+    one useless hint, never a wrong click. control_kind is "action" because an
+    inspect precedes a single action, and that's the kind those runs record under.
+    Any read failure degrades to {}: a missing hint must never cost the agent
+    its UI tree.
+    """
+    if not str(task).strip():
+        return {}
+    try:
+        entry = _load_case_memory_store().find_entry(
+            platform=platform,
+            control_kind="action",
+            control_label=task,
+        )
+    except Exception as e:
+        log.warning(f"⚠️ [Warning] Case-memory lookup failed, continuing without hint: {e}")
+        return {}
+    return entry or {}
+
+
 def build_load_case_memory_payload(
     platform: str = "",
     control_kind: str = "",
@@ -224,6 +248,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
                 ui_tree=ui_tree,
                 current_url=current_url(adapter, request.platform),
                 screenshot_base64=screenshot_base64 or "",
+                memory=_lookup_task_memory(request.platform, request.task),
             ),
         }
     except Exception as e:
@@ -235,6 +260,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "env": request.env,
             "error": str(e),
             "current_url": "",
+            "memory": {},
         }
     finally:
         if owns_adapter and adapter:
