@@ -76,6 +76,7 @@ Each step: **inspect → decide → act → verify**. The AI decides, ScreenForg
 - **Live Mirror playground**: Watch the generated pytest code grow line-by-line beside a live screenshot as the test runs — `screenforge --playground`. See the [Playground Guide](https://github.com/jhinzzz/ScreenForge/blob/main/docs/playground-guide.md)
 - **Execution-replay review report**: Run any test with `REVIEW_RECORD=1` and get a self-contained, shareable offline `report.html` — a drag-timeline of each step's screenshot + the test source line that triggered it + the DOM tree, plus a `video.gif` filmstrip. Default off, zero overhead. (Web verified; mobile registry/recording seam in place but unverified.)
 - **Case memory hints on `inspect_ui`**: pass an optional `task` label and the payload's `memory` field carries what worked last run for that task — a hint the Agent weighs against the live tree, seen before it acts, never auto-replayed. See the [Agent Guide](docs/agent_guide.md).
+- **Plain-language element lookup on `inspect_ui`**: pass an optional `intent` phrase (e.g. `"登录按钮"`) and the payload's `candidates` field returns up to 3 ranked elements with ready-to-use locators — additive to the full `ui_tree`, never a replacement. Matching is literal string similarity, not semantic, so phrase `intent` in the same language as the UI. See the [Agent Guide](docs/agent_guide.md).
 
 ## Agent Integration (Claude Code / Cursor / Codex)
 

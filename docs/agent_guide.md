@@ -28,7 +28,7 @@ echo '{"operation":"inspect_ui","platform":"web"}' | screenforge --tool-stdin
 
 Returns a cleaned DOM/XML tree (Web returns JSON, Android returns compressed XML). **You analyze this tree and locate target elements.**
 
-The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64, memory`.
+The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64, memory, candidates`.
 `screenshot_base64` is `""` unless `--vision` is on — with vision off, no screenshot is captured at all.
 
 **Optional `task` label → `memory` hint.** Pass a `task` string (e.g. `"点击登录"`)
@@ -40,6 +40,21 @@ unchanged:
 
 ```bash
 echo '{"operation":"inspect_ui","platform":"android","task":"点击登录"}' | screenforge --tool-stdin
+```
+
+**Optional `intent` phrase → `candidates`.** Pass an `intent` string (e.g.
+`"登录按钮"`) alongside `operation`/`platform` and the payload's `candidates`
+returns up to 3 ranked elements matching that phrase, each `{text, score,
+locator}` with a ready-to-use locator — the same shape as the failure-path
+`candidates` above. The full `ui_tree` still ships alongside it (candidates are
+additive, never a replacement). Below the similarity floor, `candidates` is `[]`
+rather than a guess. **Matching is literal string similarity (stdlib
+`difflib`), not semantic** — it will not connect "Sign in" to "登录"; phrase
+your `intent` in the same language as the UI. Omit `intent` and `candidates` is
+always `[]`, zero extra cost:
+
+```bash
+echo '{"operation":"inspect_ui","platform":"android","intent":"登录按钮"}' | screenforge --tool-stdin
 ```
 
 ### 2. Execute single-step actions

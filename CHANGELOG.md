@@ -12,6 +12,11 @@ All notable changes to ScreenForge will be documented in this file.
   (`memory`), so the agent sees it BEFORE deciding rather than in the execute
   result afterwards. Omit `task` and `memory` is `{}` — behavior unchanged.
   The hint is never auto-replayed: the agent weighs it against the live tree.
+- **`inspect_ui` accepts an optional `intent` phrase and returns `candidates`.**
+  Describe the target in plain language ("登录按钮") and the payload returns up
+  to 3 ranked elements with ready-to-use locators. Below the similarity floor it
+  returns an empty list rather than a guess. Matching is literal (stdlib
+  `difflib`), not semantic — mixed-language pages will often return empty.
 
 ### Changed
 - **`inspect_ui` payload slimmed — BREAKING for agents reading `ui_json`.**
@@ -28,6 +33,9 @@ All notable changes to ScreenForge will be documented in this file.
   annotated a screenshot even with vision disabled, contradicting
   `docs/agent_guide.md`. With `--vision` off, `screenshot_base64` is `""` and
   no screenshot is taken.
+- **Mobile candidate locators now suggest `resourceId`.** Android/iOS trees
+  carry `id` but no `ref`, so suggestions silently degraded to `text` even
+  though `resourceId` outranks it.
 
 ## [0.7.0] - 2026-06-30
 

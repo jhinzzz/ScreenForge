@@ -12,6 +12,11 @@
   让 agent 在**决策前**就能看到，而不是像以前那样只出现在执行结果里。
   不传 `task` 则 `memory` 为 `{}`——行为不变。该提示从不会被自动重放：
   agent 会结合实时的 UI 树自行判断是否采信。
+- **`inspect_ui` 支持可选的 `intent` 短语，并返回 `candidates`。**
+  用人话描述目标（如"登录按钮"），payload 会返回最多 3 个排序后的候选元素，
+  以及可直接使用的定位器。低于相似度阈值时返回空数组，而不是瞎猜。匹配是
+  字面相似度（基于标准库 `difflib`），不是语义匹配——中英文混排的页面很可能
+  返回空。
 
 ### Changed
 - **`inspect_ui` 返回体精简 —— 对读取 `ui_json` 的 agent 是破坏性变更。**
@@ -25,6 +30,9 @@
 - **`inspect_ui` 现在会遵循 `--vision` 开关。** 此前有一条 fallback 分支即使在
   vision 关闭时也会截图并标注，与 `docs/agent_guide.md` 的描述矛盾。`--vision`
   关闭时，`screenshot_base64` 为 `""`，且不会截图。
+- **移动端候选定位器现在会建议 `resourceId`。** Android/iOS 的 UI 树带有 `id`
+  但没有 `ref`，导致建议悄悄退化成 `text`，尽管按定位器优先级 `resourceId`
+  本应排在 `text` 之前。
 
 ## [0.7.0] - 2026-06-30
 
