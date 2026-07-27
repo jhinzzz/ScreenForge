@@ -29,7 +29,7 @@ class _FakeAdapter:
 
 
 def _request(platform="web"):
-    return SimpleNamespace(platform=platform, env="dev", vision=False, task="")
+    return SimpleNamespace(platform=platform, env="dev", vision=False, task="", intent="")
 
 
 def _make_manager(monkeypatch):

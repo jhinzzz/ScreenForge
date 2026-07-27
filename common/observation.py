@@ -26,6 +26,7 @@ def build_observation(
     current_url: str = "",
     screenshot_base64: str = "",
     memory: dict | None = None,
+    candidates: list[dict] | None = None,
 ) -> dict:
     elements = (ui_tree or {}).get("ui_elements") or []
     return {
@@ -38,4 +39,8 @@ def build_observation(
         # We deliberately do NOT replay it (that is Midscene's XPath-cache route,
         # which silently clicks the wrong thing after a redesign).
         "memory": memory or {},
+        # Elements matching the agent's plain-language phrase, best first. Empty
+        # is a valid answer — below the similarity floor we return nothing rather
+        # than a confident wrong guess.
+        "candidates": candidates or [],
     }

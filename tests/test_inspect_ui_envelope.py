@@ -80,7 +80,8 @@ def test_payload_key_set_is_exact(monkeypatch):
     payload = tph.build_inspect_ui_payload(_request(vision=False))
     assert set(payload) == {
         "ok", "operation", "exit_code", "platform", "env",
-        "ui_tree", "element_count", "current_url", "screenshot_base64", "memory",
+        "ui_tree", "element_count", "current_url", "screenshot_base64",
+        "memory", "candidates",
     }
 
 

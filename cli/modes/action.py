@@ -73,6 +73,7 @@ def build_failure_payload(
     observation = build_observation(ui_tree=ui_tree, current_url=current_url)
     observation.pop("screenshot_base64")  # engine_error has never carried one
     observation.pop("memory")             # decision-time hint; action is post-decision
+    observation.pop("candidates")  # engine_error already has its own diagnosis candidates
     payload.update(observation)
     return payload
 
@@ -93,6 +94,7 @@ def build_success_payload(
     observation = build_observation(ui_tree=ui_tree, current_url=current_url)
     observation.pop("screenshot_base64")  # action payloads have never carried one
     observation.pop("memory")             # decision-time hint; action is post-decision
+    observation.pop("candidates")  # engine_error already has its own diagnosis candidates
     return {
         "ok": True,
         "action": action_name,

@@ -30,7 +30,8 @@ def test_exact_key_set_no_extras():
     # Invariant 3 guard: an unreviewed key added here reaches every mode at once.
     obs = build_observation(ui_tree={"ui_elements": []})
     assert set(obs) == {
-        "ui_tree", "element_count", "current_url", "screenshot_base64", "memory",
+        "ui_tree", "element_count", "current_url", "screenshot_base64",
+        "memory", "candidates",
     }
 
 
@@ -57,3 +58,19 @@ def test_memory_passes_through():
 def test_memory_none_normalizes_to_empty_dict():
     obs = build_observation(ui_tree={"ui_elements": []}, memory=None)
     assert obs["memory"] == {}
+
+
+def test_candidates_defaults_to_empty_list():
+    obs = build_observation(ui_tree={"ui_elements": []})
+    assert obs["candidates"] == []
+
+
+def test_candidates_pass_through():
+    cands = [{"text": "登录", "score": 0.9, "locator": {"type": "ref", "value": "@1"}}]
+    obs = build_observation(ui_tree={"ui_elements": []}, candidates=cands)
+    assert obs["candidates"] == cands
+
+
+def test_candidates_none_normalizes_to_empty_list():
+    obs = build_observation(ui_tree={"ui_elements": []}, candidates=None)
+    assert obs["candidates"] == []

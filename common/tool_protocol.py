@@ -68,6 +68,9 @@ class ToolRequest(BaseModel):
     # Optional task label for inspect_ui: lets the payload carry the case-memory
     # hint for THIS task at decision time. Omitted → no lookup, no hint.
     task: str = ""
+    # Optional plain-language phrase for inspect_ui: returns ranked candidate
+    # elements (the `candidates` field). Omitted → no ranking, empty list.
+    intent: str = ""
     query: str = ""
     source_ref: str = ""
     control_kind: str = ""

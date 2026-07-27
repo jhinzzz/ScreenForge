@@ -171,6 +171,10 @@ def _build_inspect_ui_tool_schema() -> dict:
                 "type": "string",
                 "description": "可选的任务标签（如 \"点击登录\"）。提供时，返回该任务上次成功的定位器作为提示（memory 字段）；不提供则 memory 为空对象。",
             },
+            "intent": {
+                "type": "string",
+                "description": "可选的人话短语（如 \"登录按钮\"）。提供时，返回按字面相似度排序的候选元素及可直接使用的定位器（candidates 字段）；匹配不到则为空数组，不会瞎猜。",
+            },
         },
         "additionalProperties": False,
     }

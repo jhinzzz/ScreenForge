@@ -20,6 +20,7 @@ from cli.shared import (
     current_url,
     log,
 )
+from common.failure_diagnosis import rank_candidates
 from common.observation import build_observation
 from common.run_resume import RunContextLoadError, load_run_bundle
 from common.runtime_modes import MODE_DOCTOR, resolve_execution_mode
@@ -249,6 +250,11 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
                 current_url=current_url(adapter, request.platform),
                 screenshot_base64=screenshot_base64 or "",
                 memory=_lookup_task_memory(request.platform, request.task),
+                candidates=(
+                    rank_candidates(request.intent, ui_tree.get("ui_elements") or [])
+                    if str(request.intent).strip()
+                    else []
+                ),
             ),
         }
     except Exception as e:
@@ -261,6 +267,7 @@ def build_inspect_ui_payload(request, shared_adapter_manager: _SharedAdapterMana
             "error": str(e),
             "current_url": "",
             "memory": {},
+            "candidates": [],
         }
     finally:
         if owns_adapter and adapter:
