@@ -31,7 +31,7 @@ source .venv/bin/activate && python agent_cli.py \
 source .venv/bin/activate && echo '{"operation":"inspect_ui","platform":"web"}' | python agent_cli.py --tool-stdin
 ```
 
-返回 JSON 包含 `ui_json`（DOM 树）和可选的 `screenshot_base64`。每个可交互元素带有：
+返回 JSON 包含 `ui_tree`（DOM 树，已解析为对象）和 `screenshot_base64`（仅在 `--vision` 模式下非空；关闭时为 `""`，不会截图）。每个可交互元素带有：
 - **ref 编号** (@1, @2...) — 直接用于定位
 - **bbox 坐标** (x, y, w, h) — 用于坐标点击或视觉比对
 

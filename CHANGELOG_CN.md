@@ -6,6 +6,19 @@
 
 ## [未发布]
 
+### Changed
+- **`inspect_ui` 返回体精简 —— 对读取 `ui_json` 的 agent 是破坏性变更。**
+  重复的 `ui_json` 响应键已移除，改用 `ui_tree`（同一份数据，已解析）。
+  `annotated_screenshot_base64` 也已移除 —— 需要标注时（Web 平台，压缩器会输出
+  `ref` + bbox），标注后的图片会原地替换 `screenshot_base64`，因此只会返回一张图片。
+- **MCP 工具结果不再重复携带 payload。** `structuredContent` 就是 payload 本身；
+  `content[0].text` 现在只是一段简短摘要，不再是第二份完整序列化内容。
+
+### Fixed
+- **`inspect_ui` 现在会遵循 `--vision` 开关。** 此前有一条 fallback 分支即使在
+  vision 关闭时也会截图并标注，与 `docs/agent_guide.md` 的描述矛盾。`--vision`
+  关闭时，`screenshot_base64` 为 `""`，且不会截图。
+
 ## [0.7.0] - 2026-06-30
 
 ### Changed

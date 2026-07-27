@@ -6,6 +6,22 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **`inspect_ui` payload slimmed — BREAKING for agents reading `ui_json`.**
+  The duplicate `ui_json` response key is gone; use `ui_tree` (same data,
+  already parsed). `annotated_screenshot_base64` is gone too — when annotation
+  applies (Web, where the compressor emits `ref` + bbox), the annotated image
+  now replaces `screenshot_base64` in place, so exactly one image ships.
+- **MCP tool results no longer carry the payload twice.** `structuredContent`
+  is the payload; `content[0].text` is now a short summary instead of a second
+  full serialization.
+
+### Fixed
+- **`inspect_ui` now honors `--vision`.** A fallback branch captured and
+  annotated a screenshot even with vision disabled, contradicting
+  `docs/agent_guide.md`. With `--vision` off, `screenshot_base64` is `""` and
+  no screenshot is taken.
+
 ## [0.7.0] - 2026-06-30
 
 ### Changed

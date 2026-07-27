@@ -28,6 +28,9 @@ echo '{"operation":"inspect_ui","platform":"web"}' | screenforge --tool-stdin
 
 Returns a cleaned DOM/XML tree (Web returns JSON, Android returns compressed XML). **You analyze this tree and locate target elements.**
 
+The `inspect_ui` JSON payload carries exactly: `ok, operation, exit_code, platform, env, ui_tree, element_count, current_url, screenshot_base64`.
+`screenshot_base64` is `""` unless `--vision` is on — with vision off, no screenshot is captured at all.
+
 ### 2. Execute single-step actions
 
 Based on your analysis of the UI tree, execute step by step:
