@@ -26,6 +26,7 @@ from cli.shared import (
     save_to_disk,
 )
 from common.failure_diagnosis import diagnose
+from common.observation import build_observation
 from common.runtime_modes import MODE_RUN
 
 
@@ -69,9 +70,9 @@ def build_failure_payload(
         ui_elements=ui_tree.get("ui_elements", []) or [],
     )
     payload.update(diag.to_dict())
-    payload["ui_tree"] = ui_tree
-    payload["element_count"] = len(ui_tree.get("ui_elements", []) or [])
-    payload["current_url"] = current_url
+    observation = build_observation(ui_tree=ui_tree, current_url=current_url)
+    observation.pop("screenshot_base64")  # engine_error has never carried one
+    payload.update(observation)
     return payload
 
 
@@ -88,14 +89,14 @@ def build_success_payload(
     Single source of truth shared by the shell --json stdout write and the MCP
     observation stash, so the two can never drift. Pure: no I/O, no device.
     """
+    observation = build_observation(ui_tree=ui_tree, current_url=current_url)
+    observation.pop("screenshot_base64")  # action payloads have never carried one
     return {
         "ok": True,
         "action": action_name,
         "platform": platform,
-        "ui_tree": ui_tree,
-        "element_count": len(ui_tree.get("ui_elements", []) or []),
+        **observation,
         "output_script": output_script,
-        "current_url": current_url,
     }
 
 
