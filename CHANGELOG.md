@@ -6,6 +6,8 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-28
+
 ### Changed
 - **LLM decision calls now request JSON mode when the endpoint supports it.**
   The brain's action/plan/reasoning calls pass `response_format={"type":
@@ -47,7 +49,10 @@ All notable changes to ScreenForge will be documented in this file.
   another page that has no such element. The check now confirms the two `css`
   forms the compressed tree can resolve (`#id` and `[name="x"]`); unresolvable
   selectors (class/tag/descendant) and trees lacking the attribute still pass
-  through, so no valid cache hit is ever discarded.
+  through, so no valid cache hit is ever discarded. Only *simple* selectors are
+  matched: a compound selector (`#login-form input`) or an escaped id
+  (`#user\.email`, generated for ids containing `.` or `:`) can't equal a raw
+  attribute value, so it passes through rather than throwing away a valid hit.
 - **Expired cache entries are now pruned on write, not just re-persisted.** TTL
   cleanup ran only on the read path and only saved its result on a cache *hit*,
   while the write path reloaded and re-saved the whole file without pruning — so
