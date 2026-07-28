@@ -6,6 +6,13 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The `--goal` loop now stops after repeated `not_found` instead of burning the
+  whole step budget.** `not_found` is exempt from the failure circuit breaker (so
+  the visual fallback gets a chance), but a model stuck returning it made no
+  progress while spending one LLM call per step up to `--max-steps`. Consecutive
+  `not_found` is now capped at `--max-retries` and the run stops with `E025`.
+
 ### Fixed
 - **Non-Chinese pages no longer collide in the L1 cache.** The page fingerprint
   kept only CJK characters, so any all-English page produced an empty
