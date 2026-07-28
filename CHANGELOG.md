@@ -4,6 +4,17 @@ All notable changes to ScreenForge will be documented in this file.
 
 [中文](./CHANGELOG_CN.md) | **English**
 
+## [Unreleased]
+
+### Fixed
+- **Non-Chinese pages no longer collide in the L1 cache.** The page fingerprint
+  kept only CJK characters, so any all-English page produced an empty
+  fingerprint and one constant hash — the L1 exact-key cache then replayed an
+  action recorded on a *different* English page (wrong-action replay). Pages
+  without Chinese anchors now fall back to Latin-text anchors, with the same
+  dynamic-data immunity (digits/symbols stripped, so "Balance 100" and
+  "Balance 9999" still match). Pages with usable Chinese anchors are unchanged.
+
 ## [0.10.0] - 2026-07-27
 
 ### Added

@@ -47,6 +47,34 @@ def test_fingerprint_drops_text_outside_2_to_6_char_window():
     assert fp == ["Button|登录"]
 
 
+def test_non_chinese_pages_do_not_collide():
+    # P0: the CJK-only fingerprint dropped ALL Latin text, so every English page
+    # produced an empty fingerprint → one constant hash → L1 exact-key served an
+    # action recorded on a DIFFERENT English page (wrong-action replay). Two
+    # unrelated English pages must hash differently.
+    login = _page("Login", "Sign up")
+    danger = _page("Delete account", "Confirm")
+    assert compute_ui_hash(login) != compute_ui_hash(danger)
+
+
+def test_non_chinese_hash_still_immune_to_dynamic_data():
+    # The dynamic-data promise must hold for the Latin fallback too: a balance or
+    # count that changes between runs must not change the page skeleton hash.
+    assert compute_ui_hash(_page("Balance 100", "Log out")) == compute_ui_hash(
+        _page("Balance 9999", "Log out")
+    )
+
+
+def test_same_english_page_hashes_consistently():
+    assert compute_ui_hash(_page("Login", "Sign up")) == compute_ui_hash(_page("Login", "Sign up"))
+
+
+def test_chinese_page_hash_unchanged_by_fallback():
+    # A page with a usable CJK fingerprint must never fall through to the Latin
+    # path — Chinese behavior is frozen. A mixed page's CJK anchors still win.
+    assert compute_ui_hash(_page("登录", "Sign up")) == compute_ui_hash(_page("登录", "Register"))
+
+
 def test_instruction_hash_normalizes_whitespace_and_case():
     assert compute_instruction_hash("  Click  LOGIN ") == compute_instruction_hash("click login")
     assert compute_instruction_hash("点击 登录") != compute_instruction_hash("点击 注册")
