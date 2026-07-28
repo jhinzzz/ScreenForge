@@ -51,12 +51,17 @@ DEFAULT_TIMEOUT = float(os.getenv("DEFAULT_TIMEOUT", 30.0))
 # ==========================================
 # 用户填入各环境/平台的 App 包名或 URL 后，launch_app 会自动拉起；默认留空=不自动启动。
 # 这是文档化的用户旋钮（见 docs/capability-matrix.md），不是死代码。
+# Auto-launch target per (env, platform). Env-driven so a pip-installed user can
+# set an Android package / iOS bundle / web start-URL without editing the source.
+# Empty (the default) means "don't auto-launch" — correct for web (the brain
+# issues goto) and for driving an already-open mobile app. Env vars follow the
+# pattern APP_TARGET_<ENV>_<PLATFORM>, e.g. APP_TARGET_DEV_ANDROID=com.foo.bar.
 APP_ENV_CONFIG = {
-    "dev": {
-        "android": "",
-        "ios": "",
-        "web": "",
-    },
+    env: {
+        platform: os.getenv(f"APP_TARGET_{env.upper()}_{platform.upper()}", "")
+        for platform in ("android", "ios", "web")
+    }
+    for env in ("dev", "prod", "us_dev", "us_prod")
 }
 
 # ==========================================

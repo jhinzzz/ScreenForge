@@ -13,6 +13,13 @@ All notable changes to ScreenForge will be documented in this file.
   progress while spending one LLM call per step up to `--max-steps`. Consecutive
   `not_found` is now capped at `--max-retries` and the run stops with `E025`.
 
+### Added
+- **Auto-launch target is now configurable via environment variables.**
+  `APP_ENV_CONFIG` was a hardcoded, all-empty Python dict, so a pip-installed
+  user could never set an app to auto-launch without editing site-packages. It is
+  now built from `APP_TARGET_<ENV>_<PLATFORM>` env vars (e.g.
+  `APP_TARGET_DEV_ANDROID`); empty (the default) still means "don't auto-launch."
+
 ### Fixed
 - **Non-Chinese pages no longer collide in the L1 cache.** The page fingerprint
   kept only CJK characters, so any all-English page produced an empty
