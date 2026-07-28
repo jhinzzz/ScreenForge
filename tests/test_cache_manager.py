@@ -74,6 +74,28 @@ class TestCacheManagerClear:
         assert cached is None
 
 
+class TestCacheManagerTTLPruning:
+    def test_write_prunes_expired_entries_from_disk(self, cache_manager, cache_dir):
+        # Seed one entry, then age it past TTL on disk. A later write must not
+        # re-persist the expired entry — the write path reloads+saves the whole
+        # file, so without pruning it kept dead entries forever (unbounded growth).
+        from common.cache.cache_storage import load_cache, save_cache
+
+        cache_manager.set("old instruction", {"ui_elements": []}, {"action": "click"}, "web")
+
+        data = load_cache(cache_dir)
+        (old_key,) = list(data["entries"].keys())
+        data["entries"][old_key]["metadata"]["created_at"] = "2000-01-01T00:00:00+00:00"
+        save_cache(cache_dir, data)
+
+        # A fresh write of an unrelated entry triggers the load+save cycle.
+        cache_manager.set("new instruction", {"ui_elements": []}, {"action": "click"}, "web")
+
+        remaining = load_cache(cache_dir)["entries"]
+        assert old_key not in remaining, "expired entry was re-persisted on write"
+        assert len(remaining) == 1
+
+
 class TestCacheManagerStats:
     def test_stats_returns_dict(self, cache_manager):
         stats = cache_manager.get_stats()

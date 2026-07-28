@@ -22,6 +22,11 @@ All notable changes to ScreenForge will be documented in this file.
   forms the compressed tree can resolve (`#id` and `[name="x"]`); unresolvable
   selectors (class/tag/descendant) and trees lacking the attribute still pass
   through, so no valid cache hit is ever discarded.
+- **Expired cache entries are now pruned on write, not just re-persisted.** TTL
+  cleanup ran only on the read path and only saved its result on a cache *hit*,
+  while the write path reloaded and re-saved the whole file without pruning — so
+  expired entries were rewritten to disk forever and the cache grew unbounded.
+  Writes now prune before saving (no extra I/O — the write already loads+saves).
 
 ## [0.10.0] - 2026-07-27
 

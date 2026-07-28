@@ -178,6 +178,10 @@ class CacheManager:
             return False
         try:
             cache_data = load_cache(self._cache_dir)
+            # Prune expired entries here: the write path reloads and re-saves the
+            # whole file, so without this it re-persists dead entries forever. The
+            # read path only saves on a hit, so misses can't be relied on to prune.
+            cache_data = cleanup_expired_entries(cache_data, self._ttl_seconds)
             entries = cache_data.setdefault("entries", {})
             current_vector = self._get_embedding(instruction)
             keys_to_delete = []
