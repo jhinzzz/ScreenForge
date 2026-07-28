@@ -4,6 +4,60 @@ All notable changes to ScreenForge will be documented in this file.
 
 [中文](./CHANGELOG_CN.md) | **English**
 
+## [Unreleased]
+
+### Changed
+- **LLM decision calls now request JSON mode when the endpoint supports it.**
+  The brain's action/plan/reasoning calls pass `response_format={"type":
+  "json_object"}`, cutting malformed responses (and the retries they cost). It's
+  detect-once per endpoint: an OpenAI-compatible endpoint that rejects the
+  parameter is remembered and never sent it again, so the "any compatible
+  endpoint" promise holds and such an endpoint pays one failed call, not one per
+  request. Vision-only calls (self-heal, visual fallback) are unchanged.
+- **The `--goal` loop now stops after repeated `not_found` instead of burning the
+  whole step budget.** `not_found` is exempt from the failure circuit breaker (so
+  the visual fallback gets a chance), but a model stuck returning it made no
+  progress while spending one LLM call per step up to `--max-steps`. Consecutive
+  `not_found` is now capped at `--max-retries` and the run stops with `E025`.
+
+### Added
+- **Auto-launch target is now configurable via environment variables.**
+  `APP_ENV_CONFIG` was a hardcoded, all-empty Python dict, so a pip-installed
+  user could never set an app to auto-launch without editing site-packages. It is
+  now built from `APP_TARGET_<ENV>_<PLATFORM>` env vars (e.g.
+  `APP_TARGET_DEV_ANDROID`); empty (the default) still means "don't auto-launch."
+
+### Fixed
+- **`--session-end` can no longer hang forever finalizing a video recording.**
+  Stopping a session signalled the `simctl` recording process and then called a
+  bare `os.waitpid(pid, 0)`, which blocks indefinitely if the process ignores the
+  signal. It now waits a bounded grace period and escalates to `SIGKILL`, so
+  ending a session always returns.
+- **Non-Chinese pages no longer collide in the L1 cache.** The page fingerprint
+  kept only CJK characters, so any all-English page produced an empty
+  fingerprint and one constant hash — the L1 exact-key cache then replayed an
+  action recorded on a *different* English page (wrong-action replay). Pages
+  without Chinese anchors now fall back to Latin-text anchors, with the same
+  dynamic-data immunity (digits/symbols stripped, so "Balance 100" and
+  "Balance 9999" still match). Pages with usable Chinese anchors are unchanged.
+- **The L2 semantic cache now verifies `css` locators before replaying them.**
+  `css` is the highest-priority web locator, yet the pre-replay safety check
+  waved every `css` decision through unverified. Because L2 is a *global,
+  cross-page* cache, a `#username` decision learned on one page could replay on
+  another page that has no such element. The check now confirms the two `css`
+  forms the compressed tree can resolve (`#id` and `[name="x"]`); unresolvable
+  selectors (class/tag/descendant) and trees lacking the attribute still pass
+  through, so no valid cache hit is ever discarded.
+- **Expired cache entries are now pruned on write, not just re-persisted.** TTL
+  cleanup ran only on the read path and only saved its result on a cache *hit*,
+  while the write path reloaded and re-saved the whole file without pruning — so
+  expired entries were rewritten to disk forever and the cache grew unbounded.
+  Writes now prune before saving (no extra I/O — the write already loads+saves).
+- **`CACHE_MAX_SIZE_MB` is now enforced.** The setting was read from the
+  environment and passed into the cache but never applied, so the cache had no
+  size ceiling (only the TTL bounded it). Writes now evict least-recently-accessed
+  entries until the cache fits the cap; the just-written entry is never evicted.
+
 ## [0.10.0] - 2026-07-27
 
 ### Added

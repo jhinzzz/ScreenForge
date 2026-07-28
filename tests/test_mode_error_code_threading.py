@@ -232,3 +232,31 @@ def test_default_goal_failure_threads_error_code(monkeypatch):
     rc = default.run_default_mode(_default_args(), "o.py", "", {})
     assert rc == 1
     assert rep.finalize_kwargs["error_code"] == "E037"
+
+
+class _NotFoundBrain:
+    """Always reports the target is absent — the model has no new info to act on."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def get_next_autonomous_action(self, **k):
+        self.calls += 1
+        return {"status": "running", "result": {"action": "not_found"}}
+
+
+def test_repeated_not_found_stops_before_max_steps(monkeypatch):
+    # not_found is exempt from the circuit breaker (vision needs a chance), but a
+    # model stuck returning it must not burn ALL max_steps LLM calls. It must stop
+    # after a bounded number of consecutive not_found rather than max_steps=50.
+    rep = _SpyReporter()
+    _wire_default(monkeypatch, rep, error_code="")
+    brain = _NotFoundBrain()
+    monkeypatch.setattr(default._shared, "AutonomousBrain", lambda: brain)
+    args = _default_args()
+    args.max_steps = 50
+    args.max_retries = 2
+    rc = default.run_default_mode(args, "o.py", "", {})
+    assert rc == 1
+    # Capped at max_retries consecutive not_found — not the full 50-step budget.
+    assert brain.calls <= args.max_retries + 1, f"burned {brain.calls} LLM calls on repeated not_found"

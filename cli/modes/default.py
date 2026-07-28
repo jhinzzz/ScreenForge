@@ -58,6 +58,7 @@ def run_default_mode(
         step_count = 0
         last_error = ""
         consecutive_failures = 0
+        consecutive_not_found = 0
         last_ui_json = ""
 
         while step_count < args.max_steps:
@@ -177,11 +178,27 @@ def run_default_mode(
                         success=False,
                         action_description="not_found",
                     )
+                    # not_found is exempt from the failure circuit breaker so vision
+                    # gets a chance, but a model stuck returning it makes no progress
+                    # and burns one LLM call per step up to max_steps (token bleed).
+                    # Cap consecutive not_found at the same threshold and stop.
+                    consecutive_not_found += 1
+                    if consecutive_not_found >= args.max_retries:
+                        final_error = (
+                            f"Stopped after {consecutive_not_found} consecutive 'not_found' — "
+                            f"target never appeared in the UI tree."
+                        )
+                        log.error(
+                            f"[E025] {consecutive_not_found} consecutive 'not_found'. "
+                            f"Fix: re-run with --vision, or refine --goal / scroll the target into view."
+                        )
+                        return 1
                     continue
                 else:
                     result = executor.execute_and_record(action_data)
                     if result.get("success"):
                         consecutive_failures = 0
+                        consecutive_not_found = 0
                         history_manager.add_step(
                             result["code_lines"], result["action_description"]
                         )

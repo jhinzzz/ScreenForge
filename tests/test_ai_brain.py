@@ -54,9 +54,89 @@ class TestVerifyLocatorInUi:
         assert brain._verify_locator_in_ui(decision, ui) is True
 
     def test_css_locator_passthrough(self, brain):
+        # Empty tree → nothing to verify against → pass through (don't discard).
         decision = {"locator_type": "css", "locator_value": "#btn"}
         ui = {"ui_elements": []}
         assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_id_present_is_accepted(self, brain):
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"id": "username", "class": "input"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_id_absent_on_a_page_that_has_ids_is_rejected(self, brain):
+        # P1: L2 is a GLOBAL cross-page cache. A `#username` decision learned on
+        # page A must NOT replay on page B where ids exist but none match — the
+        # old allowlist waved ALL css through, so this returned True (wrong).
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"id": "search", "class": "input"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is False
+
+    def test_css_id_passes_through_when_tree_carries_no_ids(self, brain):
+        # Can't confirm presence or absence → pass through, never false-reject.
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"text": "Login", "class": "button"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_name_attribute_verified(self, brain):
+        present = {"locator_type": "css", "locator_value": '[name="email"]'}
+        absent = {"locator_type": "css", "locator_value": '[name="email"]'}
+        ui = {"ui_elements": [{"name": "email", "class": "input"}]}
+        other = {"ui_elements": [{"name": "phone", "class": "input"}]}
+        assert brain._verify_locator_in_ui(present, ui) is True
+        assert brain._verify_locator_in_ui(absent, other) is False
+
+    def test_css_complex_selector_passes_through(self, brain):
+        # A selector the compressed tree can't resolve (class/tag/descendant)
+        # is unverifiable → pass through rather than discard a valid hit.
+        decision = {"locator_type": "css", "locator_value": "div.card > button.primary"}
+        ui = {"ui_elements": [{"id": "search", "class": "button"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    @pytest.mark.parametrize(
+        "selector",
+        [
+            "#login-form input",            # descendant
+            "#login-form > .btn",           # child combinator
+            "#username.form-control",       # id + class compound
+            '#login-form input[name="u"]',  # descendant + attribute
+            "#a, #b",                       # selector list
+        ],
+    )
+    def test_css_compound_selector_starting_with_id_passes_through(self, brain, selector):
+        # A compound selector only STARTS with #id — the rest narrows to a
+        # descendant/class. Comparing the whole string against `id` values always
+        # fails, which DISCARDS a valid L2 hit and forces a fresh paid LLM call —
+        # the opposite of why this verification exists. Unverifiable → pass through.
+        ui = {"ui_elements": [{"id": "login-form", "class": "form"}]}
+        assert brain._verify_locator_in_ui({"locator_type": "css", "locator_value": selector}, ui) is True
+
+    @pytest.mark.parametrize(
+        ("raw_id", "selector"),
+        [
+            ("user.email", r"#user\.email"),    # Angular/JSF-style dotted id
+            ("form:submit", r"#form\:submit"),  # JSF colon id
+            ("2fa_code", "#\\32 fa_code"),      # leading digit, CSS.escape form
+        ],
+    )
+    def test_css_escaped_id_selector_is_not_false_rejected(self, brain, raw_id, selector):
+        # executor._escape_css_ident backslash-escapes special chars, so the
+        # selector text never equals the raw `id` in the tree. A literal compare
+        # rejects a locator whose element is RIGHT THERE. Must not return False.
+        ui = {"ui_elements": [{"id": raw_id, "class": "input"}]}
+        assert brain._verify_locator_in_ui({"locator_type": "css", "locator_value": selector}, ui) is True
+
+    def test_css_escaped_name_selector_is_not_false_rejected(self, brain):
+        # Same for [name="..."]: a quote in the name is escaped when built.
+        ui = {"ui_elements": [{"name": 'we"ird', "class": "input"}]}
+        decision = {"locator_type": "css", "locator_value": '[name="we\\"ird"]'}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_plain_id_rejection_still_works(self, brain):
+        # The safety net must stay armed for the simple case it was built for.
+        ui = {"ui_elements": [{"id": "search", "class": "input"}]}
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        assert brain._verify_locator_in_ui(decision, ui) is False
 
 
 class TestGetAction:
@@ -92,6 +172,30 @@ class TestGetAction:
 
         result = brain.get_action("do something", '{"ui_elements": []}', "web", skip_cache=True)
         assert result == {}
+
+    def test_requests_json_mode_when_supported(self, brain):
+        result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "Login"}})
+        brain.text_client.chat.completions.create.return_value = self._make_llm_response(result_json)
+
+        brain.get_action("click login", '{"ui_elements": []}', "web", skip_cache=True)
+        _, kwargs = brain.text_client.chat.completions.create.call_args
+        assert kwargs.get("response_format") == {"type": "json_object"}
+
+    def test_falls_back_when_endpoint_rejects_json_mode(self, brain):
+        import common.ai as ai_mod
+        ai_mod._JSON_MODE_UNSUPPORTED.clear()
+        result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "Go"}})
+        good = self._make_llm_response(result_json)
+
+        def create(**kwargs):
+            if "response_format" in kwargs:
+                raise Exception("400: response_format is not supported by this model")
+            return good
+
+        brain.text_client.chat.completions.create.side_effect = create
+        result = brain.get_action("click go", '{"ui_elements": []}', "web", skip_cache=True)
+        assert result["action"] == "click"  # fallback (no response_format) succeeded
+        ai_mod._JSON_MODE_UNSUPPORTED.clear()
 
     def test_uses_vision_client_when_screenshot_provided(self, brain):
         result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "OK"}})
