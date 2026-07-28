@@ -13,4 +13,4 @@ repos:
         args: [--config-file=pyproject.toml]
         additional_dependencies: []
         pass_filenames: false
-        entry: mypy cli/ common/ config/ utils/
+        entry: mypy .

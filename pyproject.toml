@@ -69,7 +69,13 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
 no_implicit_optional = false
-exclude = ["test_cases/", "scripts/", "\\.worktrees/"]
+# Gate is `mypy .` (CI + pre-commit) so a new package can't silently escape it —
+# that gap is how conftest.py and review/ drifted to 5 errors unnoticed. Exclusions
+# are therefore listed here, once, rather than by enumerating dirs in two configs.
+# docs/examples/ is generator output committed verbatim as proof artifacts (same
+# reason it's ruff extend-excluded): type-fixing it would make the committed copy
+# diverge from what ScreenForge actually emits.
+exclude = ["test_cases/", "scripts/", "docs/examples/", "\\.worktrees/"]
 
 # numpy 2.4+ ships PEP 695 `type X = ...` in its bundled stubs, which mypy rejects
 # under our 3.11 target (requires-python >=3.11, CI matrix tests 3.11). We don't

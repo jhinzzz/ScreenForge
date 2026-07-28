@@ -24,6 +24,9 @@ pytest tests/ test_cases/ -q
 # Lint
 ruff check .
 
+# Type check (CI gates the whole repo)
+mypy .
+
 # Environment diagnostics
 screenforge --doctor --platform web
 ```
@@ -70,7 +73,7 @@ Examples: `feat: add workflow variable interpolation`, `fix: narrow failure clas
 
 1. Fork and create a branch from `main`
 2. Make your changes
-3. Ensure `pytest tests/` and `ruff check .` pass
+3. Ensure `pytest tests/`, `ruff check .` and `mypy .` pass
 4. New code should include unit tests in `tests/`
 5. Submit a PR using the template
 
