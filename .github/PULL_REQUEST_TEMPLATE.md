@@ -14,6 +14,7 @@
 
 - [ ] `pytest tests/` passes
 - [ ] `ruff check .` passes
+- [ ] `mypy .` passes
 - [ ] Tested manually with: (describe command)
 
 ## Checklist
