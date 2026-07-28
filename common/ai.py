@@ -1,4 +1,5 @@
 import json
+import re
 import time
 
 from openai import OpenAI
@@ -39,20 +40,39 @@ class AIBrain:
 
     def _verify_locator_in_ui(self, decision: dict, ui_dict: dict) -> bool:
         """
-        校验缓存中推荐的动作，其元素是否真实存在于当前的 UI 树中
+        校验缓存中推荐的动作，其元素是否真实存在于当前的 UI 树中。
+
+        L2 是跨页面的全局语义缓存，一条决策可能命中一个并不存在该元素的页面。
+        本方法是那道安全网：能确认元素不存在时返回 False 丢弃该命中；无法确认
+        （元素无该属性、选择器无法解析）时放行，绝不误伤有效缓存。
         """
         loc_type = decision.get("locator_type")
         loc_val = decision.get("locator_value")
 
-        # 如果动作不需要特定元素 (比如 answer 或某些全局操作)，直接放行
-        if (
-            not loc_type
-            or not loc_val
-            or loc_type not in ["text", "description", "resourceId", "id"]
-        ):
+        # 无定位需求 (swipe / press 等全局动作) 直接放行
+        if not loc_type or not loc_val:
             return True
 
         elements = ui_dict.get("ui_elements", [])
+
+        # css 是 Web 端最常用的定位器 (Prompt 铁律排第一)，且 L2 是跨页面全局缓存，
+        # 因此必须校验而非放行。压缩后的 Web 树只能确认执行器自己产出的两种形态:
+        # `#id` -> 元素 id，`[name="x"]` -> 元素 name (见 executor.LocatorBuilder)。
+        # 其它选择器 (class/标签/后代) 树里无法还原，判为无法确认 -> 放行。
+        if loc_type == "css":
+            m = re.fullmatch(r"#(.+)", loc_val) or re.fullmatch(r'\[name="(.+)"\]', loc_val)
+            if not m:
+                return True
+            attr = "id" if loc_val.startswith("#") else "name"
+            target = m.group(1)
+            values = [el.get(attr) for el in elements if el.get(attr)]
+            if not values:  # 树里没有任何该属性 -> 无从确认 -> 放行
+                return True
+            return target in values
+
+        if loc_type not in ["text", "description", "resourceId", "id"]:
+            return True
+
         for el in elements:
             if loc_type == "text" and el.get("text") == loc_val:
                 return True

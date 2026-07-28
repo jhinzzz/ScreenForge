@@ -54,8 +54,43 @@ class TestVerifyLocatorInUi:
         assert brain._verify_locator_in_ui(decision, ui) is True
 
     def test_css_locator_passthrough(self, brain):
+        # Empty tree → nothing to verify against → pass through (don't discard).
         decision = {"locator_type": "css", "locator_value": "#btn"}
         ui = {"ui_elements": []}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_id_present_is_accepted(self, brain):
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"id": "username", "class": "input"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_id_absent_on_a_page_that_has_ids_is_rejected(self, brain):
+        # P1: L2 is a GLOBAL cross-page cache. A `#username` decision learned on
+        # page A must NOT replay on page B where ids exist but none match — the
+        # old allowlist waved ALL css through, so this returned True (wrong).
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"id": "search", "class": "input"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is False
+
+    def test_css_id_passes_through_when_tree_carries_no_ids(self, brain):
+        # Can't confirm presence or absence → pass through, never false-reject.
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        ui = {"ui_elements": [{"text": "Login", "class": "button"}]}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_name_attribute_verified(self, brain):
+        present = {"locator_type": "css", "locator_value": '[name="email"]'}
+        absent = {"locator_type": "css", "locator_value": '[name="email"]'}
+        ui = {"ui_elements": [{"name": "email", "class": "input"}]}
+        other = {"ui_elements": [{"name": "phone", "class": "input"}]}
+        assert brain._verify_locator_in_ui(present, ui) is True
+        assert brain._verify_locator_in_ui(absent, other) is False
+
+    def test_css_complex_selector_passes_through(self, brain):
+        # A selector the compressed tree can't resolve (class/tag/descendant)
+        # is unverifiable → pass through rather than discard a valid hit.
+        decision = {"locator_type": "css", "locator_value": "div.card > button.primary"}
+        ui = {"ui_elements": [{"id": "search", "class": "button"}]}
         assert brain._verify_locator_in_ui(decision, ui) is True
 
 

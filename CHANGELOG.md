@@ -14,6 +14,14 @@ All notable changes to ScreenForge will be documented in this file.
   without Chinese anchors now fall back to Latin-text anchors, with the same
   dynamic-data immunity (digits/symbols stripped, so "Balance 100" and
   "Balance 9999" still match). Pages with usable Chinese anchors are unchanged.
+- **The L2 semantic cache now verifies `css` locators before replaying them.**
+  `css` is the highest-priority web locator, yet the pre-replay safety check
+  waved every `css` decision through unverified. Because L2 is a *global,
+  cross-page* cache, a `#username` decision learned on one page could replay on
+  another page that has no such element. The check now confirms the two `css`
+  forms the compressed tree can resolve (`#id` and `[name="x"]`); unresolvable
+  selectors (class/tag/descendant) and trees lacking the attribute still pass
+  through, so no valid cache hit is ever discarded.
 
 ## [0.10.0] - 2026-07-27
 
