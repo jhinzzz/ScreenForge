@@ -108,6 +108,30 @@ def start_session_recording(session_id: str, platform: str, udid: str = "") -> s
     return video_path
 
 
+def _reap_with_timeout(pid: int, timeout: float) -> None:
+    """Wait for a signalled recording process to exit, then SIGKILL if it won't.
+
+    Bare os.waitpid(pid, 0) blocks forever — if `xcrun simctl recordVideo` ever
+    ignores SIGINT, --session-end would hang the whole CLI. Poll with WNOHANG up
+    to `timeout`, then SIGKILL and reap so we never block indefinitely.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            reaped, _ = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return  # already reaped elsewhere
+        if reaped:
+            return
+        time.sleep(0.1)
+    # Still alive after the grace period — kill hard and reap the zombie.
+    try:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+    except OSError:
+        pass
+
+
 def stop_session_recording(session_id: str) -> str:
     session = load_session(session_id)
     if not session:
@@ -120,7 +144,7 @@ def stop_session_recording(session_id: str) -> str:
     try:
         pgid = os.getpgid(pid)
         os.killpg(pgid, signal.SIGINT)
-        os.waitpid(pid, 0)
+        _reap_with_timeout(pid, timeout=10.0)
     except OSError:
         try:
             os.kill(pid, signal.SIGINT)

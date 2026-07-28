@@ -28,6 +28,11 @@ All notable changes to ScreenForge will be documented in this file.
   `APP_TARGET_DEV_ANDROID`); empty (the default) still means "don't auto-launch."
 
 ### Fixed
+- **`--session-end` can no longer hang forever finalizing a video recording.**
+  Stopping a session signalled the `simctl` recording process and then called a
+  bare `os.waitpid(pid, 0)`, which blocks indefinitely if the process ignores the
+  signal. It now waits a bounded grace period and escalates to `SIGKILL`, so
+  ending a session always returns.
 - **Non-Chinese pages no longer collide in the L1 cache.** The page fingerprint
   kept only CJK characters, so any all-English page produced an empty
   fingerprint and one constant hash — the L1 exact-key cache then replayed an
