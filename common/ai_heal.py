@@ -132,7 +132,7 @@ class HealerBrain:
         error_msg: str,
         error_line_num: int,
         ui_json: str,
-        screenshot_base64: str,
+        screenshot_base64: str | None,
         platform: str,
     ) -> HealResult:
         """Analyze failure and generate fix. Returns HealResult (never None)."""

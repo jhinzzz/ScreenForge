@@ -24,7 +24,7 @@ def _new_review_run_id() -> str:
     return f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(_uuid.uuid4())[:8]}"
 
 
-_failure_tracker = {}
+_failure_tracker: dict[str, int] = {}   # nodeid → 连续失败次数
 _LIVE_PLATFORM_DIRS = {"android", "ios", "web"}
 
 
@@ -97,7 +97,7 @@ def pytest_collection_modifyitems(config, items):
             )
 
 
-def _normalize_screenshot_bytes(raw) -> bytes:
+def _normalize_screenshot_bytes(raw) -> bytes | None:
     if isinstance(raw, bytes):
         return raw
     if isinstance(raw, str):
@@ -109,7 +109,7 @@ def _normalize_screenshot_bytes(raw) -> bytes:
     return None
 
 
-def _capture_failure_screenshot(device, platform_name: str, item) -> bytes:
+def _capture_failure_screenshot(device, platform_name: str, item) -> bytes | None:
     img_bytes = None
     try:
         log.info("📸 Capturing failure screenshot...")
@@ -136,7 +136,7 @@ def _capture_failure_screenshot(device, platform_name: str, item) -> bytes:
     return img_bytes
 
 
-def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: bytes):
+def _trigger_self_healing(device, platform_name: str, item, call, img_bytes: bytes | None):
     log.info("=" * 60)
     log.info("🚑 [Self-Healing] Triggered — analyzing failure scene...")
     log.info("=" * 60)
