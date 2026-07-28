@@ -1,3 +1,4 @@
+import json
 import os
 
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -30,6 +31,7 @@ class CacheManager:
         self._cache_dir = cache_dir
         self._enabled = enabled
         self._ttl_seconds = ttl_days * 24 * 60 * 60
+        self._max_size_bytes = max_size_mb * 1024 * 1024
         self._stats = CacheStats(cache_dir)
         self._model_loader = EmbeddingModelLoader()
 
@@ -223,11 +225,44 @@ class CacheManager:
             if ui_hash is not None:
                 entry["ui_hash"] = ui_hash
             entries[exact_key] = entry
+            self._evict_to_fit(cache_data, exact_key)
             save_cache(self._cache_dir, cache_data)
             return True
         except Exception as e:
             log.error(f"[Cache Error] Write failed: {e}")
             return False
+
+    def _evict_to_fit(self, cache_data: Dict, keep_key: str) -> None:
+        """Evict least-recently-accessed entries until the cache fits max_size_bytes.
+
+        TTL bounds age; this bounds size within the TTL window. The just-written
+        key is never evicted (a single entry larger than the cap still persists —
+        the cap is a soft ceiling, not a hard reject of the current write).
+        """
+        entries = cache_data.get("entries", {})
+
+        # ponytail: re-serializes on each eviction (O(n²) worst case). Fine —
+        # TTL already bounds entry count and eviction is rare; switch to a running
+        # byte tally if a cache ever evicts hundreds of entries in one write.
+        def size() -> int:
+            return len(json.dumps(cache_data, ensure_ascii=False).encode("utf-8"))
+
+        if size() <= self._max_size_bytes:
+            return
+        # Oldest access first; the current write is pinned last so it survives.
+        ordered = sorted(
+            entries.keys(),
+            key=lambda k: (
+                k == keep_key,
+                entries[k].get("metadata", {}).get("last_accessed", ""),
+            ),
+        )
+        for k in ordered:
+            if k == keep_key or len(entries) <= 1:
+                break
+            del entries[k]
+            if size() <= self._max_size_bytes:
+                break
 
     def get(self, instruction: str, ui_json: Dict[str, Any], platform: str) -> Optional[Dict[str, Any]]:
         try:

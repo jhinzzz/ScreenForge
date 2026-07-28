@@ -27,6 +27,10 @@ All notable changes to ScreenForge will be documented in this file.
   while the write path reloaded and re-saved the whole file without pruning — so
   expired entries were rewritten to disk forever and the cache grew unbounded.
   Writes now prune before saving (no extra I/O — the write already loads+saves).
+- **`CACHE_MAX_SIZE_MB` is now enforced.** The setting was read from the
+  environment and passed into the cache but never applied, so the cache had no
+  size ceiling (only the TTL bounded it). Writes now evict least-recently-accessed
+  entries until the cache fits the cap; the just-written entry is never evicted.
 
 ## [0.10.0] - 2026-07-27
 

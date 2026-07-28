@@ -96,6 +96,25 @@ class TestCacheManagerTTLPruning:
         assert len(remaining) == 1
 
 
+class TestCacheManagerSizeCap:
+    def test_write_evicts_oldest_when_over_size_cap(self, cache_manager, cache_dir):
+        # max_size_mb was accepted but never enforced — the cache grew unbounded
+        # within the TTL window. With a tiny cap, writing many entries must evict
+        # the least-recently-accessed ones and keep the newest.
+        from common.cache.cache_storage import load_cache
+
+        cache_manager._max_size_bytes = 5000  # ~2 entries fit (each carries a vector)
+        for i in range(6):
+            cache_manager.set_chat_simple(
+                f"instruction {i}", {"action": "click", "locator_value": f"btn{i}"}, "web"
+            )
+
+        entries = load_cache(cache_dir)["entries"]
+        assert len(entries) < 6, "cache grew unbounded — size cap not enforced"
+        assert any(e.get("instruction") == "instruction 5" for e in entries.values())
+        assert not any(e.get("instruction") == "instruction 0" for e in entries.values())
+
+
 class TestCacheManagerStats:
     def test_stats_returns_dict(self, cache_manager):
         stats = cache_manager.get_stats()
