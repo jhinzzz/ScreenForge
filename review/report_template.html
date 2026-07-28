@@ -12,7 +12,13 @@
     --bg:#0a0b0d; --bg-2:#0e1014;
     --ink:#ECE7DD; --ink-2:#9CA0A8; --ink-3:#5C616B;
     --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
-    --signal:#FFB84D; --signal-soft:rgba(255,184,77,.13); --signal-line:rgba(255,184,77,.45);
+    /* Brand accent — ember, shared with the playground's --ember (#ff7849).
+       CANONICAL BRAND TOKENS (keep in sync with playground/index.html :root):
+         accent = #ff7849 (light-theme variant #ea580c) · accent-soft = #ffb38a
+       Deliberately NOT unified with the playground: the display face (Bricolage
+       Grotesque + mono body = instrument readout) and the replay concept (REC dot,
+       equalizer, film grain) are this surface's own voice. Only the accent is shared. */
+    --signal:#ff7849; --signal-soft:rgba(255,120,73,.13); --signal-line:rgba(255,120,73,.45);
     --pass:#7DDFB0; --fail:#FF6B6B; --skip:#C9A24B; --cool:#6E7B8F;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
     --disp:"Bricolage Grotesque","Bricolage Grotesque Fallback",system-ui,sans-serif;
@@ -23,7 +29,7 @@
     margin:0; color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.5;
     background:var(--bg);
     background-image:
-      radial-gradient(1200px 700px at 30% -10%, rgba(255,184,77,.07), transparent 60%),
+      radial-gradient(1200px 700px at 30% -10%, rgba(255,120,73,.07), transparent 60%),
       radial-gradient(1000px 800px at 110% 120%, rgba(60,80,110,.10), transparent 55%),
       linear-gradient(180deg,var(--bg),var(--bg-2));
     display:grid; grid-template-rows:auto 1fr auto auto; height:100vh; overflow:hidden;
@@ -150,7 +156,7 @@
   .tp-clock{font-size:12px; color:var(--ink-2); min-width:112px; text-align:right;}
   .tp-clock b{color:var(--ink);}
   .tp-progress{flex:1; height:3px; border-radius:3px; background:var(--line-2); overflow:hidden; min-width:60px;}
-  .tp-bar{height:100%; width:0; background:linear-gradient(90deg,var(--signal),#FFD79A); transition:width .28s ease;}
+  .tp-bar{height:100%; width:0; background:linear-gradient(90deg,var(--signal),#ffb38a); transition:width .28s ease;}
   .tp-count{font-family:var(--disp); font-weight:800; font-size:14px; letter-spacing:.02em; color:var(--ink-2);}
   .tp-count b{color:var(--ink);}
 
@@ -193,7 +199,7 @@
   .frame-time{display:block; text-align:center; font-size:9.5px; color:var(--ink-3); margin-top:7px;}
   .frame:hover .frame-thumb{filter:grayscale(.2) brightness(.85); transform:translateY(-2px);}
   .frame.live .frame-thumb{filter:none; border-color:var(--signal); transform:translateY(-4px) scale(1.02);
-                           box-shadow:0 14px 30px -12px rgba(255,184,77,.5), 0 0 0 1px var(--signal);}
+                           box-shadow:0 14px 30px -12px rgba(255,120,73,.5), 0 0 0 1px var(--signal);}
   .frame.live .frame-idx{color:var(--signal);}
   .frame.live .frame-time{color:var(--signal);}
   .frame.live::before{content:""; position:absolute; left:50%; transform:translateX(-50%); bottom:-13px;
@@ -303,13 +309,39 @@ function buildTree(nodes, depth, out){
   }
 }
 
+// 从触发代码行反查 DOM 节点，用于在舞台上画定位框（reticle）。
+// executor.py 实际产出的定位形态（见 common/executor.py:147-153, 267-306）：
+//   d.locator("#id")            d.locator("[aria-label='X']")
+//   d.get_by_text('X')          d.get_by_role('button', name='X')
+//   d.get_by_label('X')         d.get_by_placeholder('X')
+// 旧实现只认 #id 与 text=（后者生成器从不产出，是死分支），于是 click / assert
+// 这些最该看的步骤反而没有定位框 —— 舞台缺了取景框。
 function resolveTarget(step){
   const line = step.code_line || '';
-  const m = line.match(/locator\(\s*["']([^"']+)["']/);
-  if(!m) return null;
-  const sel = m[1];
+  const pick = re => { const m = line.match(re); return m ? m[1] : null; };
+  const byText  = t => FLAT.find(n => (n.text||'').includes(t)) || null;
+  const byLabel = t => FLAT.find(n => (n.desc||'') === t)
+                    || FLAT.find(n => (n.desc||'').includes(t)) || null;
+
+  // 1) get_by_role('button', name='X') —— name 优先匹配可见文本，再退到 aria-label
+  const roleName = pick(/get_by_role\(\s*["'][^"']*["']\s*,\s*name\s*=\s*["']([^"']*)["']/);
+  if(roleName != null) return byText(roleName) || byLabel(roleName);
+
+  // 2) get_by_label / get_by_placeholder / get_by_text
+  const label = pick(/get_by_label\(\s*["']([^"']*)["']/);
+  if(label != null) return byLabel(label);
+  const ph = pick(/get_by_placeholder\(\s*["']([^"']*)["']/);
+  if(ph != null) return FLAT.find(n => (n.placeholder||'') === ph) || null;
+  const text = pick(/get_by_text\(\s*["']([^"']*)["']/);
+  if(text != null) return byText(text);
+
+  // 3) locator("…") —— 按同种引号配对截取，避免 "[aria-label='X']" 被
+  //    [^"']+ 在第一个单引号处截成 "[aria-label="。
+  const sel = pick(/locator\(\s*"([^"]*)"/) ?? pick(/locator\(\s*'([^']*)'/);
+  if(sel == null) return null;
   if(sel[0]==='#'){ const id=sel.slice(1); return FLAT.find(n=>n.id===id)||null; }
-  if(sel.startsWith('text=')){ const t=sel.slice(5); return FLAT.find(n=>(n.text||'').includes(t))||null; }
+  const aria = sel.match(/^\[aria-label=\s*["']?([^"'\]]*)["']?\]$/);
+  if(aria) return byLabel(aria[1]);
   return null;
 }
 
@@ -338,14 +370,14 @@ function view(){
 
 let curDims = null;   // 当前步骤的 CSS 视口 {vw,vh}（坐标换算标尺，DPR 无关）
 // node 坐标是 CSS 像素；用截图所属步骤的 CSS 视口换成百分比。
-// 旧数据无 vw/vh 时回退到截图物理尺寸 / dpr 估算。
+// 无 vw/vh（加该字段之前的旧 review.json）→ 直接不画。曾用 naturalWidth/dpr 估算，
+// 但 dpr 缺省为 1 会在 2× 屏上把框画成半尺寸，且换图瞬间 naturalWidth 还是上一帧的
+// 尺寸 —— 画错位置的框比不画更误导。dom_capture.py:248 始终输出 vw/vh。
 function drawBox(node, {fail=false}={}){
   const box = $('bbox'), img = $('shot');
   if(!box || !img || !node || !(node.w>0) || !(node.h>0)){ if(box) box.style.display='none'; return; }
-  let W, H;
-  if(curDims && curDims.vw>0 && curDims.vh>0){ W=curDims.vw; H=curDims.vh; }
-  else if(img.naturalWidth){ const dpr=(curDims&&curDims.dpr)||1; W=img.naturalWidth/dpr; H=img.naturalHeight/dpr; }
-  else { box.style.display='none'; return; }
+  if(!(curDims && curDims.vw>0 && curDims.vh>0)){ box.style.display='none'; return; }
+  const W = curDims.vw, H = curDims.vh;
   if(node.x+node.w > W+2 || node.y+node.h > H+2){ box.style.display='none'; return; }  // 在视口外（fold 以下）
   box.classList.toggle('fail', fail);
   box.style.left=(node.x/W*100)+'%'; box.style.top=(node.y/H*100)+'%';

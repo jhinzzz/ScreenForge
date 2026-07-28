@@ -6,6 +6,37 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **The playground's live view no longer goes blank when the Prism.js CDN is
+  unreachable.** Prism is loaded from a CDN, and the code panel called
+  `Prism.highlight()` unguarded. Offline / air-gapped / proxy-blocked, that threw
+  a `ReferenceError` out of the SSE step handler — so not just the highlighting
+  but the screenshot, action history and filmstrip stopped rendering too, leaving
+  the page frozen on "Connecting". Highlighting now degrades to plain escaped
+  text, and the imagery renders before the code panel so one panel's failure
+  can't blank the others.
+- **The replay report now draws the target reticle on `click` and `assert`
+  steps.** The stage overlay resolved only `#id` locators (plus a `text=` form the
+  generator never emits), while the recorder actually writes `get_by_text(...)`,
+  `get_by_role(..., name=...)`, `get_by_label(...)`, `get_by_placeholder(...)` and
+  `[aria-label='...']`. The result: a bounding box on the `fill` steps but none on
+  the click/assert steps a reviewer opens the report to inspect. All of those
+  forms now resolve; unsupported CSS still degrades to no box.
+- **Removed a bounding-box fallback that mis-drew the reticle on HiDPI screens.**
+  For legacy `review.json` files without `vw`/`vh`, the box fell back to
+  `naturalWidth/dpr` with `dpr` defaulting to 1, drawing at roughly half scale on
+  a 2× display (and reading the previous frame's dimensions mid-swap). The report
+  now draws the box only when the recorded CSS viewport is present — no box is
+  more honest than a misplaced one.
+
+### Changed
+- **The replay report's accent is now ember `#ff7849`, matching the playground.**
+  The two surfaces used two near-identical warm oranges (`#FFB84D` vs `#ff7849`),
+  which read as drift rather than intent. The report keeps its own display face
+  and replay concept (REC dot, equalizer, film grain) — only the brand accent is
+  shared. As a side effect the accent no longer collides with the categorical
+  `fill` action hue, which was the same `#FFB84D`.
+
 ## [0.11.0] - 2026-07-28
 
 ### Changed
