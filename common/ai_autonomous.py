@@ -1,7 +1,7 @@
 import json
 
 import config.config as config
-from common.ai import AIBrain, _strip_json_fences
+from common.ai import AIBrain, _strip_json_fences, chat_completion_json
 from common.logs import log
 from common.progress import ai_status
 
@@ -80,7 +80,8 @@ class AutonomousBrain(AIBrain):
         result_text = ""
         try:
             with ai_status("Planning execution steps..."):
-                response = active_client.chat.completions.create(
+                response = chat_completion_json(
+                    active_client,
                     model=active_model,
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -225,7 +226,8 @@ class AutonomousBrain(AIBrain):
         result_text = ""
         try:
             with ai_status("Reasoning about next action..."):
-                response = active_client.chat.completions.create(
+                response = chat_completion_json(
+                    active_client,
                     model=active_model,
                     messages=[
                         {"role": "system", "content": system_prompt},

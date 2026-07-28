@@ -128,6 +128,30 @@ class TestGetAction:
         result = brain.get_action("do something", '{"ui_elements": []}', "web", skip_cache=True)
         assert result == {}
 
+    def test_requests_json_mode_when_supported(self, brain):
+        result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "Login"}})
+        brain.text_client.chat.completions.create.return_value = self._make_llm_response(result_json)
+
+        brain.get_action("click login", '{"ui_elements": []}', "web", skip_cache=True)
+        _, kwargs = brain.text_client.chat.completions.create.call_args
+        assert kwargs.get("response_format") == {"type": "json_object"}
+
+    def test_falls_back_when_endpoint_rejects_json_mode(self, brain):
+        import common.ai as ai_mod
+        ai_mod._JSON_MODE_UNSUPPORTED.clear()
+        result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "Go"}})
+        good = self._make_llm_response(result_json)
+
+        def create(**kwargs):
+            if "response_format" in kwargs:
+                raise Exception("400: response_format is not supported by this model")
+            return good
+
+        brain.text_client.chat.completions.create.side_effect = create
+        result = brain.get_action("click go", '{"ui_elements": []}', "web", skip_cache=True)
+        assert result["action"] == "click"  # fallback (no response_format) succeeded
+        ai_mod._JSON_MODE_UNSUPPORTED.clear()
+
     def test_uses_vision_client_when_screenshot_provided(self, brain):
         result_json = json.dumps({"result": {"action": "click", "locator_type": "text", "locator_value": "OK"}})
         brain.vision_client.chat.completions.create.return_value = self._make_llm_response(result_json)

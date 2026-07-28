@@ -19,6 +19,39 @@ def _strip_json_fences(text: str) -> str:
     return text
 
 
+# Endpoints (base_url) that 400'd on response_format — never retried with it.
+# response_format={"type":"json_object"} cuts malformed responses (fewer retries,
+# fewer tokens), but is NOT universal across OpenAI-compatible endpoints, which
+# this tool promises to support. So: try once per endpoint, remember a rejection,
+# and fall back to a plain call forever after. Prompts already say "output JSON".
+_JSON_MODE_UNSUPPORTED: set = set()
+
+
+def chat_completion_json(client, **kwargs):
+    """chat.completions.create that requests JSON mode when the endpoint allows.
+
+    Detect-once per endpoint: on the first 400-style rejection of response_format
+    we record the base_url and never send it again, so an endpoint without JSON
+    mode pays one failed call total, not one per request.
+    """
+    endpoint = str(getattr(client, "base_url", ""))
+    if endpoint not in _JSON_MODE_UNSUPPORTED:
+        try:
+            return client.chat.completions.create(
+                response_format={"type": "json_object"}, **kwargs
+            )
+        except Exception as e:
+            # Only json-mode-shaped rejections fall back; real network/auth errors
+            # must surface to the caller's existing try/except unchanged.
+            msg = str(e).lower()
+            if "response_format" in msg or "json" in msg or "not support" in msg:
+                log.warning(f"[AI] Endpoint rejected JSON mode, falling back for {endpoint}")
+                _JSON_MODE_UNSUPPORTED.add(endpoint)
+            else:
+                raise
+    return client.chat.completions.create(**kwargs)
+
+
 class AIBrain:
     def __init__(self):
         # 实例化文本专属客户端
@@ -283,7 +316,8 @@ class AIBrain:
         result_text = ""
         try:
             with ai_status(f"Thinking ({model_name})..."):
-                response = client.chat.completions.create(
+                response = chat_completion_json(
+                    client,
                     model=model_name,
                     messages=[
                         {"role": "system", "content": system_prompt},

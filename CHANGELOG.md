@@ -7,6 +7,13 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **LLM decision calls now request JSON mode when the endpoint supports it.**
+  The brain's action/plan/reasoning calls pass `response_format={"type":
+  "json_object"}`, cutting malformed responses (and the retries they cost). It's
+  detect-once per endpoint: an OpenAI-compatible endpoint that rejects the
+  parameter is remembered and never sent it again, so the "any compatible
+  endpoint" promise holds and such an endpoint pays one failed call, not one per
+  request. Vision-only calls (self-heal, visual fallback) are unchanged.
 - **The `--goal` loop now stops after repeated `not_found` instead of burning the
   whole step budget.** `not_found` is exempt from the failure circuit breaker (so
   the visual fallback gets a chance), but a model stuck returning it made no
