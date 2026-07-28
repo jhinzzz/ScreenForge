@@ -2308,7 +2308,14 @@ function insertCodeLine(rawText, { step, fresh, fail }) {
   span.dataset.step = step;
   if (fail) span.dataset.fail = '1';
   // Prism highlight of this single physical line (preserves leading indentation).
-  const html = Prism.highlight(rawText.length ? rawText : '​', Prism.languages.python, 'python');
+  // Prism is CDN-only: when it's blocked (offline / air-gapped CI) fall back to
+  // plain escaped text. Unguarded, the ReferenceError escaped onStepEvent and
+  // took the screenshot, history and filmstrip down with it — the whole live
+  // view froze on "Connecting", not just the highlighting.
+  const raw = rawText.length ? rawText : '​';
+  const html = (window.Prism && Prism.languages && Prism.languages.python)
+    ? Prism.highlight(raw, Prism.languages.python, 'python')
+    : escapeHtml(raw);
   span.innerHTML = html || '​';
   els.codeCode.appendChild(span);
   return id;
@@ -2783,9 +2790,12 @@ function onStepEvent(ev) {
     has_dom_tree: ev.has_dom_tree === true,
   };
   state.steps.push(step);
-  appendCodeLines(step);
-  addHistoryRow(step);
+  // Screenshot + history first, code last: the imagery is the primary content, so
+  // a throw in the code panel must not be able to blank the rest of the view.
+  // (Safe ordering — only setCodeHot reads step.lineIds, and that runs on hover.)
   if (step.screenshot) { showScreenshot(step.screenshot, step); fillFilmFrame(step); }
+  addHistoryRow(step);
+  appendCodeLines(step);
   els.srLive.textContent = `Step ${step.step_index}: ${step.action_description}`;
   if (window._domTreeOnStep) window._domTreeOnStep(step);
 }
