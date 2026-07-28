@@ -93,7 +93,16 @@ class AIBrain:
         # `#id` -> 元素 id，`[name="x"]` -> 元素 name (见 executor.LocatorBuilder)。
         # 其它选择器 (class/标签/后代) 树里无法还原，判为无法确认 -> 放行。
         if loc_type == "css":
-            m = re.fullmatch(r"#(.+)", loc_val) or re.fullmatch(r'\[name="(.+)"\]', loc_val)
+            # Only a SIMPLE selector round-trips to a tree attribute. The charset
+            # excludes CSS combinators/escapes (space > + ~ , . [ : \) on purpose:
+            # `#form input` and `#user\.email` are compound or escaped, so the raw
+            # string never equals an `id` value — comparing anyway would discard a
+            # VALID L2 hit and force a fresh paid LLM call, inverting this method's
+            # purpose. Unverifiable → pass through.
+            simple = r"[^\s>+~,.\[\]:\\#]+"
+            m = re.fullmatch(rf"#({simple})", loc_val) or re.fullmatch(
+                rf'\[name="({simple})"\]', loc_val
+            )
             if not m:
                 return True
             attr = "id" if loc_val.startswith("#") else "name"

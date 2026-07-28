@@ -93,6 +93,51 @@ class TestVerifyLocatorInUi:
         ui = {"ui_elements": [{"id": "search", "class": "button"}]}
         assert brain._verify_locator_in_ui(decision, ui) is True
 
+    @pytest.mark.parametrize(
+        "selector",
+        [
+            "#login-form input",            # descendant
+            "#login-form > .btn",           # child combinator
+            "#username.form-control",       # id + class compound
+            '#login-form input[name="u"]',  # descendant + attribute
+            "#a, #b",                       # selector list
+        ],
+    )
+    def test_css_compound_selector_starting_with_id_passes_through(self, brain, selector):
+        # A compound selector only STARTS with #id — the rest narrows to a
+        # descendant/class. Comparing the whole string against `id` values always
+        # fails, which DISCARDS a valid L2 hit and forces a fresh paid LLM call —
+        # the opposite of why this verification exists. Unverifiable → pass through.
+        ui = {"ui_elements": [{"id": "login-form", "class": "form"}]}
+        assert brain._verify_locator_in_ui({"locator_type": "css", "locator_value": selector}, ui) is True
+
+    @pytest.mark.parametrize(
+        ("raw_id", "selector"),
+        [
+            ("user.email", r"#user\.email"),    # Angular/JSF-style dotted id
+            ("form:submit", r"#form\:submit"),  # JSF colon id
+            ("2fa_code", "#\\32 fa_code"),      # leading digit, CSS.escape form
+        ],
+    )
+    def test_css_escaped_id_selector_is_not_false_rejected(self, brain, raw_id, selector):
+        # executor._escape_css_ident backslash-escapes special chars, so the
+        # selector text never equals the raw `id` in the tree. A literal compare
+        # rejects a locator whose element is RIGHT THERE. Must not return False.
+        ui = {"ui_elements": [{"id": raw_id, "class": "input"}]}
+        assert brain._verify_locator_in_ui({"locator_type": "css", "locator_value": selector}, ui) is True
+
+    def test_css_escaped_name_selector_is_not_false_rejected(self, brain):
+        # Same for [name="..."]: a quote in the name is escaped when built.
+        ui = {"ui_elements": [{"name": 'we"ird', "class": "input"}]}
+        decision = {"locator_type": "css", "locator_value": '[name="we\\"ird"]'}
+        assert brain._verify_locator_in_ui(decision, ui) is True
+
+    def test_css_plain_id_rejection_still_works(self, brain):
+        # The safety net must stay armed for the simple case it was built for.
+        ui = {"ui_elements": [{"id": "search", "class": "input"}]}
+        decision = {"locator_type": "css", "locator_value": "#username"}
+        assert brain._verify_locator_in_ui(decision, ui) is False
+
 
 class TestGetAction:
     def _make_llm_response(self, content: str):
