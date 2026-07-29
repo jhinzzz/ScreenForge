@@ -4,13 +4,22 @@ repos:
     hooks:
       - id: ruff
         args: [--fix]
-      - id: ruff-format
+      # No ruff-format: CI gates `ruff check .` only, and the repo has never been
+      # ruff-format'd — enabling it here rewrites 94 files / ~5.6k lines that CI is
+      # perfectly happy with, so installing the hook would turn any one-line commit
+      # into a whole-repo reformat. Add it back only as its own deliberate PR that
+      # reformats everything at once, together with a CI `ruff format --check` step.
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.15.0
     hooks:
       - id: mypy
         args: [--config-file=pyproject.toml]
-        additional_dependencies: []
+        # pre-commit runs mypy in its own venv with none of the project's deps, so
+        # ignore_missing_imports can't help here: yaml/requests ARE importable in CI
+        # (pip install -e ".[all]") and only need stubs, which that flag doesn't
+        # supply. Without these the hook failed on main too — nobody noticed because
+        # the hook was never installed. Keep in sync with imports mypy sees.
+        additional_dependencies: ["types-PyYAML", "types-requests"]
         pass_filenames: false
         entry: mypy .
