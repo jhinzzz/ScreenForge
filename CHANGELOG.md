@@ -7,6 +7,29 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **On the light theme the idle live view looked like a panel that had failed to
+  load.** Three faults, all invisible on the dark theme because they were differences
+  of *magnitude* between the themes rather than of colour. `--bg-0`, which is the idle
+  panel's own surface, sat a 1.206 contrast step below its panel where the dark theme
+  sits at 1.062 — so beside the near-white code panel it read as a grey box, while on
+  dark the same pair is 5 levels apart and reads as one surface. The lens is
+  deliberately *inverted* on paper (glass is a dark object there) but was also 1.2x
+  too deep, so once the surface was corrected it stopped reading as glass and became a
+  flat grey disc. And the focus arc was ramped through `--ember-soft`, which is
+  lighter than ember on dark (#ffb38a) but darker on light (#9a3412), so the tail
+  faded toward the background on dark and away from it on light — measured, the
+  light arc's most-contrasting point was its END, which reads as a scratch on the ring
+  rather than a trailing glow. The arc now ramps alpha on a single channel, which
+  means "fades toward whatever is behind it" in both themes by construction, and both
+  surface steps are rescaled to the dark theme's depth while keeping their intended
+  directions.
+- **The viewfinder's crop marks were below the contrast floor for graphics on the
+  light theme.** 2.78:1 where non-text graphics need 3:1 (dark measured 7.52:1). Two
+  causes, and the first alone was not enough: `opacity: .9` dilutes toward whatever is
+  behind, costing nothing on dark (toward black) but pushing the marks toward white on
+  paper — removing it moved them only 2.74 → 2.78. The surface underneath was the
+  larger half. Both corrected: 3.11:1 on light, 7.18:1 on dark, measured from rendered
+  pixels rather than from the token values.
 - **The playground scrolled sideways on any window narrower than the header.** The
   header was `flex-wrap: nowrap` with wrapping enabled only below 720px, so between
   721px and the bar's own intrinsic width the whole document scrolled horizontally.

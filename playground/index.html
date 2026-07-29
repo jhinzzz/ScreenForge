@@ -182,7 +182,15 @@
    Toggled via <html data-theme="light">; persisted + pre-paint guarded (no FOUC).
    ============================================================ */
 [data-theme="light"] {
-  --bg-0: #e7e3dc;           /* deepest paper (app void) */
+  /* Used in exactly one place — .shot-panel .panel-body — which makes it the surface
+     the idle live view actually shows, and the surface the viewfinder's crop marks
+     sit on. It was #e7e3dc: a 1.206 step down from the panel where dark's equivalent
+     (#131318 -> #0b0b0d) is 1.062, so on paper the idle panel read as a grey box
+     that had failed to load beside the near-white code panel, while on dark the same
+     pair is 5 levels apart and reads as one surface. It also held the .vf-c crop
+     marks to 2.78:1, under the 3:1 WCAG floor for non-text graphics. #f4f1eb fixes
+     both at once: a 1.063 step, matching dark, and 3.16:1 for the marks. */
+  --bg-0: #f4f1eb;           /* deepest paper (app void) */
   --bg-1: #f4f2ed;           /* primary paper */
   --bg-2: #faf8f4;           /* panels */
   --bg-3: #ffffff;           /* raised cards / rows */
@@ -243,9 +251,14 @@
   --ember-wash: rgba(var(--ember-rgb), 0.09);
   --ember-edge: rgba(var(--ember-rgb), 0.28);
   /* Glass is a dark object on paper (cf. --phone-bezel) — inverted from the dark
-     theme on purpose, so the lens sits *into* the page instead of glowing off it. */
-  --lens-glass: #ddd8ce;
-  --lens-rim: #b8b0a1;
+     theme on purpose, so the lens sits *into* the page instead of glowing off it.
+     The DIRECTION is inverted; the MAGNITUDE should not be. Dark's glass sits 1.062
+     off its surface, and these were 1.260 off — 1.2x deeper — so once --bg-0 above
+     was corrected the lens stopped reading as glass and became a flat grey disc.
+     Rescaled to a 1.084 step, with the rim keeping its 1.38 ratio against the glass
+     so the object still has an edge. */
+  --lens-glass: #ece8e0;
+  --lens-rim: #d2ccbd;
 
   --shadow-img: 0 18px 50px -14px rgba(60, 45, 30, 0.22), 0 4px 14px -6px rgba(60, 45, 30, 0.14);
   --shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.02) inset;
@@ -840,7 +853,14 @@ header::after {
    an L in each corner is the whole grammar of a viewfinder. */
 .vf-c {
   position: absolute; width: 19px; height: 19px;
-  border: 1.5px solid var(--ember); opacity: .9;
+  /* No opacity. These are non-text graphics, so WCAG's floor is 3:1, and opacity
+     dilutes toward whatever is behind — harmless on dark (toward black), but on paper
+     it pushed the marks toward white. Removing it was not sufficient on its own
+     (2.74 -> 2.78:1); the surface under them, --bg-0, was the larger half of the
+     problem and is corrected there. Both together: 3.16:1 on light, 7.52:1 on dark.
+     Softness here, if ever wanted, has to come from the border colour — not opacity,
+     which trades contrast away asymmetrically between the two themes. */
+  border: 1.5px solid var(--ember);
 }
 .vf-c.tl { top: 0; left: 0;     border-right: 0; border-bottom: 0; border-radius: 4px 0 0 0; }
 .vf-c.tr { top: 0; right: 0;    border-left: 0;  border-bottom: 0; border-radius: 0 4px 0 0; }
@@ -877,13 +897,18 @@ header::after {
    technique the old square glyph got wrong. */
 .vf .lens::before {
   content: ""; position: absolute; inset: -1px; border-radius: 50%;
-  /* The tail interpolates through --ember-soft (opaque) rather than --ember-glow:
-     a translucent stop is invisible on paper at 0.40 alpha, so the light theme drew
-     only the last ~10% of the sweep while the dark theme drew a full arc — the two
-     read as different components. Both now trace the same ~50% arc, fading via a
-     colour that exists in both palettes. */
+  /* ONE hue, ramped by alpha — not interpolated through --ember-soft. Soft is
+     *lighter* than ember on dark (#ffb38a) and *darker* on light (#9a3412), so a
+     tail routed through it fades toward the background on dark and away from it on
+     light: measured, the light tail landed at rgb(159,71,39) on rgb(221,216,206)
+     glass, i.e. the most-contrasting part of the arc was its END. It read as a
+     scratch on the ring rather than a trailing glow. Ramping alpha on the same
+     channel means "fades toward whatever is behind it" in both themes by
+     construction. The alphas are high because the earlier --ember-glow attempt
+     failed at 0.40 on paper — 0.30 is the floor that still registers there. */
   background: conic-gradient(from 0deg, transparent 0 46%,
-              var(--ember-soft) 70%, var(--ember) 90%, var(--ember) 96%, transparent 98%);
+              rgba(var(--ember-rgb), 0.30) 62%, rgba(var(--ember-rgb), 0.62) 80%,
+              var(--ember) 92%, var(--ember) 96%, transparent 98%);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
           mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
   animation: spin 2.4s linear infinite;

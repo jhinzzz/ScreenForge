@@ -225,6 +225,100 @@ def test_accent_text_clears_wcag_aa_on_its_own_wash(page, theme):
     )
 
 
+def test_surface_steps_have_the_same_depth_in_both_themes(page):
+    """Surfaces may invert direction between themes, but not magnitude.
+
+    Three defects shared this one shape, and all three were invisible on dark:
+
+    - `--bg-0` (the idle live view's own body) sat 1.206 below its panel where dark
+      sits 1.062, so on paper the panel read as a grey box that had failed to load
+      beside the near-white code panel. It also held the viewfinder's crop marks to
+      2.78:1, under the 3:1 WCAG floor for non-text graphics.
+    - `--lens-glass` is deliberately INVERTED on light (glass is a dark object on
+      paper) but was also 1.260 deep against 1.062, so once --bg-0 was corrected the
+      lens stopped reading as glass and became a flat grey disc.
+
+    So this asserts the ratios, not the colours, and allows either direction. A
+    same-direction assertion would be wrong: the lens is intentionally lighter than
+    its surface on dark and darker on light. Tolerance is generous (2x) because these
+    are aesthetic depths, not thresholds — it exists to catch the 1.2x-and-growing
+    drift that made the two themes read as different components, not to pin a hex.
+    """
+    measured = {}
+    for theme in ("dark", "light"):
+        _set_theme(page, theme)
+        measured[theme] = page.evaluate(
+            """() => {
+          const p = s => (s.match(/[\\d.]+/g) || []).map(Number).slice(0, 3);
+          const lum = ([r, g, b]) => { const f = v => { v /= 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+            return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+          const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+            return (x + .05) / (y + .05); };
+          const bg = sel => p(getComputedStyle(document.querySelector(sel)).backgroundColor);
+          const panel = bg('.shot-panel'), body = bg('.shot-panel .panel-body');
+          const lens = document.querySelector('.vf .lens');
+          const glass = p(getComputedStyle(lens).backgroundColor);
+          const rim = p(getComputedStyle(lens).borderTopColor);
+          return {
+            panel_to_body: ratio(panel, body),
+            lens_to_body: ratio(glass, body),
+            rim_to_glass: ratio(rim, glass),
+          };
+        }"""
+        )
+
+    drift = []
+    for key in ("panel_to_body", "lens_to_body", "rim_to_glass"):
+        d, light = measured["dark"][key], measured["light"][key]
+        # Ratios are >= 1 by construction, so compare the *excess* over 1: a 1.06 and
+        # a 1.26 step are 4x apart in perceived depth, which a raw quotient (1.19)
+        # badly understates.
+        dark_depth, light_depth = d - 1, light - 1
+        worst = max(dark_depth, light_depth)
+        best = min(dark_depth, light_depth)
+        if best <= 0 or worst / best > 2.0:
+            drift.append(
+                f"{key}: dark {d:.3f} vs light {light:.3f} — "
+                f"{worst / best if best > 0 else float('inf'):.1f}x apart in depth"
+            )
+    assert not drift, "surface depth diverges between themes: " + "; ".join(drift)
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_viewfinder_crop_marks_clear_the_non_text_contrast_floor(page, theme):
+    """The crop marks are non-text graphics, so WCAG's floor is 3:1, not 4.5:1.
+
+    They measured 2.78:1 on light (7.52 on dark). Two causes, and the first one alone
+    was NOT enough: `opacity: .9` dilutes toward whatever is behind, which costs
+    nothing on dark (toward black) but pushed these toward white on paper — removing
+    it only moved 2.74 -> 2.78. The surface underneath, `--bg-0`, was the larger half.
+    """
+    _set_theme(page, theme)
+    r = page.evaluate(
+        """() => {
+      const p = s => (s.match(/[\\d.]+/g) || []).map(Number);
+      const lum = ([r, g, b]) => { const f = v => { v /= 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); };
+        return .2126 * f(r) + .7152 * f(g) + .0722 * f(b); };
+      const c = document.querySelector('.vf-c');
+      const cs = getComputedStyle(c);
+      const op = parseFloat(cs.opacity);
+      const surf = p(getComputedStyle(
+        document.querySelector('.shot-panel .panel-body')).backgroundColor).slice(0, 3);
+      // Fold any opacity into the stroke, the way the compositor does.
+      const stroke = p(cs.borderTopColor).slice(0, 3).map((v, i) => v * op + surf[i] * (1 - op));
+      const [x, y] = [lum(stroke), lum(surf)].sort((m, n) => n - m);
+      return {ratio: Math.round((x + .05) / (y + .05) * 100) / 100, opacity: op,
+              stroke: `rgb(${stroke.map(Math.round)})`, surf: `rgb(${surf})`};
+    }"""
+    )
+    assert r["ratio"] >= 3.0, (
+        f"[{theme}] viewfinder crop marks {r['ratio']}:1 (need 3:1 as non-text "
+        f"graphics) — {r['stroke']} at opacity {r['opacity']} on {r['surf']}"
+    )
+
+
 @pytest.mark.parametrize("theme", ["dark", "light"])
 def test_ide_glyph_follows_the_theme(page, theme):
     """The IDE button's SVG hardcoded the dark theme's hexes, so the glyph stayed
