@@ -7,6 +7,58 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **The playground scrolled sideways on any window narrower than the header.** The
+  header was `flex-wrap: nowrap` with wrapping enabled only below 720px, so between
+  721px and the bar's own intrinsic width the whole document scrolled horizontally.
+  That width is content-dependent — ~1019px idle, ~1330px once a run id, a generated
+  filename and a detected editor are in it — so a 1366px laptop was fine while idle
+  and scrolled sideways mid-run, and no single replacement breakpoint could fix both.
+  The bar now wraps on its intrinsic width instead of at a magic number, with
+  `min-height` (a fixed `height` would clip the second row) and pressure-only
+  ellipsis, so the filename is still shown in full whenever there is room for it.
+  Verified zero overflow across 27 widths (1920→320) × both themes × idle and
+  populated.
+- **The Brain's Eye View drawer was visible while the code believed it was closed.**
+  Pin it, close it, reload — the pinned CSS overrides the closed transform, so the
+  panel came back fully on-screen with `isOpen === false`. `showTreeForStep()` starts
+  with `if (!isOpen) return`, so that visible panel never updated: it sat on "Waiting
+  for the first step" permanently while steps streamed in, and below 1360px it also
+  overlaid the code panel. Pin and open are now one state — pinning opens, closing
+  unpins — so "closed" genuinely means off-screen.
+- **The closed drawer stayed in the keyboard tab order, and Escape didn't close it.**
+  Tab reached the pin, close and search controls of a panel sitting off-screen at
+  `translateX(100%)`; opening the drawer never moved focus into it; and Escape was
+  bound only to the search box (where it cleared text) and the coachmark. The drawer
+  is now `inert` while closed, takes focus on open and returns it to the toggle tab
+  on close, and Escape closes it — after clearing the search text if there is any, so
+  one keypress never does two things. It stays non-modal (`role="complementary"`, no
+  `aria-modal`), so Tab still escapes to the page behind on purpose. Restoring a
+  persisted open state deliberately does *not* take focus: the user never asked for it.
+- **Five of the six accent colours ignored the light theme wherever they were used
+  as a wash.** Only ember had been tokenized; the other accents were spelled out as
+  raw dark-theme `rgba()` channels in 38 global rules, so on paper a status chip's
+  *text* followed the theme while its own border and background stayed dark — the
+  live pill was `#047857` text inside an `rgb(110,231,183)` border. Each accent now
+  has a per-theme channel token (`--live-rgb`, `--blue-rgb`, …) substituted into
+  each rule's own alpha, which is preserved exactly. Verified by diffing every
+  computed declaration in both themes: dark is unchanged apart from one intentional
+  fold (the idle chip's soft amber now matches its own label), light is entirely the
+  intended re-hue, no alpha drift, nothing silently transparent.
+- **Three light-theme accents fell below AA once their wash followed the theme.**
+  Each chip tints its own background with the same accent it writes in, so a
+  theme-following wash sits closer to the text than bare paper does: `--blue`,
+  `--amber` and `--live` measured 4.23 / 4.12 / 4.48:1 on their own chips while
+  clearing 4.5:1 on the plain panel. They are darkened 8% / 7% / 2% and measured in
+  the browser at 4.72 / 4.55 / 4.52:1. Darkening only raises contrast on light
+  surfaces, so titles, links and action types improved too.
+- **The live-view frame badge was near-invisible on the light theme (1.63:1).** Its
+  background is a pinned dark ink in both themes — it sits on the screenshot of the
+  app under test, which is always dark — but its label used the themed accent, so on
+  paper it put deep green on near-black. It now uses theme-agnostic accents, the same
+  rule `--on-shot` already followed for text on that imagery: 5.85:1 and 5.34:1.
+- **The IDE button's glyph stayed dark blue on the light theme.** Its SVG hardcoded
+  the dark theme's two hexes, so the icon didn't follow the button around it. It uses
+  the existing tokens now (`var()` does work in SVG presentation attributes).
 - **The playground's live view no longer goes blank when the Prism.js CDN is
   unreachable.** Prism is loaded from a CDN, and the code panel called
   `Prism.highlight()` unguarded. Offline / air-gapped / proxy-blocked, that threw
@@ -72,8 +124,11 @@ All notable changes to ScreenForge will be documented in this file.
   different jobs) and are preserved exactly; only the copied hue is gone. Verified by
   diffing every computed colour declaration on the page: the dark theme is byte-identical
   across 20,681 declarations, and every light-theme change is the intended re-hue with no
-  alpha drift. The replay report's `--signal` got the same treatment (it is dark-only, so
-  that one is pure de-duplication — its 6,479 computed values are unchanged).
+  alpha drift. The replay report's ember accent got the same treatment (it is dark-only, so
+  that one is pure de-duplication — its 6,479 computed values are unchanged), and its
+  tokens are now named `--ember*` to match the playground instead of `--signal*` — the same
+  four colours under two vocabularies made the two files hard to compare by eye. Verified
+  as a rename: 0 computed-value differences across 1,090 declarations in a rendered report.
 
 ### Changed
 - **The playground's idle live view is now a viewfinder rather than a spinner.**

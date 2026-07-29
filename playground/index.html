@@ -22,26 +22,30 @@
 </script>
 
 <!--
-  ScreenForge Playground · Live Mirror (high-fidelity prototype)
-  ──────────────────────────────────────────────────────────────
-  Single file. Zero build. Double-click to open in a browser.
+  ScreenForge Playground · Live Mirror
+  ───────────────────────────────────
+  Single file. Zero build. Served as-is by playground/app.py (GET /).
 
   WHAT THIS IS
-  - A design blueprint for playground/index.html (the live test-mirror).
-  - Three regions: live screenshot (left) · live pytest code (right-top) · action history (right-bottom).
-  - A bottom filmstrip is the visual SEED for future "time travel" (Trace-Viewer style scrubbing).
+  - The live test mirror: what ScreenForge is doing to a device/browser, right now.
+  - Four regions: live screenshot (left) · generated pytest code (right-top) ·
+    action history (right-bottom) · Brain's Eye View DOM tree (right drawer, toggle
+    with B). The bottom filmstrip selects a step — click or Enter/Space on a frame.
 
-  DATA SHAPE (matches the target SSE contract — see backend notes at bottom of this file)
+  SSE CONTRACT (from playground/app.py's push_event; see the backend notes at the
+  bottom of this file)
     step event:        { type:"step", ts, run_id, step_index, code_lines:[...],
                          action_description, action, locator_type, locator_value,
                          extra_value, success, screenshot_b64? }
     screenshot event:  { type:"screenshot", ts, size }   // client then GETs /api/screenshot
 
-  HOW THE PROTOTYPE FAKES IT
-  - A scripted 6-step login story is replayed on a timer (PrototypeFeed) that emits events
-    of the EXACT shape above into the same handlers the production EventSource path uses.
-  - Flip USE_LIVE_BACKEND = true to swap the fake feed for a real EventSource('/api/events').
-    The live wiring is written out in full (connectLiveBackend) so this file can ship as-is.
+  LIVE vs OFFLINE
+  - USE_LIVE_BACKEND is `true`: connectLiveBackend() opens a real
+    EventSource('/api/events'), and the run is seeded from the REST endpoints.
+  - Setting it to `false` swaps in startPrototypeFeed() — a scripted 6-step login
+    story on a timer, emitting events of the exact shape above into the same
+    handlers. That path is retained deliberately: it lets this file be opened
+    straight from disk, with no server, to work on the UI.
 -->
 
 <!-- Prism.js (Python syntax highlight) — REQUIRED dependency, CDN only -->
