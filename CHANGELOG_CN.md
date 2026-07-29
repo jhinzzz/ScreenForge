@@ -6,6 +6,8 @@
 
 ## [未发布]
 
+## [0.11.1] - 2026-07-29
+
 ### 修复
 - **通过 pip 安装后，`screenforge --playground` 根本起不来。** 它会提示
   "Playground requires extra dependencies. Fix: `pip install screenforge[playground]`"

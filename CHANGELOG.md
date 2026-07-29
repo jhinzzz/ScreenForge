@@ -6,6 +6,8 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-07-29
+
 ### Fixed
 - **`screenforge --playground` could never start from a pip install.** It reported
   "Playground requires extra dependencies. Fix: `pip install screenforge[playground]`"
