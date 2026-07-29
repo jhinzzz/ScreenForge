@@ -7,164 +7,66 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
-- **On the light theme the idle live view looked like a panel that had failed to
-  load.** Three faults, all invisible on the dark theme because they were differences
-  of *magnitude* between the themes rather than of colour. `--bg-0`, which is the idle
-  panel's own surface, sat a 1.206 contrast step below its panel where the dark theme
-  sits at 1.062 — so beside the near-white code panel it read as a grey box, while on
-  dark the same pair is 5 levels apart and reads as one surface. The lens is
-  deliberately *inverted* on paper (glass is a dark object there) but was also 1.2x
-  too deep, so once the surface was corrected it stopped reading as glass and became a
-  flat grey disc. And the focus arc was ramped through `--ember-soft`, which is
-  lighter than ember on dark (#ffb38a) but darker on light (#9a3412), so the tail
-  faded toward the background on dark and away from it on light — measured, the
-  light arc's most-contrasting point was its END, which reads as a scratch on the ring
-  rather than a trailing glow. The arc now ramps alpha on a single channel, which
-  means "fades toward whatever is behind it" in both themes by construction, and both
-  surface steps are rescaled to the dark theme's depth while keeping their intended
-  directions.
-- **The viewfinder's crop marks were below the contrast floor for graphics on the
-  light theme.** 2.78:1 where non-text graphics need 3:1 (dark measured 7.52:1). Two
-  causes, and the first alone was not enough: `opacity: .9` dilutes toward whatever is
-  behind, costing nothing on dark (toward black) but pushing the marks toward white on
-  paper — removing it moved them only 2.74 → 2.78. The surface underneath was the
-  larger half. Both corrected: 3.11:1 on light, 7.18:1 on dark, measured from rendered
-  pixels rather than from the token values.
-- **The playground scrolled sideways on any window narrower than the header.** The
-  header was `flex-wrap: nowrap` with wrapping enabled only below 720px, so between
-  721px and the bar's own intrinsic width the whole document scrolled horizontally.
-  That width is content-dependent — ~1019px idle, ~1330px once a run id, a generated
-  filename and a detected editor are in it — so a 1366px laptop was fine while idle
-  and scrolled sideways mid-run, and no single replacement breakpoint could fix both.
-  The bar now wraps on its intrinsic width instead of at a magic number, with
-  `min-height` (a fixed `height` would clip the second row) and pressure-only
-  ellipsis, so the filename is still shown in full whenever there is room for it.
-  Verified zero overflow across 27 widths (1920→320) × both themes × idle and
-  populated.
-- **The Brain's Eye View drawer was visible while the code believed it was closed.**
-  Pin it, close it, reload — the pinned CSS overrides the closed transform, so the
-  panel came back fully on-screen with `isOpen === false`. `showTreeForStep()` starts
-  with `if (!isOpen) return`, so that visible panel never updated: it sat on "Waiting
-  for the first step" permanently while steps streamed in, and below 1360px it also
-  overlaid the code panel. Pin and open are now one state — pinning opens, closing
-  unpins — so "closed" genuinely means off-screen.
-- **The closed drawer stayed in the keyboard tab order, and Escape didn't close it.**
-  Tab reached the pin, close and search controls of a panel sitting off-screen at
-  `translateX(100%)`; opening the drawer never moved focus into it; and Escape was
-  bound only to the search box (where it cleared text) and the coachmark. The drawer
-  is now `inert` while closed, takes focus on open and returns it to the toggle tab
-  on close, and Escape closes it — after clearing the search text if there is any, so
-  one keypress never does two things. It stays non-modal (`role="complementary"`, no
-  `aria-modal`), so Tab still escapes to the page behind on purpose. Restoring a
-  persisted open state deliberately does *not* take focus: the user never asked for it.
-- **Five of the six accent colours ignored the light theme wherever they were used
-  as a wash.** Only ember had been tokenized; the other accents were spelled out as
-  raw dark-theme `rgba()` channels in 38 global rules, so on paper a status chip's
-  *text* followed the theme while its own border and background stayed dark — the
-  live pill was `#047857` text inside an `rgb(110,231,183)` border. Each accent now
-  has a per-theme channel token (`--live-rgb`, `--blue-rgb`, …) substituted into
-  each rule's own alpha, which is preserved exactly. Verified by diffing every
-  computed declaration in both themes: dark is unchanged apart from one intentional
-  fold (the idle chip's soft amber now matches its own label), light is entirely the
-  intended re-hue, no alpha drift, nothing silently transparent.
-- **Three light-theme accents fell below AA once their wash followed the theme.**
-  Each chip tints its own background with the same accent it writes in, so a
-  theme-following wash sits closer to the text than bare paper does: `--blue`,
-  `--amber` and `--live` measured 4.23 / 4.12 / 4.48:1 on their own chips while
-  clearing 4.5:1 on the plain panel. They are darkened 8% / 7% / 2% and measured in
-  the browser at 4.72 / 4.55 / 4.52:1. Darkening only raises contrast on light
-  surfaces, so titles, links and action types improved too.
-- **The live-view frame badge was near-invisible on the light theme (1.63:1).** Its
-  background is a pinned dark ink in both themes — it sits on the screenshot of the
-  app under test, which is always dark — but its label used the themed accent, so on
-  paper it put deep green on near-black. It now uses theme-agnostic accents, the same
-  rule `--on-shot` already followed for text on that imagery: 5.85:1 and 5.34:1.
-- **The IDE button's glyph stayed dark blue on the light theme.** Its SVG hardcoded
-  the dark theme's two hexes, so the icon didn't follow the button around it. It uses
-  the existing tokens now (`var()` does work in SVG presentation attributes).
-- **The playground's live view no longer goes blank when the Prism.js CDN is
-  unreachable.** Prism is loaded from a CDN, and the code panel called
-  `Prism.highlight()` unguarded. Offline / air-gapped / proxy-blocked, that threw
-  a `ReferenceError` out of the SSE step handler — so not just the highlighting
-  but the screenshot, action history and filmstrip stopped rendering too, leaving
-  the page frozen on "Connecting". Highlighting now degrades to plain escaped
-  text, and the imagery renders before the code panel so one panel's failure
-  can't blank the others.
-- **The replay report now draws the target reticle on `click` and `assert`
-  steps.** The stage overlay resolved only `#id` locators (plus a `text=` form the
-  generator never emits), while the recorder actually writes `get_by_text(...)`,
-  `get_by_role(..., name=...)`, `get_by_label(...)`, `get_by_placeholder(...)` and
-  `[aria-label='...']`. The result: a bounding box on the `fill` steps but none on
-  the click/assert steps a reviewer opens the report to inspect. All of those
-  forms now resolve; unsupported CSS still degrades to no box.
-- **Removed a bounding-box fallback that mis-drew the reticle on HiDPI screens.**
-  For legacy `review.json` files without `vw`/`vh`, the box fell back to
-  `naturalWidth/dpr` with `dpr` defaulting to 1, drawing at roughly half scale on
-  a 2× display (and reading the previous frame's dimensions mid-swap). The report
-  now draws the box only when the recorded CSS viewport is present — no box is
-  more honest than a misplaced one.
-- **The playground's idle code panel rendered its four placeholder comments as one
-  run of text.** They are inline `<span>`s separated only by source newlines, which
-  a `div` collapses to spaces — so the `#`s ended up buried mid-sentence. The block
-  now uses `white-space: pre-wrap`, keeping the lines apart while still wrapping.
-- **The idle live-view panel overflowed on short windows, clipping the
-  `--playground` hint.** The panel body is a centred flex box with no scroll, and
-  `align-items: center` applies no shrink pressure, so the placeholder stayed at
-  its natural height and the bottom hint fell outside the panel. It is now bound to
-  the panel height and sheds atmosphere in priority order as the panel shrinks — the
-  viewfinder steps aside below ~250px of body height rather than shrinking into a
-  stray dash, then the STANDING BY chip and the lead paragraph below ~200px — so the
-  heading and the command to run always survive. The panel is deliberately not a
-  scroll container: an idle panel that scrolls is worse than one that shows less.
-- **The idle panel's entrance animation ignored `prefers-reduced-motion`.** The
-  staggered `:nth-child` rules outranked the reduce override, so the text still
-  animated in for readers who asked it not to.
-- **The idle live view looked like a different component on the light theme.** Its
-  accent chips carried the dark theme's ember as inline `rgba()` literals, so on
-  paper a chip was tinted with one orange and labelled in another; the focus arc
-  and metering sweep interpolated through a 40%-alpha glow that is invisible over
-  near-white, leaving the light theme drawing about a tenth of the arc the dark
-  theme drew; and the lens reused a surface token that is *lighter* than the panel
-  in both themes, so on paper it became a white disc at 1.21:1 that swallowed its
-  own focus ring. The ember wash, edge and lens glass are now per-theme tokens —
-  glass sits darker than the panel on paper and lighter in the dark, inverted on
-  purpose so it reads as depth either way — and the strokes interpolate through
-  opaque colours, carrying softness in `opacity` instead of alpha. Verified at a
-  frozen animation phase: both themes trace the same arc.
-- **Ember accent text was below AA on the light theme wherever it sat on its own chip.**
-  The burnt orange was picked against plain panel paper (5.3:1), but every ember chip
-  tints its own background with the ember wash, and over that the `STANDING BY` tag, the
-  `--playground` code chips, the timeline seed and the pinned-node button all fell to
-  3.7–4.4:1 — under the 4.5:1 floor for text that small. The light `--ember-soft` is now
-  a deeper burnt orange, measured against the background each chip actually composites
-  onto rather than the panel behind it: 5.2–6.5:1 across all of them, with the dark theme
-  unchanged at 10–11:1.
-- **The playground's ember accent was spelled out as a raw `rgba()` triple in ~25 rules.**
-  Each one hardcoded the *dark* ember, so every ember-tinted row, border, gradient and
-  glow outside the handful already tokenised stayed orange-for-dark on the light theme.
-  The channels are now one token per theme (`--ember-rgb`), substituted into each rule's
-  own alpha — the per-rule alphas were deliberate (a 0.05 row wash and a 0.45 border are
-  different jobs) and are preserved exactly; only the copied hue is gone. Verified by
-  diffing every computed colour declaration on the page: the dark theme is byte-identical
-  across 20,681 declarations, and every light-theme change is the intended re-hue with no
-  alpha drift. The replay report's ember accent got the same treatment (it is dark-only, so
-  that one is pure de-duplication — its 6,479 computed values are unchanged), and its
-  tokens are now named `--ember*` to match the playground instead of `--signal*` — the same
-  four colours under two vocabularies made the two files hard to compare by eye. Verified
-  as a rename: 0 computed-value differences across 1,090 declarations in a rendered report.
+- **The playground scrolled sideways on narrow windows.** Any window narrower than
+  the top bar itself scrolled the whole page horizontally — and since the bar grows
+  once a run id and generated filename appear, a 1366px laptop was fine while idle and
+  started scrolling mid-run. The bar wraps now, and the filename is still shown in
+  full whenever there is room for it.
+- **The idle live view clipped the hint that tells you how to start a run.** On short
+  windows its content overflowed the panel and the `--playground` command fell outside
+  it. The panel now gives up atmosphere as it shrinks — the viewfinder first, then the
+  standing-by chip — so the heading and the command always survive.
+- **The Brain's Eye View drawer could sit on screen showing stale content.** Pin it,
+  close it, reload: it came back fully visible but frozen on "Waiting for the first
+  step" while steps streamed in, and on narrower windows it covered the code panel.
+  Pinning and opening are one state now, so a closed drawer is really closed.
+- **The drawer was unusable by keyboard.** Tab reached the controls of a closed,
+  off-screen panel; opening it never moved focus in; Escape didn't close it. Now Tab
+  skips a closed drawer, opening moves focus in and closing hands it back, and Escape
+  closes it — after clearing the search box first if it has text, so one keypress
+  never does two things. Tab still leaves the drawer for the page behind: it's a
+  sidebar, not a modal.
+- **Accent colours ignored the light theme.** Status pills, action rows, diff badges
+  and the like drew their text in the light theme's colour but kept the dark theme's
+  border and background — the live pill was deep green text inside a mint border. The
+  "Open in editor" glyph stayed dark blue for the same reason. They all follow the
+  theme now.
+- **Several things were too faint to read on the light theme.** Accent labels sitting
+  on their own tinted chips, the live/idle badge over the screenshot and the
+  viewfinder's crop marks all fell below the WCAG AA contrast floor — the badge was
+  effectively invisible. All of them clear it now, measured against the background each
+  one actually sits on rather than the panel behind it.
+- **The idle live view didn't read as the same component in the two themes.** On paper
+  the panel looked like a box that had failed to load next to the code panel, the lens
+  was a flat grey disc rather than glass, and the focusing arc read as a scratch on the
+  ring instead of a trailing glow. The two themes now match in depth and in the way
+  light falls, while staying deliberately inverted where paper calls for it.
+- **The live view no longer goes blank when the syntax-highlighting CDN is
+  unreachable.** Offline, air-gapped or behind a blocking proxy, that one failed load
+  took the screenshot, action history and filmstrip down with it and left the page
+  frozen on "Connecting". Highlighting degrades to plain text now and everything else
+  keeps working.
+- **The idle code panel ran its four placeholder comments together into one
+  paragraph.**
+- **The idle panel's entrance animation ignored `prefers-reduced-motion`.**
+- **The replay report now draws the target reticle on `click` and `assert` steps.** It
+  could only locate elements by `id`, so the steps a reviewer opens the report to
+  inspect were exactly the ones with no box drawn on them.
+- **The replay report no longer misplaces the reticle on HiDPI screens.** For reports
+  recorded by older versions it had to guess the screen scale, and drew at roughly half
+  size on a 2× display. It now draws a box only when it knows where the box goes — no
+  box is more honest than a misplaced one.
 
 ### Changed
-- **The playground's idle live view is now a viewfinder rather than a spinner.**
-  The old rotating ring masked a circular gradient over a rounded *square*, so the
-  glow smeared into the corners instead of tracing an edge. It is replaced by four
-  crop marks, a metering sweep and a focusing lens — the same reticle/film language
-  the rest of the interface already speaks.
-- **The replay report's accent is now ember `#ff7849`, matching the playground.**
-  The two surfaces used two near-identical warm oranges (`#FFB84D` vs `#ff7849`),
-  which read as drift rather than intent. The report keeps its own display face
-  and replay concept (REC dot, equalizer, film grain) — only the brand accent is
-  shared. As a side effect the accent no longer collides with the categorical
-  `fill` action hue, which was the same `#FFB84D`.
+- **The playground's idle live view is a viewfinder rather than a spinner.** Four crop
+  marks, a metering sweep and a focusing lens — the same reticle/film language the rest
+  of the interface already speaks, in place of a rotating ring whose glow smeared into
+  the corners.
+- **The replay report's accent is now the same ember as the playground.** The two
+  surfaces used two near-identical warm oranges, which read as drift rather than
+  intent. The report keeps its own display face and replay concept — REC dot,
+  equalizer, film grain — and only shares the brand accent. It also no longer collides
+  with the colour used for `fill` actions.
 
 ## [0.11.0] - 2026-07-28
 
