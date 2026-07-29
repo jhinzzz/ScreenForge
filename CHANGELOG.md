@@ -55,8 +55,25 @@ All notable changes to ScreenForge will be documented in this file.
   glass sits darker than the panel on paper and lighter in the dark, inverted on
   purpose so it reads as depth either way — and the strokes interpolate through
   opaque colours, carrying softness in `opacity` instead of alpha. Verified at a
-  frozen animation phase: both themes trace the same arc, and the light `--ember-soft`
-  now clears AA for text.
+  frozen animation phase: both themes trace the same arc.
+- **Ember accent text was below AA on the light theme wherever it sat on its own chip.**
+  The burnt orange was picked against plain panel paper (5.3:1), but every ember chip
+  tints its own background with the ember wash, and over that the `STANDING BY` tag, the
+  `--playground` code chips, the timeline seed and the pinned-node button all fell to
+  3.7–4.4:1 — under the 4.5:1 floor for text that small. The light `--ember-soft` is now
+  a deeper burnt orange, measured against the background each chip actually composites
+  onto rather than the panel behind it: 5.2–6.5:1 across all of them, with the dark theme
+  unchanged at 10–11:1.
+- **The playground's ember accent was spelled out as a raw `rgba()` triple in ~25 rules.**
+  Each one hardcoded the *dark* ember, so every ember-tinted row, border, gradient and
+  glow outside the handful already tokenised stayed orange-for-dark on the light theme.
+  The channels are now one token per theme (`--ember-rgb`), substituted into each rule's
+  own alpha — the per-rule alphas were deliberate (a 0.05 row wash and a 0.45 border are
+  different jobs) and are preserved exactly; only the copied hue is gone. Verified by
+  diffing every computed colour declaration on the page: the dark theme is byte-identical
+  across 20,681 declarations, and every light-theme change is the intended re-hue with no
+  alpha drift. The replay report's `--signal` got the same treatment (it is dark-only, so
+  that one is pure de-duplication — its 6,479 computed values are unchanged).
 
 ### Changed
 - **The playground's idle live view is now a viewfinder rather than a spinner.**

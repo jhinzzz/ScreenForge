@@ -91,12 +91,17 @@
      the active step, the run pulse. This is the one thing you remember. */
   --ember: #ff7849;
   --ember-soft: #ffb38a;
-  --ember-glow: rgba(255, 120, 73, 0.55);
-  /* Ember washes for accent chips. These were inline rgba(255,120,73,…) literals in
-     a handful of rules, i.e. the DARK ember hardcoded — so on paper (--ember #ea580c)
-     the chips were tinted with a different orange than their own text. */
-  --ember-wash: rgba(255, 120, 73, 0.07);
-  --ember-edge: rgba(255, 120, 73, 0.22);
+  /* The ember channels, so the ~25 rules that need ember at their OWN tuned alpha can
+     write rgba(var(--ember-rgb), .12) instead of restating the triple. Every one of them
+     used to spell the dark ember out longhand, which on paper tinted things with an
+     orange the light --ember isn't. The alphas stay per-rule on purpose (a 0.05 row wash
+     and a 0.45 border are different jobs); it is only the hue that had to stop being
+     copied — flip --ember-rgb in a theme and every wash, border and glow follows. */
+  --ember-rgb: 255, 120, 73;
+  --ember-glow: rgba(var(--ember-rgb), 0.55);
+  /* Ember washes for accent chips. */
+  --ember-wash: rgba(var(--ember-rgb), 0.07);
+  --ember-edge: rgba(var(--ember-rgb), 0.22);
   /* Lens glass. Darker than the panel on paper, lighter in the dark — glass reads as
      depth, and on paper "brighter than the background" made the lens a white disc
      that swallowed its own focus ring. */
@@ -132,7 +137,7 @@
   --timeline-grad-start: #121218;
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
   --grain-opacity: 0.025;
-  --bloom-warm: rgba(255, 120, 73, 0.07);   /* ember atmosphere bloom (top-left) */
+  --bloom-warm: rgba(var(--ember-rgb), 0.07);   /* ember atmosphere bloom (top-left) */
   --bloom-cool: rgba(96, 165, 250, 0.06);   /* cool atmosphere bloom (right) */
 
   /* Text that sits ON the screenshot imagery (step caption, filmstrip badge/label).
@@ -177,12 +182,17 @@
   --red-deep: #f3d2d2;
 
   --ember: #ea580c;          /* the signature, still molten on paper */
-  --ember-soft: #c2410c;     /* burnt orange — text-safe (~5.3:1) */
-  --ember-glow: rgba(234, 88, 12, 0.40);
+  /* Burnt orange. Measured against the chip backgrounds it actually sits on, not against
+     the bare panel: every ember chip tints its own background with --ember-wash, and over
+     that #c2410c fell to 3.66:1 on the frame backing — under AA for 9.5px text, even
+     though it clears 5.3:1 on plain paper. This is 5.17:1 at the worst of them. */
+  --ember-soft: #9a3412;
+  --ember-rgb: 234, 88, 12;
+  --ember-glow: rgba(var(--ember-rgb), 0.40);
   /* Same ember the text uses, so a chip's tint and its label are one colour. Slightly
      stronger than the dark values: a 0.07 wash is nearly invisible on paper. */
-  --ember-wash: rgba(234, 88, 12, 0.09);
-  --ember-edge: rgba(234, 88, 12, 0.28);
+  --ember-wash: rgba(var(--ember-rgb), 0.09);
+  --ember-edge: rgba(var(--ember-rgb), 0.28);
   /* Glass is a dark object on paper (cf. --phone-bezel) — inverted from the dark
      theme on purpose, so the lens sits *into* the page instead of glowing off it. */
   --lens-glass: #ddd8ce;
@@ -205,7 +215,7 @@
   --timeline-grad-start: #eeebe5;
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2c2533, #1c1c26);
   --grain-opacity: 0.012;
-  --bloom-warm: rgba(234, 88, 12, 0.06);
+  --bloom-warm: rgba(var(--ember-rgb), 0.06);   /* lighter than dark's 0.07 on purpose */
   --bloom-cool: rgba(37, 99, 235, 0.05);
 
   /* Pinned identical to dark — text on the always-dark screenshot must stay light. */
@@ -284,7 +294,7 @@ header::after {
   display: grid; place-items: center;
   background: var(--brand-mark-bg);
   border: 1px solid var(--line-strong);
-  box-shadow: 0 0 0 1px rgba(255,120,73,0.12), 0 0 14px -4px var(--ember-glow);
+  box-shadow: 0 0 0 1px rgba(var(--ember-rgb),0.12), 0 0 14px -4px var(--ember-glow);
   position: relative;
   overflow: hidden;
 }
@@ -302,8 +312,8 @@ header::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ember-soft);
-  border: 1px solid rgba(255,120,73,0.28);
-  background: rgba(255,120,73,0.06);
+  border: 1px solid rgba(var(--ember-rgb),0.28);
+  background: rgba(var(--ember-rgb),0.06);
   padding: 2px 6px;
   border-radius: 5px;
   margin-left: 2px;
@@ -988,14 +998,14 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 .cl.fresh::after { opacity: 1; animation: rail-fade 1.5s ease forwards; }
 @keyframes line-in {
-  from { opacity: 0; transform: translateX(6px); background: rgba(255,120,73,0.1); }
+  from { opacity: 0; transform: translateX(6px); background: rgba(var(--ember-rgb),0.1); }
   to   { opacity: 1; transform: none; background: transparent; }
 }
 @keyframes rail-fade { 0%,55% { opacity: 1; } 100% { opacity: 0; } }
 
 /* a step's lines stay grouped; hovering / selecting a step in history lights its rail */
 .cl[data-step].hot::after { opacity: 0.9 !important; animation: none; }
-.cl[data-step].hot { background: rgba(255,120,73,0.05); }
+.cl[data-step].hot { background: rgba(var(--ember-rgb),0.05); }
 /* failing step lines get a red rail tint */
 .cl[data-fail="1"].hot::after { background: var(--red); }
 .cl[data-fail="1"].hot { background: rgba(252,165,165,0.05); }
@@ -1056,8 +1066,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* selected (time-travel target) state */
 .action-item.selected {
-  background: linear-gradient(90deg, rgba(255,120,73,0.10), rgba(255,120,73,0.03) 60%, transparent);
-  border-color: rgba(255,120,73,0.45);
+  background: linear-gradient(90deg, rgba(var(--ember-rgb),0.10), rgba(var(--ember-rgb),0.03) 60%, transparent);
+  border-color: rgba(var(--ember-rgb),0.45);
 }
 .action-item.selected::before {
   content: "";
@@ -1087,7 +1097,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   background: var(--bg-1);
   border: 1px solid var(--line);
 }
-.action-item.selected .idx { color: var(--ember-soft); border-color: rgba(255,120,73,0.4); }
+.action-item.selected .idx { color: var(--ember-soft); border-color: rgba(var(--ember-rgb),0.4); }
 
 .action-item .body { min-width: 0; }
 .action-item .line1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -1168,8 +1178,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   font-family: var(--font-mono);
   font-size: 9.5px; letter-spacing: .04em;
   color: var(--ember-soft);
-  border: 1px dashed rgba(255,120,73,0.4);
-  background: rgba(255,120,73,0.05);
+  border: 1px dashed rgba(var(--ember-rgb),0.4);
+  background: rgba(var(--ember-rgb),0.05);
   padding: 1px 6px; border-radius: 5px;
   white-space: nowrap;
 }
@@ -1341,15 +1351,15 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
    the tab gently breathes an ember halo to pull the eye. Killed permanently
    after the first open (.was-opened) so it never nags a returning user. */
 .tree-toggle-tab.has-data:not(.was-opened) {
-  border-color: rgba(255,120,73,0.45);
+  border-color: rgba(var(--ember-rgb),0.45);
   animation: tab-invite 2.4s ease-in-out infinite;
 }
 @keyframes tab-invite {
-  0%, 100% { box-shadow: -2px 0 10px -2px rgba(255,120,73,0.18); }
+  0%, 100% { box-shadow: -2px 0 10px -2px rgba(var(--ember-rgb),0.18); }
   50%      { box-shadow: -3px 0 18px -1px var(--ember-glow); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tree-toggle-tab.has-data:not(.was-opened) { animation: none; border-color: rgba(255,120,73,0.5); }
+  .tree-toggle-tab.has-data:not(.was-opened) { animation: none; border-color: rgba(var(--ember-rgb),0.5); }
 }
 .tree-toggle-tab:focus-visible {
   outline: 2px solid var(--blue);
@@ -1379,7 +1389,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* Ember pip on the tab when the panel is open */
 .tree-toggle-tab[aria-expanded="true"] {
   background: var(--bg-3);
-  border-color: rgba(255,120,73,0.4);
+  border-color: rgba(var(--ember-rgb),0.4);
 }
 .tree-toggle-tab[aria-expanded="true"] .tab-icon,
 .tree-toggle-tab[aria-expanded="true"] .tab-label { color: var(--ember-soft); }
@@ -1403,9 +1413,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   width: 244px;
   padding: 14px 15px 12px;
   background: var(--bg-3);
-  border: 1px solid rgba(255,120,73,0.34);
+  border: 1px solid rgba(var(--ember-rgb),0.34);
   border-radius: var(--r-md);
-  box-shadow: 0 14px 40px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,120,73,0.08);
+  box-shadow: 0 14px 40px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--ember-rgb),0.08);
   opacity: 0;
   pointer-events: none;
   transition: opacity .22s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
@@ -1422,8 +1432,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   width: 11px; height: 11px;
   transform: translateY(-50%) rotate(45deg);
   background: var(--bg-3);
-  border-right: 1px solid rgba(255,120,73,0.34);
-  border-top: 1px solid rgba(255,120,73,0.34);
+  border-right: 1px solid rgba(var(--ember-rgb),0.34);
+  border-top: 1px solid rgba(var(--ember-rgb),0.34);
 }
 .tree-coachmark .cm-title {
   display: flex; align-items: center; gap: 7px;
@@ -1583,7 +1593,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   flex-shrink: 0;
 }
 .tree-pin-btn:hover { color: var(--text-dim); background: var(--bg-3); border-color: var(--line); }
-.tree-pin-btn.pinned { color: var(--ember-soft); border-color: rgba(255,120,73,0.3); background: rgba(255,120,73,0.06); }
+.tree-pin-btn.pinned { color: var(--ember-soft); border-color: rgba(var(--ember-rgb),0.3); background: rgba(var(--ember-rgb),0.06); }
 .tree-pin-btn svg { width: 11px; height: 11px; display: block; }
 .tree-pin-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
@@ -1752,9 +1762,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* Target element — ember treatment, matches action-item.selected exactly */
 .tree-node-row.is-target {
-  background: linear-gradient(90deg, rgba(255,120,73,0.13), rgba(255,120,73,0.04) 65%, transparent);
+  background: linear-gradient(90deg, rgba(var(--ember-rgb),0.13), rgba(var(--ember-rgb),0.04) 65%, transparent);
   border-left-color: var(--ember) !important;
-  box-shadow: inset 2px 0 10px rgba(255,120,73,0.12);
+  box-shadow: inset 2px 0 10px rgba(var(--ember-rgb),0.12);
 }
 /* Focus ring */
 .tree-node-row:focus { outline: none; }
@@ -1871,8 +1881,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* On target row, ref badge gets ember color */
 .tree-node-row.is-target .tree-ref {
   color: var(--ember-soft);
-  background: rgba(255,120,73,0.08);
-  border-color: rgba(255,120,73,0.30);
+  background: rgba(var(--ember-rgb),0.08);
+  border-color: rgba(var(--ember-rgb),0.30);
 }
 /* Copied feedback tooltip */
 .tree-ref::after {
@@ -1969,7 +1979,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* ember variant for the current target node */
 #domBboxOverlay.is-target {
   border-color: var(--ember);
-  background: rgba(255,120,73,0.10);
+  background: rgba(var(--ember-rgb),0.10);
   box-shadow: 0 0 0 1px var(--ember-glow);
 }
 

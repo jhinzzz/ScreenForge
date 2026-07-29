@@ -18,7 +18,8 @@
        Deliberately NOT unified with the playground: the display face (Bricolage
        Grotesque + mono body = instrument readout) and the replay concept (REC dot,
        equalizer, film grain) are this surface's own voice. Only the accent is shared. */
-    --signal:#ff7849; --signal-soft:rgba(255,120,73,.13); --signal-line:rgba(255,120,73,.45);
+    --signal:#ff7849; --signal-rgb:255, 120, 73;
+    --signal-soft:rgba(var(--signal-rgb),.13); --signal-line:rgba(var(--signal-rgb),.45);
     --pass:#7DDFB0; --fail:#FF6B6B; --skip:#C9A24B; --cool:#6E7B8F;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
     --disp:"Bricolage Grotesque","Bricolage Grotesque Fallback",system-ui,sans-serif;
@@ -29,7 +30,7 @@
     margin:0; color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.5;
     background:var(--bg);
     background-image:
-      radial-gradient(1200px 700px at 30% -10%, rgba(255,120,73,.07), transparent 60%),
+      radial-gradient(1200px 700px at 30% -10%, rgba(var(--signal-rgb),.07), transparent 60%),
       radial-gradient(1000px 800px at 110% 120%, rgba(60,80,110,.10), transparent 55%),
       linear-gradient(180deg,var(--bg),var(--bg-2));
     display:grid; grid-template-rows:auto 1fr auto auto; height:100vh; overflow:hidden;
@@ -199,7 +200,7 @@
   .frame-time{display:block; text-align:center; font-size:9.5px; color:var(--ink-3); margin-top:7px;}
   .frame:hover .frame-thumb{filter:grayscale(.2) brightness(.85); transform:translateY(-2px);}
   .frame.live .frame-thumb{filter:none; border-color:var(--signal); transform:translateY(-4px) scale(1.02);
-                           box-shadow:0 14px 30px -12px rgba(255,120,73,.5), 0 0 0 1px var(--signal);}
+                           box-shadow:0 14px 30px -12px rgba(var(--signal-rgb),.5), 0 0 0 1px var(--signal);}
   .frame.live .frame-idx{color:var(--signal);}
   .frame.live .frame-time{color:var(--signal);}
   .frame.live::before{content:""; position:absolute; left:50%; transform:translateX(-50%); bottom:-13px;
