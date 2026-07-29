@@ -2246,9 +2246,12 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 </div>
 
 <!-- The drawer -->
+<!-- Starts inert: closed means translateX(100%), i.e. off-screen, and an off-screen
+     panel must not be tabbable. openDrawer()/closeDrawer() own this attribute. -->
 <aside class="tree-drawer" id="treeDrawer"
        role="complementary"
-       aria-label="Brain's Eye View — DOM perception tree">
+       aria-label="Brain's Eye View — DOM perception tree"
+       inert>
 
   <!-- Drawer header -->
   <div class="tree-drawer-head">
@@ -4121,6 +4124,10 @@ if (USE_LIVE_BACKEND) {
 
   searchInput.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      // Nothing to clear → Escape means "close the panel". Without this the drawer
+      // would be un-closable by keyboard right after opening, since openDrawer()
+      // focuses this input and the document-level Escape handler skips INPUT targets.
+      if (!searchInput.value) { closeDrawer(); return; }
       filterQuery = '';
       searchInput.value = '';
       searchClear.classList.remove('visible');
@@ -4189,7 +4196,12 @@ if (USE_LIVE_BACKEND) {
   /* ------------------------------------------------------------------
      Drawer open / close / pin
   ------------------------------------------------------------------ */
-  function openDrawer() {
+  /* opts.focus — move focus into the panel. True for user-initiated opens (click, B,
+     coachmark); false when restoring persisted state on load, where yanking focus
+     into a search box the user never asked for is just theft. */
+  function openDrawer(opts) {
+    if (isOpen) return;                       // idempotent: applyPin() and restoreState()
+                                              // can both reach here on the same load
     isOpen = true;
     drawer.classList.add('is-open');
     wrap.classList.add('tree-open');
@@ -4198,7 +4210,11 @@ if (USE_LIVE_BACKEND) {
     dismissCoachmark();                       // opening IS the coachmark's goal
     try { localStorage.setItem(PANEL_OPEN_KEY, '1'); } catch(e) {}
 
+    drawer.removeAttribute('inert');          // reachable again (see closeDrawer)
     updateNobboxNotice(state.platform);
+    // Move focus into the panel. Non-modal (role=complementary, no aria-modal), so
+    // there is no focus trap — Tab out into the page behind is correct here.
+    if (!opts || opts.focus !== false) searchInput.focus();
 
     // Fetch + show the current step's tree on demand. The drawer may be opened
     // for the first time after several steps, so we can't rely on a tree being
@@ -4209,6 +4225,8 @@ if (USE_LIVE_BACKEND) {
   }
 
   function closeDrawer() {
+    if (!isOpen && !isPinned) return;         // idempotent; still runs when pinned-but-
+                                              // closed so a legacy persisted state unpins
     isOpen = false;
     drawer.classList.remove('is-open');
     wrap.classList.remove('tree-open');
@@ -4216,6 +4234,16 @@ if (USE_LIVE_BACKEND) {
     bboxLockedNode = null;
     hideBbox(0);
     try { localStorage.setItem(PANEL_OPEN_KEY, '0'); } catch(e) {}
+    // Closing a pinned drawer has to unpin it too — otherwise the pinned CSS keeps
+    // it on-screen while isOpen is false (the frozen-panel bug above, in reverse).
+    if (isPinned) applyPin(false);
+    // Off-screen (translateX(100%)) but still in the tab order without this: Tab
+    // would land on the pin/close/search controls of a panel nobody can see.
+    // Safe to gate on closed only because closing always unpins (line above), so
+    // closed now genuinely means off-screen.
+    drawer.setAttribute('inert', '');
+    // Never leave focus inside an inert subtree.
+    if (drawer.contains(document.activeElement)) toggleTab.focus();
   }
 
   function toggleDrawer() {
@@ -4246,16 +4274,23 @@ if (USE_LIVE_BACKEND) {
   if (coachmark) {
     const cmOpen = document.getElementById('treeCoachmarkOpen');
     const cmDismiss = document.getElementById('treeCoachmarkDismiss');
-    if (cmOpen) cmOpen.addEventListener('click', openDrawer);          // openDrawer() also dismisses
+    // Wrapped, not passed directly: a bare listener hands openDrawer the MouseEvent
+    // as its opts argument.
+    if (cmOpen) cmOpen.addEventListener('click', function () { openDrawer(); });  // openDrawer() also dismisses
     if (cmDismiss) cmDismiss.addEventListener('click', dismissCoachmark);
   }
 
-  function applyPin(pinned) {
+  function applyPin(pinned, opts) {
     isPinned = pinned;
     wrap.classList.toggle('tree-pinned', pinned);
     pinBtn.classList.toggle('pinned', pinned);
     pinBtn.setAttribute('aria-pressed', String(pinned));
     try { localStorage.setItem(PANEL_PIN_KEY, pinned ? '1' : '0'); } catch(e) {}
+    // Pinned CSS overrides the closed transform (transform: none !important), so a
+    // pinned drawer is on-screen whatever isOpen says. Pin and open are therefore
+    // ONE state, not two: keep isOpen meaning "visible", or showTreeForStep's
+    // `if (!isOpen) return` leaves a visible panel frozen on its empty state.
+    if (pinned && !isOpen) openDrawer(opts);
   }
 
   toggleTab.addEventListener('click', toggleDrawer);
@@ -4270,6 +4305,10 @@ if (USE_LIVE_BACKEND) {
     }
     // Escape dismisses the coachmark (if it's the only thing showing)
     if (e.key === 'Escape' && _coachShown && !isOpen) dismissCoachmark();
+    // Escape closes the open drawer. Note this handler already returned above for
+    // INPUT targets, so Escape inside the search box still clears the text first
+    // (its own keydown listener) instead of closing the panel out from under you.
+    else if (e.key === 'Escape' && isOpen) closeDrawer();
   });
 
   // "/" in tree panel → focus search
@@ -4287,8 +4326,9 @@ if (USE_LIVE_BACKEND) {
   ------------------------------------------------------------------ */
   (function restoreState() {
     try {
-      if (localStorage.getItem(PANEL_PIN_KEY) === '1') applyPin(true);
-      if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openDrawer();
+      // focus:false — restoring on load must not steal focus (see openDrawer)
+      if (localStorage.getItem(PANEL_PIN_KEY) === '1') applyPin(true, { focus: false });
+      if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openDrawer({ focus: false });
     } catch(e) {}
   })();
 
