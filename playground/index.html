@@ -87,6 +87,20 @@
   --red: #fca5a5;            /* disconnected / fail */
   --red-deep: #3a1e1e;
 
+  /* Channels for the accents above — same reason as --ember-rgb below. Every wash,
+     border and glow that needs an accent at its OWN alpha writes
+     rgba(var(--x-rgb), .12) instead of restating the triple. They all used to spell
+     the DARK channels out longhand in global rules, so on paper a chip's text
+     followed the theme while its own border and background stayed dark-theme —
+     e.g. the live chip was #047857 text inside a rgb(110,231,183) border.
+     Keep these in sync with the hexes above. */
+  --live-rgb: 110, 231, 183;
+  --blue-rgb: 96, 165, 250;
+  --red-rgb: 252, 165, 165;
+  --amber-rgb: 251, 191, 36;
+  --purple-rgb: 165, 180, 252;
+  --green-rgb: 52, 211, 153;
+
   /* Ember — the "Forge" signature accent (molten metal). Used sparingly: the live rail,
      the active step, the run pulse. This is the one thing you remember. */
   --ember: #ff7849;
@@ -138,13 +152,21 @@
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
   --grain-opacity: 0.025;
   --bloom-warm: rgba(var(--ember-rgb), 0.07);   /* ember atmosphere bloom (top-left) */
-  --bloom-cool: rgba(96, 165, 250, 0.06);   /* cool atmosphere bloom (right) */
+  --bloom-cool: rgba(var(--blue-rgb), 0.06);   /* cool atmosphere bloom (right) */
 
   /* Text that sits ON the screenshot imagery (step caption, filmstrip badge/label).
      The imagery is ALWAYS dark (it's the app-under-test, not playground chrome), so
      this must NOT flip with the theme — pinned to a light ink in BOTH themes. */
   --on-shot: #ecedf1;
   --on-shot-dim: #c4c6cf;
+  /* Same rule for the accents that land on that imagery — the frame's LIVE/IDLE
+     badge sits on a pinned dark ink (rgba(8,16,12,.72)), so its label must stay the
+     BRIGHT accent in both themes. Using the themed --live/--amber there put the
+     deepened light hexes on near-black: 1.63:1 and 1.78:1, far under AA. */
+  --on-shot-live: #6ee7b7;
+  --on-shot-live-rgb: 110, 231, 183;
+  --on-shot-amber: #fbbf24;
+  --on-shot-amber-rgb: 251, 191, 36;
 
   color-scheme: dark;
 }
@@ -172,14 +194,37 @@
   --text-dim: #5d6473;       /* ~5.5:1 */
   --text-faint: #636a78;     /* ~4.8:1 on the lightest --bg-1 paper (clears AA everywhere) */
 
-  --blue: #2563eb;           /* deepened from #60a5fa for AA on light */
+  /* Accents, measured against the chip wash they actually sit on rather than bare
+     paper — same correction already recorded for --ember below. Each accent chip
+     tints its own background with rgba(<the same accent>, .08), and now that the
+     wash follows the theme (see the channels below) that background sits closer to
+     the text than plain paper does. #2563eb / #b45309 / #047857 measured 4.23 /
+     4.12 / 4.48:1 there — under AA for 12px — while clearing 4.5 on the bare panel.
+     These are those three darkened 8% / 7% / 2%, measured in the browser at
+     4.72 / 4.55 / 4.52:1 on the wash. Darkening only raises contrast on light
+     surfaces, so every other use (titles, links, action types) improved too.
+     Blue took the extra steps deliberately: at 5% it measured 4.49 — the model
+     over-predicts by ~0.09, so a value that clears 4.5 only on paper does not
+     clear it on screen. Verify by measurement, not by arithmetic. */
+  --blue: #225bd8;           /* deepened from #60a5fa for AA on light */
   --blue-deep: #bcd0ef;
-  --green: #047857;
-  --purple: #6d28d9;
-  --amber: #b45309;          /* bronze — value accent, AA on light */
-  --live: #047857;
-  --red: #c81e1e;            /* ~4.7:1 on paper (was #dc2626 @ 4.32 — under AA for text) */
+  --green: #047655;
+  --purple: #6d28d9;         /* 5.69:1 on its wash — already clear */
+  --amber: #a74d08;          /* bronze — value accent, AA on light */
+  --live: #047655;
+  --red: #c81e1e;            /* 4.59:1 on its wash (was #dc2626 @ 4.32 — under AA) */
   --red-deep: #f3d2d2;
+
+  /* Channels matching the deepened light hexes above, so washes and borders follow
+     the theme with their text instead of staying dark-theme (see the dark block).
+     Keep each pair in sync — a channel that drifts from its hex is exactly the
+     split-personality bug this block exists to fix. */
+  --live-rgb: 4, 118, 85;
+  --blue-rgb: 34, 91, 216;
+  --red-rgb: 200, 30, 30;
+  --amber-rgb: 167, 77, 8;
+  --purple-rgb: 109, 40, 217;
+  --green-rgb: 4, 118, 85;
 
   --ember: #ea580c;          /* the signature, still molten on paper */
   /* Burnt orange. Measured against the chip backgrounds it actually sits on, not against
@@ -216,9 +261,11 @@
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2c2533, #1c1c26);
   --grain-opacity: 0.012;
   --bloom-warm: rgba(var(--ember-rgb), 0.06);   /* lighter than dark's 0.07 on purpose */
-  --bloom-cool: rgba(37, 99, 235, 0.05);
+  --bloom-cool: rgba(var(--blue-rgb), 0.05);   /* lighter than dark's 0.06 on purpose */
 
-  /* Pinned identical to dark — text on the always-dark screenshot must stay light. */
+  /* Pinned identical to dark — text on the always-dark screenshot must stay light.
+     The --on-shot-live/-amber accents are deliberately NOT re-listed here: they are
+     inherited from :root unchanged, which is the whole point of them. */
   --on-shot: #ecedf1;
   --on-shot-dim: #c4c6cf;
 
@@ -373,20 +420,20 @@ header::after {
   background: currentColor;
   box-shadow: 0 0 0 0 currentColor;
 }
-.status[data-state="live"]        { color: var(--live);  border-color: rgba(110,231,183,0.35); background: rgba(110,231,183,0.08); }
-.status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(96,165,250,0.35);  background: rgba(96,165,250,0.08); }
+.status[data-state="live"]        { color: var(--live);  border-color: rgba(var(--live-rgb),0.35); background: rgba(var(--live-rgb),0.08); }
+.status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(var(--blue-rgb),0.35);  background: rgba(var(--blue-rgb),0.08); }
 /* idle = SSE still connected, but the device/web target has gone quiet (no steps
    or frames for a while). Distinct from disconnected: amber, not red — nothing
    broke, the run just ended or paused. */
-.status[data-state="idle"]        { color: var(--amber); border-color: rgba(251,191,113,0.35); background: rgba(251,191,113,0.08); }
-.status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(252,165,165,0.35);  background: rgba(252,165,165,0.08); }
+.status[data-state="idle"]        { color: var(--amber); border-color: rgba(var(--amber-rgb),0.35); background: rgba(var(--amber-rgb),0.08); }
+.status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(var(--red-rgb),0.35);  background: rgba(var(--red-rgb),0.08); }
 .status[data-state="live"] .dot       { animation: pulse-dot 1.9s ease-out infinite; }
 .status[data-state="connecting"] .dot { animation: blink 1s steps(2, start) infinite; }
 /* idle dot: steady, no animation — signals "not actively streaming". */
 @keyframes pulse-dot {
-  0%   { box-shadow: 0 0 0 0 rgba(110,231,183,0.55); }
-  70%  { box-shadow: 0 0 0 6px rgba(110,231,183,0); }
-  100% { box-shadow: 0 0 0 0 rgba(110,231,183,0); }
+  0%   { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(var(--live-rgb),0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0); }
 }
 @keyframes blink { 50% { opacity: 0.25; } }
 
@@ -460,7 +507,7 @@ header::after {
   transition: transform .12s ease, border-color .15s, box-shadow .15s;
   white-space: nowrap;
 }
-.btn-vscode:hover { border-color: var(--ide-btn-border-hover); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.btn-vscode:hover { border-color: var(--ide-btn-border-hover); box-shadow: 0 0 0 3px rgba(var(--blue-rgb),0.1); }
 .btn-vscode:active { transform: translateY(1px); }
 .btn-vscode svg { width: 14px; height: 14px; }
 .btn-vscode .kbd {
@@ -500,7 +547,7 @@ header::after {
   padding: 6px 10px; border-radius: 5px; cursor: pointer;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.ide-menu li:hover, .ide-menu li[aria-selected="true"] { background: rgba(96,165,250,0.12); }
+.ide-menu li:hover, .ide-menu li[aria-selected="true"] { background: rgba(var(--blue-rgb),0.12); }
 .ide-menu li .tick { color: var(--live); font-size: 11px; visibility: hidden; }
 .ide-menu li[aria-selected="true"] .tick { visibility: visible; }
 
@@ -628,16 +675,16 @@ header::after {
   position: absolute; inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(110,231,183,0.0) inset;
+  box-shadow: 0 0 0 1px rgba(var(--live-rgb),0.0) inset;
   transition: box-shadow .3s;
 }
-.shot-panel.is-fresh .shot-frame::after { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.5) inset; }
+.shot-panel.is-fresh .shot-frame::after { box-shadow: 0 0 0 1.5px rgba(var(--live-rgb),0.5) inset; }
 
 /* subtle moving scanline overlay on the live feed */
 .scanline {
   position: absolute; left: 0; right: 0; height: 64px;
   pointer-events: none; z-index: 2;
-  background: linear-gradient(180deg, transparent, rgba(110,231,183,0.05), transparent);
+  background: linear-gradient(180deg, transparent, rgba(var(--live-rgb),0.05), transparent);
   animation: scan 5.5s linear infinite;
   opacity: 0.6;
 }
@@ -649,18 +696,20 @@ header::after {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono);
   font-size: 10px; letter-spacing: .08em;
-  color: var(--live);
+  /* --on-shot-live, not --live: the chip's own background is a pinned dark ink in
+     both themes, so a themed accent would put light-theme green on near-black. */
+  color: var(--on-shot-live);
   background: rgba(8,16,12,0.72);
-  border: 1px solid rgba(110,231,183,0.3);
+  border: 1px solid rgba(var(--on-shot-live-rgb),0.3);
   backdrop-filter: blur(6px);
   padding: 3px 8px; border-radius: 6px;
 }
-.shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse-dot 1.9s ease-out infinite; }
+.shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--on-shot-live); animation: pulse-dot 1.9s ease-out infinite; }
 /* When the target goes quiet, the frame's "LIVE" badge would lie. Dim it to amber,
    stop the pulse, and relabel to "IDLE" (the visible "LIVE" text is hidden via the
    .lbl span below). Driven by .shot-frame.idle, toggled in markActivity(). */
-.shot-frame.idle .shot-live-tag { color: var(--amber); border-color: rgba(251,191,113,0.3); }
-.shot-frame.idle .shot-live-tag .dot { background: var(--amber); animation: none; }
+.shot-frame.idle .shot-live-tag { color: var(--on-shot-amber); border-color: rgba(var(--on-shot-amber-rgb),0.3); }
+.shot-frame.idle .shot-live-tag .dot { background: var(--on-shot-amber); animation: none; }
 .shot-frame.idle .shot-live-tag .lbl { display: none; }
 .shot-frame.idle .shot-live-tag::after { content: 'IDLE'; }
 
@@ -1030,7 +1079,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 .cl[data-step].hot { background: rgba(var(--ember-rgb),0.05); }
 /* failing step lines get a red rail tint */
 .cl[data-fail="1"].hot::after { background: var(--red); }
-.cl[data-fail="1"].hot { background: rgba(252,165,165,0.05); }
+.cl[data-fail="1"].hot { background: rgba(var(--red-rgb),0.05); }
 
 /* code-panel empty state */
 .code-empty {
@@ -1158,10 +1207,10 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   display: grid; place-items: center;
   font-size: 11px; font-weight: 700;
 }
-.action-item .a-stat.ok   { color: var(--live); background: rgba(110,231,183,0.12); }
-.action-item .a-stat.fail { color: var(--red);  background: rgba(252,165,165,0.14); }
+.action-item .a-stat.ok   { color: var(--live); background: rgba(var(--live-rgb),0.12); }
+.action-item .a-stat.fail { color: var(--red);  background: rgba(var(--red-rgb),0.14); }
 /* failing rows tinted */
-.action-item.is-fail { border-color: rgba(252,165,165,0.3); }
+.action-item.is-fail { border-color: rgba(var(--red-rgb),0.3); }
 .action-item.is-fail .a-type { color: var(--red); }
 
 .history-empty {
@@ -1289,7 +1338,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* selected + current states (parity with history) */
 .film-frame.selected { border-color: var(--ember); box-shadow: 0 0 0 2px var(--ember-glow), 0 8px 20px -8px rgba(0,0,0,0.7); transform: translateY(-3px); }
 .film-frame.selected img { opacity: 1; }
-.film-frame.current { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.55); }
+.film-frame.current { box-shadow: 0 0 0 1.5px rgba(var(--live-rgb),0.55); }
 
 /* playhead pointer to current/selected (decorative seed) */
 .timeline .scrubber-help {
@@ -1596,9 +1645,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   border-radius: 4px;
   transition: background .12s;
 }
-.tree-diff-badge .d-add:hover  { background: rgba(52,211,153,0.12); }
-.tree-diff-badge .d-rem:hover  { background: rgba(252,165,165,0.12); }
-.tree-diff-badge .d-chg:hover  { background: rgba(251,191,36,0.12); }
+.tree-diff-badge .d-add:hover  { background: rgba(var(--green-rgb),0.12); }
+.tree-diff-badge .d-rem:hover  { background: rgba(var(--red-rgb),0.12); }
+.tree-diff-badge .d-chg:hover  { background: rgba(var(--amber-rgb),0.12); }
 
 .tree-drawer-head .dh-spacer { flex: 1; }
 
@@ -1657,7 +1706,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   min-width: 0;
 }
 .tree-search-input::placeholder { color: var(--text-faint); }
-.tree-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(96,165,250,0.15); }
+.tree-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(var(--blue-rgb),0.15); }
 .tree-search-clear {
   flex-shrink: 0;
   width: 20px; height: 20px;
@@ -1684,7 +1733,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line-soft);
-  background: rgba(251,191,36,0.05);
+  background: rgba(var(--amber-rgb),0.05);
 }
 .tree-nobbox-notice span {
   font-family: var(--font-mono);
@@ -1864,7 +1913,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 /* Search highlight */
 .tree-label mark {
-  background: rgba(251,191,36,0.22);
+  background: rgba(var(--amber-rgb),0.22);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -1887,8 +1936,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--purple);
-  background: rgba(165,180,252,0.08);
-  border: 1px solid rgba(165,180,252,0.20);
+  background: rgba(var(--purple-rgb),0.08);
+  border: 1px solid rgba(var(--purple-rgb),0.20);
   padding: 1px 4px;
   border-radius: 3px;
   cursor: pointer;
@@ -1897,8 +1946,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: relative;
 }
 .tree-ref:hover {
-  background: rgba(165,180,252,0.16);
-  border-color: rgba(165,180,252,0.40);
+  background: rgba(var(--purple-rgb),0.16);
+  border-color: rgba(var(--purple-rgb),0.40);
 }
 /* On target row, ref badge gets ember color */
 .tree-node-row.is-target .tree-ref {
@@ -1945,8 +1994,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 .tree-flag.flag-disabled {
   color: var(--amber);
-  background: rgba(251,191,36,0.08);
-  border: 1px solid rgba(251,191,36,0.22);
+  background: rgba(var(--amber-rgb),0.08);
+  border: 1px solid rgba(var(--amber-rgb),0.22);
 }
 .tree-flag.flag-inert {
   color: var(--text-faint);
@@ -1964,7 +2013,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* ---- NODE ANIMATIONS (reconciler states) ---- */
 @keyframes dom-node-in {
-  from { opacity: 0; background: rgba(96,165,250,0.08); }
+  from { opacity: 0; background: rgba(var(--blue-rgb),0.08); }
   to   { opacity: 1; background: transparent; }
 }
 @keyframes dom-field-pulse {
@@ -1990,7 +2039,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: absolute;
   pointer-events: none;
   border: 1.5px solid var(--blue);
-  background: rgba(96,165,250,0.08);
+  background: rgba(var(--blue-rgb),0.08);
   border-radius: 3px;
   z-index: 5;
   opacity: 0;
@@ -2096,7 +2145,11 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   <span class="ide-open" id="ideOpen" data-state="none">
     <button class="btn-vscode btn-ide-go" id="ideGo" type="button"
             title="Open the generated file in your editor" disabled>
-      <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="#3a5a85" stroke="#60a5fa" stroke-width="1" stroke-linejoin="round"/></svg>
+      <!-- Tokens, not hexes: var() does work in SVG presentation attributes, and the
+           hardcoded pair here was the dark theme's (#3a5a85 = --ide-btn-border-hover,
+           #60a5fa = the dark --blue), so on paper the glyph stayed dark blue while the
+           button around it went light. -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="var(--ide-btn-border-hover)" stroke="var(--blue)" stroke-width="1" stroke-linejoin="round"/></svg>
       <span class="ide-label" id="ideLabel">Open in IDE</span><span class="kbd">⌘E</span>
     </button>
     <button class="btn-vscode btn-ide-pick" id="idePick" type="button"
