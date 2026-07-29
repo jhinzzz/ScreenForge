@@ -7,6 +7,11 @@
 ## [未发布]
 
 ### 修复
+- **通过 pip 安装后，`screenforge --playground` 根本起不来。** 它会提示
+  "Playground requires extra dependencies. Fix: `pip install screenforge[playground]`"
+  ——即使你刚刚装的就是它——然后以成功状态退出。真正的原因是 playground 从来没有被
+  打进发布的包里，所以装任何 extra 都不可能修好它，它只能从 git 克隆运行。现在它随包
+  发布，可以按文档所写的方式启动。
 - **窗口较窄时 playground 会横向滚动。** 只要窗口比顶栏本身窄，整个页面就会横向滚动——
   而顶栏在填入 run id 和生成的文件名后会变宽，所以 1366px 的笔记本空闲时正常、跑起来就
   开始横滚。现在顶栏会自动换行，并且只要还有空间，文件名依然完整显示。

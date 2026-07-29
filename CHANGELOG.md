@@ -7,6 +7,12 @@ All notable changes to ScreenForge will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **`screenforge --playground` could never start from a pip install.** It reported
+  "Playground requires extra dependencies. Fix: `pip install screenforge[playground]`"
+  even to people who had just done exactly that, then exited successfully. The
+  playground was missing from the published package entirely, so no amount of
+  installing extras could fix it — it only ever ran from a git clone. It now ships
+  with the package and starts as documented.
 - **The playground scrolled sideways on narrow windows.** Any window narrower than
   the top bar itself scrolled the whole page horizontally — and since the bar grows
   once a run id and generated filename appear, a 1366px laptop was fine while idle and
