@@ -44,6 +44,19 @@ All notable changes to ScreenForge will be documented in this file.
 - **The idle panel's entrance animation ignored `prefers-reduced-motion`.** The
   staggered `:nth-child` rules outranked the reduce override, so the text still
   animated in for readers who asked it not to.
+- **The idle live view looked like a different component on the light theme.** Its
+  accent chips carried the dark theme's ember as inline `rgba()` literals, so on
+  paper a chip was tinted with one orange and labelled in another; the focus arc
+  and metering sweep interpolated through a 40%-alpha glow that is invisible over
+  near-white, leaving the light theme drawing about a tenth of the arc the dark
+  theme drew; and the lens reused a surface token that is *lighter* than the panel
+  in both themes, so on paper it became a white disc at 1.21:1 that swallowed its
+  own focus ring. The ember wash, edge and lens glass are now per-theme tokens —
+  glass sits darker than the panel on paper and lighter in the dark, inverted on
+  purpose so it reads as depth either way — and the strokes interpolate through
+  opaque colours, carrying softness in `opacity` instead of alpha. Verified at a
+  frozen animation phase: both themes trace the same arc, and the light `--ember-soft`
+  now clears AA for text.
 
 ### Changed
 - **The playground's idle live view is now a viewfinder rather than a spinner.**

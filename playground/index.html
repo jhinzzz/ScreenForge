@@ -92,6 +92,16 @@
   --ember: #ff7849;
   --ember-soft: #ffb38a;
   --ember-glow: rgba(255, 120, 73, 0.55);
+  /* Ember washes for accent chips. These were inline rgba(255,120,73,…) literals in
+     a handful of rules, i.e. the DARK ember hardcoded — so on paper (--ember #ea580c)
+     the chips were tinted with a different orange than their own text. */
+  --ember-wash: rgba(255, 120, 73, 0.07);
+  --ember-edge: rgba(255, 120, 73, 0.22);
+  /* Lens glass. Darker than the panel on paper, lighter in the dark — glass reads as
+     depth, and on paper "brighter than the background" made the lens a white disc
+     that swallowed its own focus ring. */
+  --lens-glass: #131318;
+  --lens-rim: #2e2e39;
 
   /* Radii + shadow */
   --r-sm: 6px;
@@ -169,6 +179,14 @@
   --ember: #ea580c;          /* the signature, still molten on paper */
   --ember-soft: #c2410c;     /* burnt orange — text-safe (~5.3:1) */
   --ember-glow: rgba(234, 88, 12, 0.40);
+  /* Same ember the text uses, so a chip's tint and its label are one colour. Slightly
+     stronger than the dark values: a 0.07 wash is nearly invisible on paper. */
+  --ember-wash: rgba(234, 88, 12, 0.09);
+  --ember-edge: rgba(234, 88, 12, 0.28);
+  /* Glass is a dark object on paper (cf. --phone-bezel) — inverted from the dark
+     theme on purpose, so the lens sits *into* the page instead of glowing off it. */
+  --lens-glass: #ddd8ce;
+  --lens-rim: #b8b0a1;
 
   --shadow-img: 0 18px 50px -14px rgba(60, 45, 30, 0.22), 0 4px 14px -6px rgba(60, 45, 30, 0.14);
   --shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.02) inset;
@@ -748,8 +766,11 @@ header::after {
    idle panel and the running panel share one motion vocabulary. */
 .vf-scan {
   position: absolute; left: 7px; right: 7px; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--ember-glow), transparent);
-  opacity: .65;
+  /* --ember, not --ember-glow: a 0.40-alpha stop over paper left the sweep invisible
+     on the light theme while it was clearly visible on the dark one. Opacity below
+     carries the softness instead, so it lands the same in both. */
+  background: linear-gradient(90deg, transparent, var(--ember), transparent);
+  opacity: .5;
   animation: vf-scan 3.4s cubic-bezier(.45,0,.55,1) infinite;
 }
 
@@ -760,18 +781,24 @@ header::after {
      STANDING BY chip. Driving off height makes it shrink with the squeeze;
      overflow:hidden on .vf clips the ring cleanly on the way down. */
   height: 46%; aspect-ratio: 1; border-radius: 50%;
-  background: var(--bg-2); border: 1px solid var(--line);
+  /* Not --bg-2/--line: on paper --bg-2 is *lighter* than the panel, so the lens came
+     out a white disc brighter than its own background and the focus ring vanished
+     into it. --lens-glass inverts per theme (see the token) so glass reads as an
+     object with depth in both. */
+  background: var(--lens-glass); border: 1px solid var(--lens-rim);
   display: grid; place-items: center;
 }
 /* The focus ring. A true circle, so the radial mask lines up exactly — this is the
    technique the old square glyph got wrong. */
 .vf .lens::before {
   content: ""; position: absolute; inset: -1px; border-radius: 50%;
-  /* Weighted toward solid --ember with the translucent glow only as the trailing
-     tail: a glow-dominated sweep washed out completely on the light theme, where
-     --ember-glow is 0.40 alpha over near-white paper. */
+  /* The tail interpolates through --ember-soft (opaque) rather than --ember-glow:
+     a translucent stop is invisible on paper at 0.40 alpha, so the light theme drew
+     only the last ~10% of the sweep while the dark theme drew a full arc — the two
+     read as different components. Both now trace the same ~50% arc, fading via a
+     colour that exists in both palettes. */
   background: conic-gradient(from 0deg, transparent 0 46%,
-              var(--ember-glow) 68%, var(--ember) 88%, var(--ember) 96%, transparent 98%);
+              var(--ember-soft) 70%, var(--ember) 90%, var(--ember) 96%, transparent 98%);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
           mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
   animation: spin 2.4s linear infinite;
@@ -780,7 +807,7 @@ header::after {
 .vf .lens::after {
   content: ""; width: 7px; height: 7px; border-radius: 50%;
   background: var(--ember);
-  box-shadow: 0 0 0 4px rgba(255,120,73,.10), 0 0 14px var(--ember-glow);
+  box-shadow: 0 0 0 4px var(--ember-wash), 0 0 14px var(--ember-glow);
   animation: aperture 2.4s ease-in-out infinite;
 }
 
@@ -794,8 +821,8 @@ header::after {
 .vf-tag {
   font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .2em;
   color: var(--ember-soft);
-  border: 1px solid rgba(255,120,73,.22);
-  background: rgba(255,120,73,.06);
+  border: 1px solid var(--ember-edge);
+  background: var(--ember-wash);
   padding: 3px 9px; border-radius: 5px;
 }
 .shot-placeholder .copy {
@@ -839,8 +866,8 @@ header::after {
 .shot-placeholder p.sub { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); }
 .shot-placeholder code {
   font-family: var(--font-mono); font-size: 11.5px;
-  color: var(--ember-soft); background: rgba(255,120,73,0.07);
-  border: 1px solid rgba(255,120,73,0.18);
+  color: var(--ember-soft); background: var(--ember-wash);
+  border: 1px solid var(--ember-edge);
   padding: 1px 6px; border-radius: 5px;
   /* A flag is one token: without this the wrap landed inside the chip in the
      stacked layout, rendering a boxed "--" above a boxed "playground". */
