@@ -265,18 +265,31 @@ body::after {
 /* ============================================================
    TOP BAR
    ============================================================ */
+/* Wraps by intrinsic width, not at a magic breakpoint. The bar's natural width is
+   content-dependent — ~1019px idle, ~1330px once a run id, a generated filename and
+   a detected editor land in it — so any fixed breakpoint that fits one state
+   overflows the other. min-height (not height) is required: a fixed height would
+   clip the second row. */
 header {
   flex: 0 0 auto;
-  height: 52px;
+  min-height: 52px;
   padding: 0 16px;
   background: linear-gradient(180deg, var(--bg-header), var(--header-grad-end));
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   position: relative;
   z-index: 5;
 }
+/* Gap tightening buys back ~40px of bar width. Measured, that is what keeps the
+   populated bar on ONE row at 1400px; without it, it wraps there. It does NOT buy
+   1366px in every state — the status chip's width tracks its label (Live 61px,
+   Disconnected 122px), so at 1366 the long labels still wrap. That is fine: wrapping
+   is the designed behaviour and overflow stays 0 either way. */
+@media (max-width: 1440px) { header { gap: 10px; } }
+@media (max-width: 1200px) { header { gap: 8px; padding: 0 12px; } }
 /* Hot filament line under the header — subtle ember signature. */
 header::after {
   content: "";
@@ -319,7 +332,7 @@ header::after {
   margin-left: 2px;
 }
 
-.bar-spacer { flex: 1; }
+.bar-spacer { flex: 1 1 0; min-width: 0; }
 .bar-divider { width: 1px; height: 22px; background: var(--line); }
 
 /* Theme toggle — a small icon button. Sun shows in dark mode (→ switch to light),
@@ -419,9 +432,18 @@ header::after {
   padding: 4px 10px;
   border-radius: 7px;
   white-space: nowrap;
+  min-width: 0;              /* allow the value below to actually shrink */
 }
 .meta-chip .k { color: var(--text-faint); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.meta-chip .v { color: var(--text); }
+/* Ellipsis under pressure only — no fixed cap, so a run id or generated filename
+   is shown in full whenever the bar has room for it. */
+.meta-chip .v {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .meta-chip.file .v { color: var(--green); }
 
 /* "Open in VSCode" button (visual only in prototype) */
@@ -1295,7 +1317,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   }
 }
 @media (max-width: 720px) {
-  header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 8px; }
+  header { padding: 8px 12px; }   /* wrap/min-height now live on the base rule */
   .bar-divider { display: none; }
   .timeline { height: 84px; }
   .timeline .scrubber-help { display: none; }
