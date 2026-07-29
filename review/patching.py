@@ -18,13 +18,17 @@ from playground.dom_capture import build_web_tree
 from review.recorder import StepRecord, get_recorder, locate_test_frame
 
 
-def _build_web_table() -> list:
+def _build_web_table() -> list[tuple[type, str]]:
     from playwright.sync_api import Locator, Page
     locator_actions = [
         "click", "dblclick", "fill", "type", "press", "check", "uncheck",
         "select_option", "hover", "set_input_files", "tap", "drag_to",
     ]
-    table = [(Locator, name) for name in locator_actions if hasattr(Locator, name)]
+    # 表里混着两个类（Locator 元素操作 + Page.goto），故显式标注 type 而非让
+    # mypy 从首个推导出 type[Locator]，否则 append((Page, ...)) 会被判类型不符。
+    table: list[tuple[type, str]] = [
+        (Locator, name) for name in locator_actions if hasattr(Locator, name)
+    ]
     if hasattr(Page, "goto"):
         table.append((Page, "goto"))
     return table

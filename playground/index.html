@@ -22,26 +22,30 @@
 </script>
 
 <!--
-  ScreenForge Playground · Live Mirror (high-fidelity prototype)
-  ──────────────────────────────────────────────────────────────
-  Single file. Zero build. Double-click to open in a browser.
+  ScreenForge Playground · Live Mirror
+  ───────────────────────────────────
+  Single file. Zero build. Served as-is by playground/app.py (GET /).
 
   WHAT THIS IS
-  - A design blueprint for playground/index.html (the live test-mirror).
-  - Three regions: live screenshot (left) · live pytest code (right-top) · action history (right-bottom).
-  - A bottom filmstrip is the visual SEED for future "time travel" (Trace-Viewer style scrubbing).
+  - The live test mirror: what ScreenForge is doing to a device/browser, right now.
+  - Four regions: live screenshot (left) · generated pytest code (right-top) ·
+    action history (right-bottom) · Brain's Eye View DOM tree (right drawer, toggle
+    with B). The bottom filmstrip selects a step — click or Enter/Space on a frame.
 
-  DATA SHAPE (matches the target SSE contract — see backend notes at bottom of this file)
+  SSE CONTRACT (from playground/app.py's push_event; see the backend notes at the
+  bottom of this file)
     step event:        { type:"step", ts, run_id, step_index, code_lines:[...],
                          action_description, action, locator_type, locator_value,
                          extra_value, success, screenshot_b64? }
     screenshot event:  { type:"screenshot", ts, size }   // client then GETs /api/screenshot
 
-  HOW THE PROTOTYPE FAKES IT
-  - A scripted 6-step login story is replayed on a timer (PrototypeFeed) that emits events
-    of the EXACT shape above into the same handlers the production EventSource path uses.
-  - Flip USE_LIVE_BACKEND = true to swap the fake feed for a real EventSource('/api/events').
-    The live wiring is written out in full (connectLiveBackend) so this file can ship as-is.
+  LIVE vs OFFLINE
+  - USE_LIVE_BACKEND is `true`: connectLiveBackend() opens a real
+    EventSource('/api/events'), and the run is seeded from the REST endpoints.
+  - Setting it to `false` swaps in startPrototypeFeed() — a scripted 6-step login
+    story on a timer, emitting events of the exact shape above into the same
+    handlers. That path is retained deliberately: it lets this file be opened
+    straight from disk, with no server, to work on the UI.
 -->
 
 <!-- Prism.js (Python syntax highlight) — REQUIRED dependency, CDN only -->
@@ -87,11 +91,40 @@
   --red: #fca5a5;            /* disconnected / fail */
   --red-deep: #3a1e1e;
 
+  /* Channels for the accents above — same reason as --ember-rgb below. Every wash,
+     border and glow that needs an accent at its OWN alpha writes
+     rgba(var(--x-rgb), .12) instead of restating the triple. They all used to spell
+     the DARK channels out longhand in global rules, so on paper a chip's text
+     followed the theme while its own border and background stayed dark-theme —
+     e.g. the live chip was #047857 text inside a rgb(110,231,183) border.
+     Keep these in sync with the hexes above. */
+  --live-rgb: 110, 231, 183;
+  --blue-rgb: 96, 165, 250;
+  --red-rgb: 252, 165, 165;
+  --amber-rgb: 251, 191, 36;
+  --purple-rgb: 165, 180, 252;
+  --green-rgb: 52, 211, 153;
+
   /* Ember — the "Forge" signature accent (molten metal). Used sparingly: the live rail,
      the active step, the run pulse. This is the one thing you remember. */
   --ember: #ff7849;
   --ember-soft: #ffb38a;
-  --ember-glow: rgba(255, 120, 73, 0.55);
+  /* The ember channels, so the ~25 rules that need ember at their OWN tuned alpha can
+     write rgba(var(--ember-rgb), .12) instead of restating the triple. Every one of them
+     used to spell the dark ember out longhand, which on paper tinted things with an
+     orange the light --ember isn't. The alphas stay per-rule on purpose (a 0.05 row wash
+     and a 0.45 border are different jobs); it is only the hue that had to stop being
+     copied — flip --ember-rgb in a theme and every wash, border and glow follows. */
+  --ember-rgb: 255, 120, 73;
+  --ember-glow: rgba(var(--ember-rgb), 0.55);
+  /* Ember washes for accent chips. */
+  --ember-wash: rgba(var(--ember-rgb), 0.07);
+  --ember-edge: rgba(var(--ember-rgb), 0.22);
+  /* Lens glass. Darker than the panel on paper, lighter in the dark — glass reads as
+     depth, and on paper "brighter than the background" made the lens a white disc
+     that swallowed its own focus ring. */
+  --lens-glass: #131318;
+  --lens-rim: #2e2e39;
 
   /* Radii + shadow */
   --r-sm: 6px;
@@ -122,14 +155,22 @@
   --timeline-grad-start: #121218;
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2a2030, #16161e);
   --grain-opacity: 0.025;
-  --bloom-warm: rgba(255, 120, 73, 0.07);   /* ember atmosphere bloom (top-left) */
-  --bloom-cool: rgba(96, 165, 250, 0.06);   /* cool atmosphere bloom (right) */
+  --bloom-warm: rgba(var(--ember-rgb), 0.07);   /* ember atmosphere bloom (top-left) */
+  --bloom-cool: rgba(var(--blue-rgb), 0.06);   /* cool atmosphere bloom (right) */
 
   /* Text that sits ON the screenshot imagery (step caption, filmstrip badge/label).
      The imagery is ALWAYS dark (it's the app-under-test, not playground chrome), so
      this must NOT flip with the theme — pinned to a light ink in BOTH themes. */
   --on-shot: #ecedf1;
   --on-shot-dim: #c4c6cf;
+  /* Same rule for the accents that land on that imagery — the frame's LIVE/IDLE
+     badge sits on a pinned dark ink (rgba(8,16,12,.72)), so its label must stay the
+     BRIGHT accent in both themes. Using the themed --live/--amber there put the
+     deepened light hexes on near-black: 1.63:1 and 1.78:1, far under AA. */
+  --on-shot-live: #6ee7b7;
+  --on-shot-live-rgb: 110, 231, 183;
+  --on-shot-amber: #fbbf24;
+  --on-shot-amber-rgb: 251, 191, 36;
 
   color-scheme: dark;
 }
@@ -141,7 +182,15 @@
    Toggled via <html data-theme="light">; persisted + pre-paint guarded (no FOUC).
    ============================================================ */
 [data-theme="light"] {
-  --bg-0: #e7e3dc;           /* deepest paper (app void) */
+  /* Used in exactly one place — .shot-panel .panel-body — which makes it the surface
+     the idle live view actually shows, and the surface the viewfinder's crop marks
+     sit on. It was #e7e3dc: a 1.206 step down from the panel where dark's equivalent
+     (#131318 -> #0b0b0d) is 1.062, so on paper the idle panel read as a grey box
+     that had failed to load beside the near-white code panel, while on dark the same
+     pair is 5 levels apart and reads as one surface. It also held the .vf-c crop
+     marks to 2.78:1, under the 3:1 WCAG floor for non-text graphics. #f4f1eb fixes
+     both at once: a 1.063 step, matching dark, and 3.16:1 for the marks. */
+  --bg-0: #f4f1eb;           /* deepest paper (app void) */
   --bg-1: #f4f2ed;           /* primary paper */
   --bg-2: #faf8f4;           /* panels */
   --bg-3: #ffffff;           /* raised cards / rows */
@@ -157,18 +206,59 @@
   --text-dim: #5d6473;       /* ~5.5:1 */
   --text-faint: #636a78;     /* ~4.8:1 on the lightest --bg-1 paper (clears AA everywhere) */
 
-  --blue: #2563eb;           /* deepened from #60a5fa for AA on light */
+  /* Accents, measured against the chip wash they actually sit on rather than bare
+     paper — same correction already recorded for --ember below. Each accent chip
+     tints its own background with rgba(<the same accent>, .08), and now that the
+     wash follows the theme (see the channels below) that background sits closer to
+     the text than plain paper does. #2563eb / #b45309 / #047857 measured 4.23 /
+     4.12 / 4.48:1 there — under AA for 12px — while clearing 4.5 on the bare panel.
+     These are those three darkened 8% / 7% / 2%, measured in the browser at
+     4.72 / 4.55 / 4.52:1 on the wash. Darkening only raises contrast on light
+     surfaces, so every other use (titles, links, action types) improved too.
+     Blue took the extra steps deliberately: at 5% it measured 4.49 — the model
+     over-predicts by ~0.09, so a value that clears 4.5 only on paper does not
+     clear it on screen. Verify by measurement, not by arithmetic. */
+  --blue: #225bd8;           /* deepened from #60a5fa for AA on light */
   --blue-deep: #bcd0ef;
-  --green: #047857;
-  --purple: #6d28d9;
-  --amber: #b45309;          /* bronze — value accent, AA on light */
-  --live: #047857;
-  --red: #c81e1e;            /* ~4.7:1 on paper (was #dc2626 @ 4.32 — under AA for text) */
+  --green: #047655;
+  --purple: #6d28d9;         /* 5.69:1 on its wash — already clear */
+  --amber: #a74d08;          /* bronze — value accent, AA on light */
+  --live: #047655;
+  --red: #c81e1e;            /* 4.59:1 on its wash (was #dc2626 @ 4.32 — under AA) */
   --red-deep: #f3d2d2;
 
+  /* Channels matching the deepened light hexes above, so washes and borders follow
+     the theme with their text instead of staying dark-theme (see the dark block).
+     Keep each pair in sync — a channel that drifts from its hex is exactly the
+     split-personality bug this block exists to fix. */
+  --live-rgb: 4, 118, 85;
+  --blue-rgb: 34, 91, 216;
+  --red-rgb: 200, 30, 30;
+  --amber-rgb: 167, 77, 8;
+  --purple-rgb: 109, 40, 217;
+  --green-rgb: 4, 118, 85;
+
   --ember: #ea580c;          /* the signature, still molten on paper */
-  --ember-soft: #c2410c;     /* burnt orange — text-safe (~5.3:1) */
-  --ember-glow: rgba(234, 88, 12, 0.40);
+  /* Burnt orange. Measured against the chip backgrounds it actually sits on, not against
+     the bare panel: every ember chip tints its own background with --ember-wash, and over
+     that #c2410c fell to 3.66:1 on the frame backing — under AA for 9.5px text, even
+     though it clears 5.3:1 on plain paper. This is 5.17:1 at the worst of them. */
+  --ember-soft: #9a3412;
+  --ember-rgb: 234, 88, 12;
+  --ember-glow: rgba(var(--ember-rgb), 0.40);
+  /* Same ember the text uses, so a chip's tint and its label are one colour. Slightly
+     stronger than the dark values: a 0.07 wash is nearly invisible on paper. */
+  --ember-wash: rgba(var(--ember-rgb), 0.09);
+  --ember-edge: rgba(var(--ember-rgb), 0.28);
+  /* Glass is a dark object on paper (cf. --phone-bezel) — inverted from the dark
+     theme on purpose, so the lens sits *into* the page instead of glowing off it.
+     The DIRECTION is inverted; the MAGNITUDE should not be. Dark's glass sits 1.062
+     off its surface, and these were 1.260 off — 1.2x deeper — so once --bg-0 above
+     was corrected the lens stopped reading as glass and became a flat grey disc.
+     Rescaled to a 1.084 step, with the rim keeping its 1.38 ratio against the glass
+     so the object still has an edge. */
+  --lens-glass: #ece8e0;
+  --lens-rim: #d2ccbd;
 
   --shadow-img: 0 18px 50px -14px rgba(60, 45, 30, 0.22), 0 4px 14px -6px rgba(60, 45, 30, 0.14);
   --shadow-panel: 0 1px 0 rgba(0, 0, 0, 0.02) inset;
@@ -187,10 +277,12 @@
   --timeline-grad-start: #eeebe5;
   --brand-mark-bg: radial-gradient(120% 120% at 30% 20%, #2c2533, #1c1c26);
   --grain-opacity: 0.012;
-  --bloom-warm: rgba(234, 88, 12, 0.06);
-  --bloom-cool: rgba(37, 99, 235, 0.05);
+  --bloom-warm: rgba(var(--ember-rgb), 0.06);   /* lighter than dark's 0.07 on purpose */
+  --bloom-cool: rgba(var(--blue-rgb), 0.05);   /* lighter than dark's 0.06 on purpose */
 
-  /* Pinned identical to dark — text on the always-dark screenshot must stay light. */
+  /* Pinned identical to dark — text on the always-dark screenshot must stay light.
+     The --on-shot-live/-amber accents are deliberately NOT re-listed here: they are
+     inherited from :root unchanged, which is the whole point of them. */
   --on-shot: #ecedf1;
   --on-shot-dim: #c4c6cf;
 
@@ -237,18 +329,31 @@ body::after {
 /* ============================================================
    TOP BAR
    ============================================================ */
+/* Wraps by intrinsic width, not at a magic breakpoint. The bar's natural width is
+   content-dependent — ~1019px idle, ~1330px once a run id, a generated filename and
+   a detected editor land in it — so any fixed breakpoint that fits one state
+   overflows the other. min-height (not height) is required: a fixed height would
+   clip the second row. */
 header {
   flex: 0 0 auto;
-  height: 52px;
+  min-height: 52px;
   padding: 0 16px;
   background: linear-gradient(180deg, var(--bg-header), var(--header-grad-end));
   border-bottom: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 14px;
   position: relative;
   z-index: 5;
 }
+/* Gap tightening buys back ~40px of bar width. Measured, that is what keeps the
+   populated bar on ONE row at 1400px; without it, it wraps there. It does NOT buy
+   1366px in every state — the status chip's width tracks its label (Live 61px,
+   Disconnected 122px), so at 1366 the long labels still wrap. That is fine: wrapping
+   is the designed behaviour and overflow stays 0 either way. */
+@media (max-width: 1440px) { header { gap: 10px; } }
+@media (max-width: 1200px) { header { gap: 8px; padding: 0 12px; } }
 /* Hot filament line under the header — subtle ember signature. */
 header::after {
   content: "";
@@ -266,7 +371,7 @@ header::after {
   display: grid; place-items: center;
   background: var(--brand-mark-bg);
   border: 1px solid var(--line-strong);
-  box-shadow: 0 0 0 1px rgba(255,120,73,0.12), 0 0 14px -4px var(--ember-glow);
+  box-shadow: 0 0 0 1px rgba(var(--ember-rgb),0.12), 0 0 14px -4px var(--ember-glow);
   position: relative;
   overflow: hidden;
 }
@@ -284,14 +389,14 @@ header::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ember-soft);
-  border: 1px solid rgba(255,120,73,0.28);
-  background: rgba(255,120,73,0.06);
+  border: 1px solid rgba(var(--ember-rgb),0.28);
+  background: rgba(var(--ember-rgb),0.06);
   padding: 2px 6px;
   border-radius: 5px;
   margin-left: 2px;
 }
 
-.bar-spacer { flex: 1; }
+.bar-spacer { flex: 1 1 0; min-width: 0; }
 .bar-divider { width: 1px; height: 22px; background: var(--line); }
 
 /* Theme toggle — a small icon button. Sun shows in dark mode (→ switch to light),
@@ -332,20 +437,20 @@ header::after {
   background: currentColor;
   box-shadow: 0 0 0 0 currentColor;
 }
-.status[data-state="live"]        { color: var(--live);  border-color: rgba(110,231,183,0.35); background: rgba(110,231,183,0.08); }
-.status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(96,165,250,0.35);  background: rgba(96,165,250,0.08); }
+.status[data-state="live"]        { color: var(--live);  border-color: rgba(var(--live-rgb),0.35); background: rgba(var(--live-rgb),0.08); }
+.status[data-state="connecting"]  { color: var(--blue);  border-color: rgba(var(--blue-rgb),0.35);  background: rgba(var(--blue-rgb),0.08); }
 /* idle = SSE still connected, but the device/web target has gone quiet (no steps
    or frames for a while). Distinct from disconnected: amber, not red — nothing
    broke, the run just ended or paused. */
-.status[data-state="idle"]        { color: var(--amber); border-color: rgba(251,191,113,0.35); background: rgba(251,191,113,0.08); }
-.status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(252,165,165,0.35);  background: rgba(252,165,165,0.08); }
+.status[data-state="idle"]        { color: var(--amber); border-color: rgba(var(--amber-rgb),0.35); background: rgba(var(--amber-rgb),0.08); }
+.status[data-state="disconnected"]{ color: var(--red);   border-color: rgba(var(--red-rgb),0.35);  background: rgba(var(--red-rgb),0.08); }
 .status[data-state="live"] .dot       { animation: pulse-dot 1.9s ease-out infinite; }
 .status[data-state="connecting"] .dot { animation: blink 1s steps(2, start) infinite; }
 /* idle dot: steady, no animation — signals "not actively streaming". */
 @keyframes pulse-dot {
-  0%   { box-shadow: 0 0 0 0 rgba(110,231,183,0.55); }
-  70%  { box-shadow: 0 0 0 6px rgba(110,231,183,0); }
-  100% { box-shadow: 0 0 0 0 rgba(110,231,183,0); }
+  0%   { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0.55); }
+  70%  { box-shadow: 0 0 0 6px rgba(var(--live-rgb),0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--live-rgb),0); }
 }
 @keyframes blink { 50% { opacity: 0.25; } }
 
@@ -391,9 +496,18 @@ header::after {
   padding: 4px 10px;
   border-radius: 7px;
   white-space: nowrap;
+  min-width: 0;              /* allow the value below to actually shrink */
 }
 .meta-chip .k { color: var(--text-faint); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.meta-chip .v { color: var(--text); }
+/* Ellipsis under pressure only — no fixed cap, so a run id or generated filename
+   is shown in full whenever the bar has room for it. */
+.meta-chip .v {
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .meta-chip.file .v { color: var(--green); }
 
 /* "Open in VSCode" button (visual only in prototype) */
@@ -410,7 +524,7 @@ header::after {
   transition: transform .12s ease, border-color .15s, box-shadow .15s;
   white-space: nowrap;
 }
-.btn-vscode:hover { border-color: var(--ide-btn-border-hover); box-shadow: 0 0 0 3px rgba(96,165,250,0.1); }
+.btn-vscode:hover { border-color: var(--ide-btn-border-hover); box-shadow: 0 0 0 3px rgba(var(--blue-rgb),0.1); }
 .btn-vscode:active { transform: translateY(1px); }
 .btn-vscode svg { width: 14px; height: 14px; }
 .btn-vscode .kbd {
@@ -450,7 +564,7 @@ header::after {
   padding: 6px 10px; border-radius: 5px; cursor: pointer;
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.ide-menu li:hover, .ide-menu li[aria-selected="true"] { background: rgba(96,165,250,0.12); }
+.ide-menu li:hover, .ide-menu li[aria-selected="true"] { background: rgba(var(--blue-rgb),0.12); }
 .ide-menu li .tick { color: var(--live); font-size: 11px; visibility: hidden; }
 .ide-menu li[aria-selected="true"] .tick { visibility: visible; }
 
@@ -529,6 +643,11 @@ header::after {
     radial-gradient(80% 80% at 50% 40%, rgba(255,255,255,0.018), transparent 70%),
     var(--bg-0);
   position: relative;
+  /* Lets .shot-placeholder ask how tall its own panel is (see the .vf height
+     query) — the ≤1080px stacked layout gives this body ~280px, less than the
+     placeholder wants, and viewport media queries can't see that. */
+  container-type: size;
+  container-name: shot-body;
 }
 /* viewport frame that adapts to web (landscape) vs phone (portrait) */
 .shot-frame {
@@ -573,16 +692,16 @@ header::after {
   position: absolute; inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(110,231,183,0.0) inset;
+  box-shadow: 0 0 0 1px rgba(var(--live-rgb),0.0) inset;
   transition: box-shadow .3s;
 }
-.shot-panel.is-fresh .shot-frame::after { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.5) inset; }
+.shot-panel.is-fresh .shot-frame::after { box-shadow: 0 0 0 1.5px rgba(var(--live-rgb),0.5) inset; }
 
 /* subtle moving scanline overlay on the live feed */
 .scanline {
   position: absolute; left: 0; right: 0; height: 64px;
   pointer-events: none; z-index: 2;
-  background: linear-gradient(180deg, transparent, rgba(110,231,183,0.05), transparent);
+  background: linear-gradient(180deg, transparent, rgba(var(--live-rgb),0.05), transparent);
   animation: scan 5.5s linear infinite;
   opacity: 0.6;
 }
@@ -594,18 +713,20 @@ header::after {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-mono);
   font-size: 10px; letter-spacing: .08em;
-  color: var(--live);
+  /* --on-shot-live, not --live: the chip's own background is a pinned dark ink in
+     both themes, so a themed accent would put light-theme green on near-black. */
+  color: var(--on-shot-live);
   background: rgba(8,16,12,0.72);
-  border: 1px solid rgba(110,231,183,0.3);
+  border: 1px solid rgba(var(--on-shot-live-rgb),0.3);
   backdrop-filter: blur(6px);
   padding: 3px 8px; border-radius: 6px;
 }
-.shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse-dot 1.9s ease-out infinite; }
+.shot-live-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--on-shot-live); animation: pulse-dot 1.9s ease-out infinite; }
 /* When the target goes quiet, the frame's "LIVE" badge would lie. Dim it to amber,
    stop the pulse, and relabel to "IDLE" (the visible "LIVE" text is hidden via the
    .lbl span below). Driven by .shot-frame.idle, toggled in markActivity(). */
-.shot-frame.idle .shot-live-tag { color: var(--amber); border-color: rgba(251,191,113,0.3); }
-.shot-frame.idle .shot-live-tag .dot { background: var(--amber); animation: none; }
+.shot-frame.idle .shot-live-tag { color: var(--on-shot-amber); border-color: rgba(var(--on-shot-amber-rgb),0.3); }
+.shot-frame.idle .shot-live-tag .dot { background: var(--on-shot-amber); animation: none; }
 .shot-frame.idle .shot-live-tag .lbl { display: none; }
 .shot-frame.idle .shot-live-tag::after { content: 'IDLE'; }
 
@@ -685,39 +806,182 @@ header::after {
 }
 .shot-step-tag b { color: var(--ember-soft); font-weight: 500; }
 
-/* placeholder (waiting for first frame) */
+/* Placeholder (waiting for first frame) — a viewfinder, not a spinner. This panel
+   is a camera pointed at the app under test, so its idle state should read "framed,
+   waiting for the shutter" in the same reticle/film language as the rest of the UI.
+   Replaces a rotating conic-gradient ring that was masked with
+   radial-gradient(farthest-side, …) — a CIRCULAR mask on a 16px-rounded SQUARE, so
+   the four corners fell outside the mask and the "glow" smeared there instead of
+   tracing an edge. That mask trick is only sound on a true circle; the lens ring
+   below is one, which is why it can keep using it. */
 .shot-placeholder {
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 20px;
   text-align: center; color: var(--text-faint);
   max-width: 360px;
+  /* The panel body is a flex centre with no scroll, and align-items:center makes
+     children shrink-to-fit — so nothing ever pressured this block and at ~240px of
+     body height it overflowed, clipping the top crop marks and the bottom hint.
+     max-height binds it to the body; the viewfinder below then yields its space
+     first, since it's atmosphere and the --playground hint is what a stuck user
+     actually needs. */
+  max-height: 100%;
+  min-height: 0;
+  /* Deliberately NOT a scroll container. `overflow-y: auto` here looks like cheap
+     insurance and costs two visible defects: a scrollbar the moment the ph-rise
+     entrance is mid-flight (translateY(6px) = 6px of transient overflow), and a
+     clipped viewfinder forever after, because a scroll container crops overflow
+     and vf-breathe's scale(1.035) puts the 1.5px top crop-mark strokes 1.5px
+     outside the box — they vanished entirely, leaving two bare verticals. What it
+     bought was the hint staying reachable below ~205px of body height, i.e. a
+     ~410px browser window where every other panel is equally cramped. */
 }
-.shot-placeholder .glyph {
-  width: 64px; height: 64px; border-radius: 16px;
-  display: grid; place-items: center;
-  background: var(--bg-2);
-  border: 1px solid var(--line);
+
+/* ---- the viewfinder ---- */
+.vf {
   position: relative;
+  width: 112px;
+  display: grid; place-items: center;
+  /* Collapses first when the panel is short (see .shot-placeholder overflow note).
+     A fixed `height` would make flex-shrink a no-op, so the box is sized by
+     max-height + aspect-ratio and allowed to fall to zero. */
+  flex: 0 1 112px; min-height: 0; max-height: 112px; aspect-ratio: 1;
+  overflow: hidden;
+  animation: vf-in .8s cubic-bezier(.2,.85,.25,1) both,
+             vf-breathe 4.4s ease-in-out .8s infinite;
 }
-.shot-placeholder .glyph::before {
-  content: ""; position: absolute; inset: -1px; border-radius: 16px;
-  background: conic-gradient(from 0deg, transparent, var(--ember-glow), transparent 60%);
-  animation: spin 2.6s linear infinite;
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
-          mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 0);
+/* Four crop marks. Two borders each, so the frame is *implied* rather than drawn —
+   an L in each corner is the whole grammar of a viewfinder. */
+.vf-c {
+  position: absolute; width: 19px; height: 19px;
+  /* No opacity. These are non-text graphics, so WCAG's floor is 3:1, and opacity
+     dilutes toward whatever is behind — harmless on dark (toward black), but on paper
+     it pushed the marks toward white. Removing it was not sufficient on its own
+     (2.74 -> 2.78:1); the surface under them, --bg-0, was the larger half of the
+     problem and is corrected there. Both together: 3.16:1 on light, 7.52:1 on dark.
+     Softness here, if ever wanted, has to come from the border colour — not opacity,
+     which trades contrast away asymmetrically between the two themes. */
+  border: 1.5px solid var(--ember);
 }
+.vf-c.tl { top: 0; left: 0;     border-right: 0; border-bottom: 0; border-radius: 4px 0 0 0; }
+.vf-c.tr { top: 0; right: 0;    border-left: 0;  border-bottom: 0; border-radius: 0 4px 0 0; }
+.vf-c.bl { bottom: 0; left: 0;  border-right: 0; border-top: 0;    border-radius: 0 0 0 4px; }
+.vf-c.br { bottom: 0; right: 0; border-left: 0;  border-top: 0;    border-radius: 0 0 4px 0; }
+
+/* A metering sweep crossing the frame — echoes .scanline on the live feed, so the
+   idle panel and the running panel share one motion vocabulary. */
+.vf-scan {
+  position: absolute; left: 7px; right: 7px; height: 1px;
+  /* --ember, not --ember-glow: a 0.40-alpha stop over paper left the sweep invisible
+     on the light theme while it was clearly visible on the dark one. Opacity below
+     carries the softness instead, so it lands the same in both. */
+  background: linear-gradient(90deg, transparent, var(--ember), transparent);
+  opacity: .5;
+  animation: vf-scan 3.4s cubic-bezier(.45,0,.55,1) infinite;
+}
+
+.vf .lens {
+  position: relative;
+  /* Sized off HEIGHT, not width: .vf keeps its 112px width and only loses height,
+     so a percentage width stayed 52px and the lens kept colliding with the
+     STANDING BY chip. Driving off height makes it shrink with the squeeze;
+     overflow:hidden on .vf clips the ring cleanly on the way down. */
+  height: 46%; aspect-ratio: 1; border-radius: 50%;
+  /* Not --bg-2/--line: on paper --bg-2 is *lighter* than the panel, so the lens came
+     out a white disc brighter than its own background and the focus ring vanished
+     into it. --lens-glass inverts per theme (see the token) so glass reads as an
+     object with depth in both. */
+  background: var(--lens-glass); border: 1px solid var(--lens-rim);
+  display: grid; place-items: center;
+}
+/* The focus ring. A true circle, so the radial mask lines up exactly — this is the
+   technique the old square glyph got wrong. */
+.vf .lens::before {
+  content: ""; position: absolute; inset: -1px; border-radius: 50%;
+  /* ONE hue, ramped by alpha — not interpolated through --ember-soft. Soft is
+     *lighter* than ember on dark (#ffb38a) and *darker* on light (#9a3412), so a
+     tail routed through it fades toward the background on dark and away from it on
+     light: measured, the light tail landed at rgb(159,71,39) on rgb(221,216,206)
+     glass, i.e. the most-contrasting part of the arc was its END. It read as a
+     scratch on the ring rather than a trailing glow. Ramping alpha on the same
+     channel means "fades toward whatever is behind it" in both themes by
+     construction. The alphas are high because the earlier --ember-glow attempt
+     failed at 0.40 on paper — 0.30 is the floor that still registers there. */
+  background: conic-gradient(from 0deg, transparent 0 46%,
+              rgba(var(--ember-rgb), 0.30) 62%, rgba(var(--ember-rgb), 0.62) 80%,
+              var(--ember) 92%, var(--ember) 96%, transparent 98%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+          mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 0);
+  animation: spin 2.4s linear infinite;
+}
+/* The aperture, stopping down and opening back up. */
+.vf .lens::after {
+  content: ""; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 0 4px var(--ember-wash), 0 0 14px var(--ember-glow);
+  animation: aperture 2.4s ease-in-out infinite;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
-.shot-placeholder .glyph svg { width: 26px; height: 26px; color: var(--text-dim); }
+@keyframes vf-in { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: scale(1); } }
+@keyframes vf-breathe { 50% { transform: scale(1.035); } }
+@keyframes vf-scan { 0%, 100% { top: 7px; } 50% { top: calc(100% - 8px); } }
+@keyframes aperture { 0%, 100% { transform: scale(1); opacity: .9; } 50% { transform: scale(.6); opacity: 1; } }
+
+/* Instrument readout, same mono voice as the masthead's LIVE MIRROR chip. */
+.vf-tag {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .2em;
+  color: var(--ember-soft);
+  border: 1px solid var(--ember-edge);
+  background: var(--ember-wash);
+  padding: 3px 9px; border-radius: 5px;
+}
 .shot-placeholder .copy {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+/* One orchestrated entrance, top to bottom, instead of scattered micro-motion. */
+.vf-tag        { animation: ph-rise .6s cubic-bezier(.2,.8,.2,1) .18s both; }
+.shot-placeholder .copy > *:nth-child(1) { animation: ph-rise .6s cubic-bezier(.2,.8,.2,1) .26s both; }
+.shot-placeholder .copy > *:nth-child(2) { animation: ph-rise .6s cubic-bezier(.2,.8,.2,1) .34s both; }
+.shot-placeholder .copy > *:nth-child(3) { animation: ph-rise .6s cubic-bezier(.2,.8,.2,1) .42s both; }
+@keyframes ph-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vf, .vf-scan, .vf .lens::before, .vf .lens::after,
+  /* :nth-child(n) is "every child" — it's here only to match the specificity of the
+     staggered :nth-child(1..3) rules above, which otherwise outrank a bare `> *`
+     and kept the entrance animating for readers who asked for no motion. */
+  .vf-tag, .shot-placeholder .copy > *:nth-child(n) { animation: none; }
+  .vf-scan { top: 50%; }
+}
+
+/* Below ~250px of panel body the viewfinder can't stay whole, and a shrunken one
+   is worse than none — at ~15px it read as a stray orange dash, not a frame. So
+   drop it outright and let the copy have the room. The stacked ≤1080px layout
+   hits this at any window height, which is why this is a container query. */
+@container shot-body (max-height: 250px) {
+  .vf { display: none; }
+}
+/* Below ~200px the copy alone (~180px) stops fitting too, so keep shedding
+   atmosphere in priority order rather than scrolling: the STANDING BY chip is
+   decoration, and the lead paragraph restates the heading. What survives is the
+   heading and the hint naming the command to run — the only part a stuck user
+   can act on. */
+@container shot-body (max-height: 200px) {
+  .vf-tag,
+  .shot-placeholder .copy > p:not(.sub) { display: none; }
+  .shot-placeholder { gap: 10px; }
 }
 .shot-placeholder h2 { font-size: 15px; color: var(--text-hi); font-weight: 600; letter-spacing: -0.01em; }
 .shot-placeholder p { font-size: 12.5px; line-height: 1.55; color: var(--text-dim); max-width: 30ch; }
 .shot-placeholder p.sub { margin-top: 8px; font-size: 11.5px; color: var(--text-faint); }
 .shot-placeholder code {
   font-family: var(--font-mono); font-size: 11.5px;
-  color: var(--ember-soft); background: rgba(255,120,73,0.07);
-  border: 1px solid rgba(255,120,73,0.18);
+  color: var(--ember-soft); background: var(--ember-wash);
+  border: 1px solid var(--ember-edge);
   padding: 1px 6px; border-radius: 5px;
+  /* A flag is one token: without this the wrap landed inside the chip in the
+     stacked layout, rendering a boxed "--" above a boxed "playground". */
+  white-space: nowrap;
 }
 
 /* ---------- RIGHT-TOP: live test code ---------- */
@@ -834,17 +1098,17 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 .cl.fresh::after { opacity: 1; animation: rail-fade 1.5s ease forwards; }
 @keyframes line-in {
-  from { opacity: 0; transform: translateX(6px); background: rgba(255,120,73,0.1); }
+  from { opacity: 0; transform: translateX(6px); background: rgba(var(--ember-rgb),0.1); }
   to   { opacity: 1; transform: none; background: transparent; }
 }
 @keyframes rail-fade { 0%,55% { opacity: 1; } 100% { opacity: 0; } }
 
 /* a step's lines stay grouped; hovering / selecting a step in history lights its rail */
 .cl[data-step].hot::after { opacity: 0.9 !important; animation: none; }
-.cl[data-step].hot { background: rgba(255,120,73,0.05); }
+.cl[data-step].hot { background: rgba(var(--ember-rgb),0.05); }
 /* failing step lines get a red rail tint */
 .cl[data-fail="1"].hot::after { background: var(--red); }
-.cl[data-fail="1"].hot { background: rgba(252,165,165,0.05); }
+.cl[data-fail="1"].hot { background: rgba(var(--red-rgb),0.05); }
 
 /* code-panel empty state */
 .code-empty {
@@ -853,6 +1117,11 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   font-size: 12px;
   color: var(--text-faint);
   line-height: 1.7;
+  /* The four comment lines are inline <span>s separated only by source newlines,
+     which a div collapses to spaces — they rendered as one run of text with the
+     '#'s buried mid-sentence. pre-wrap keeps the line breaks (unlike the sibling
+     real code, which gets them from <pre>) while still wrapping when narrow. */
+  white-space: pre-wrap;
 }
 /* The Python-comment lines in the empty state. Was a one-off green (#7c8a72) that
    clashed with the neutral-gray screenshot/history empties — issue #5's "字体颜色
@@ -897,8 +1166,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* selected (time-travel target) state */
 .action-item.selected {
-  background: linear-gradient(90deg, rgba(255,120,73,0.10), rgba(255,120,73,0.03) 60%, transparent);
-  border-color: rgba(255,120,73,0.45);
+  background: linear-gradient(90deg, rgba(var(--ember-rgb),0.10), rgba(var(--ember-rgb),0.03) 60%, transparent);
+  border-color: rgba(var(--ember-rgb),0.45);
 }
 .action-item.selected::before {
   content: "";
@@ -928,7 +1197,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   background: var(--bg-1);
   border: 1px solid var(--line);
 }
-.action-item.selected .idx { color: var(--ember-soft); border-color: rgba(255,120,73,0.4); }
+.action-item.selected .idx { color: var(--ember-soft); border-color: rgba(var(--ember-rgb),0.4); }
 
 .action-item .body { min-width: 0; }
 .action-item .line1 { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
@@ -967,10 +1236,10 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   display: grid; place-items: center;
   font-size: 11px; font-weight: 700;
 }
-.action-item .a-stat.ok   { color: var(--live); background: rgba(110,231,183,0.12); }
-.action-item .a-stat.fail { color: var(--red);  background: rgba(252,165,165,0.14); }
+.action-item .a-stat.ok   { color: var(--live); background: rgba(var(--live-rgb),0.12); }
+.action-item .a-stat.fail { color: var(--red);  background: rgba(var(--red-rgb),0.14); }
 /* failing rows tinted */
-.action-item.is-fail { border-color: rgba(252,165,165,0.3); }
+.action-item.is-fail { border-color: rgba(var(--red-rgb),0.3); }
 .action-item.is-fail .a-type { color: var(--red); }
 
 .history-empty {
@@ -1009,8 +1278,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   font-family: var(--font-mono);
   font-size: 9.5px; letter-spacing: .04em;
   color: var(--ember-soft);
-  border: 1px dashed rgba(255,120,73,0.4);
-  background: rgba(255,120,73,0.05);
+  border: 1px dashed rgba(var(--ember-rgb),0.4);
+  background: rgba(var(--ember-rgb),0.05);
   padding: 1px 6px; border-radius: 5px;
   white-space: nowrap;
 }
@@ -1098,7 +1367,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* selected + current states (parity with history) */
 .film-frame.selected { border-color: var(--ember); box-shadow: 0 0 0 2px var(--ember-glow), 0 8px 20px -8px rgba(0,0,0,0.7); transform: translateY(-3px); }
 .film-frame.selected img { opacity: 1; }
-.film-frame.current { box-shadow: 0 0 0 1.5px rgba(110,231,183,0.55); }
+.film-frame.current { box-shadow: 0 0 0 1.5px rgba(var(--live-rgb),0.55); }
 
 /* playhead pointer to current/selected (decorative seed) */
 .timeline .scrubber-help {
@@ -1126,7 +1395,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   }
 }
 @media (max-width: 720px) {
-  header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 8px; }
+  header { padding: 8px 12px; }   /* wrap/min-height now live on the base rule */
   .bar-divider { display: none; }
   .timeline { height: 84px; }
   .timeline .scrubber-help { display: none; }
@@ -1182,15 +1451,15 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
    the tab gently breathes an ember halo to pull the eye. Killed permanently
    after the first open (.was-opened) so it never nags a returning user. */
 .tree-toggle-tab.has-data:not(.was-opened) {
-  border-color: rgba(255,120,73,0.45);
+  border-color: rgba(var(--ember-rgb),0.45);
   animation: tab-invite 2.4s ease-in-out infinite;
 }
 @keyframes tab-invite {
-  0%, 100% { box-shadow: -2px 0 10px -2px rgba(255,120,73,0.18); }
+  0%, 100% { box-shadow: -2px 0 10px -2px rgba(var(--ember-rgb),0.18); }
   50%      { box-shadow: -3px 0 18px -1px var(--ember-glow); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tree-toggle-tab.has-data:not(.was-opened) { animation: none; border-color: rgba(255,120,73,0.5); }
+  .tree-toggle-tab.has-data:not(.was-opened) { animation: none; border-color: rgba(var(--ember-rgb),0.5); }
 }
 .tree-toggle-tab:focus-visible {
   outline: 2px solid var(--blue);
@@ -1220,7 +1489,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* Ember pip on the tab when the panel is open */
 .tree-toggle-tab[aria-expanded="true"] {
   background: var(--bg-3);
-  border-color: rgba(255,120,73,0.4);
+  border-color: rgba(var(--ember-rgb),0.4);
 }
 .tree-toggle-tab[aria-expanded="true"] .tab-icon,
 .tree-toggle-tab[aria-expanded="true"] .tab-label { color: var(--ember-soft); }
@@ -1244,9 +1513,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   width: 244px;
   padding: 14px 15px 12px;
   background: var(--bg-3);
-  border: 1px solid rgba(255,120,73,0.34);
+  border: 1px solid rgba(var(--ember-rgb),0.34);
   border-radius: var(--r-md);
-  box-shadow: 0 14px 40px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,120,73,0.08);
+  box-shadow: 0 14px 40px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(var(--ember-rgb),0.08);
   opacity: 0;
   pointer-events: none;
   transition: opacity .22s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
@@ -1263,8 +1532,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   width: 11px; height: 11px;
   transform: translateY(-50%) rotate(45deg);
   background: var(--bg-3);
-  border-right: 1px solid rgba(255,120,73,0.34);
-  border-top: 1px solid rgba(255,120,73,0.34);
+  border-right: 1px solid rgba(var(--ember-rgb),0.34);
+  border-top: 1px solid rgba(var(--ember-rgb),0.34);
 }
 .tree-coachmark .cm-title {
   display: flex; align-items: center; gap: 7px;
@@ -1405,9 +1674,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   border-radius: 4px;
   transition: background .12s;
 }
-.tree-diff-badge .d-add:hover  { background: rgba(52,211,153,0.12); }
-.tree-diff-badge .d-rem:hover  { background: rgba(252,165,165,0.12); }
-.tree-diff-badge .d-chg:hover  { background: rgba(251,191,36,0.12); }
+.tree-diff-badge .d-add:hover  { background: rgba(var(--green-rgb),0.12); }
+.tree-diff-badge .d-rem:hover  { background: rgba(var(--red-rgb),0.12); }
+.tree-diff-badge .d-chg:hover  { background: rgba(var(--amber-rgb),0.12); }
 
 .tree-drawer-head .dh-spacer { flex: 1; }
 
@@ -1424,7 +1693,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   flex-shrink: 0;
 }
 .tree-pin-btn:hover { color: var(--text-dim); background: var(--bg-3); border-color: var(--line); }
-.tree-pin-btn.pinned { color: var(--ember-soft); border-color: rgba(255,120,73,0.3); background: rgba(255,120,73,0.06); }
+.tree-pin-btn.pinned { color: var(--ember-soft); border-color: rgba(var(--ember-rgb),0.3); background: rgba(var(--ember-rgb),0.06); }
 .tree-pin-btn svg { width: 11px; height: 11px; display: block; }
 .tree-pin-btn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
@@ -1466,7 +1735,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   min-width: 0;
 }
 .tree-search-input::placeholder { color: var(--text-faint); }
-.tree-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(96,165,250,0.15); }
+.tree-search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(var(--blue-rgb),0.15); }
 .tree-search-clear {
   flex-shrink: 0;
   width: 20px; height: 20px;
@@ -1493,7 +1762,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   gap: 6px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--line-soft);
-  background: rgba(251,191,36,0.05);
+  background: rgba(var(--amber-rgb),0.05);
 }
 .tree-nobbox-notice span {
   font-family: var(--font-mono);
@@ -1593,9 +1862,9 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* Target element — ember treatment, matches action-item.selected exactly */
 .tree-node-row.is-target {
-  background: linear-gradient(90deg, rgba(255,120,73,0.13), rgba(255,120,73,0.04) 65%, transparent);
+  background: linear-gradient(90deg, rgba(var(--ember-rgb),0.13), rgba(var(--ember-rgb),0.04) 65%, transparent);
   border-left-color: var(--ember) !important;
-  box-shadow: inset 2px 0 10px rgba(255,120,73,0.12);
+  box-shadow: inset 2px 0 10px rgba(var(--ember-rgb),0.12);
 }
 /* Focus ring */
 .tree-node-row:focus { outline: none; }
@@ -1673,7 +1942,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 /* Search highlight */
 .tree-label mark {
-  background: rgba(251,191,36,0.22);
+  background: rgba(var(--amber-rgb),0.22);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
@@ -1696,8 +1965,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--purple);
-  background: rgba(165,180,252,0.08);
-  border: 1px solid rgba(165,180,252,0.20);
+  background: rgba(var(--purple-rgb),0.08);
+  border: 1px solid rgba(var(--purple-rgb),0.20);
   padding: 1px 4px;
   border-radius: 3px;
   cursor: pointer;
@@ -1706,14 +1975,14 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: relative;
 }
 .tree-ref:hover {
-  background: rgba(165,180,252,0.16);
-  border-color: rgba(165,180,252,0.40);
+  background: rgba(var(--purple-rgb),0.16);
+  border-color: rgba(var(--purple-rgb),0.40);
 }
 /* On target row, ref badge gets ember color */
 .tree-node-row.is-target .tree-ref {
   color: var(--ember-soft);
-  background: rgba(255,120,73,0.08);
-  border-color: rgba(255,120,73,0.30);
+  background: rgba(var(--ember-rgb),0.08);
+  border-color: rgba(var(--ember-rgb),0.30);
 }
 /* Copied feedback tooltip */
 .tree-ref::after {
@@ -1754,8 +2023,8 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 }
 .tree-flag.flag-disabled {
   color: var(--amber);
-  background: rgba(251,191,36,0.08);
-  border: 1px solid rgba(251,191,36,0.22);
+  background: rgba(var(--amber-rgb),0.08);
+  border: 1px solid rgba(var(--amber-rgb),0.22);
 }
 .tree-flag.flag-inert {
   color: var(--text-faint);
@@ -1773,7 +2042,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 
 /* ---- NODE ANIMATIONS (reconciler states) ---- */
 @keyframes dom-node-in {
-  from { opacity: 0; background: rgba(96,165,250,0.08); }
+  from { opacity: 0; background: rgba(var(--blue-rgb),0.08); }
   to   { opacity: 1; background: transparent; }
 }
 @keyframes dom-field-pulse {
@@ -1799,7 +2068,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   position: absolute;
   pointer-events: none;
   border: 1.5px solid var(--blue);
-  background: rgba(96,165,250,0.08);
+  background: rgba(var(--blue-rgb),0.08);
   border-radius: 3px;
   z-index: 5;
   opacity: 0;
@@ -1810,7 +2079,7 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 /* ember variant for the current target node */
 #domBboxOverlay.is-target {
   border-color: var(--ember);
-  background: rgba(255,120,73,0.10);
+  background: rgba(var(--ember-rgb),0.10);
   box-shadow: 0 0 0 1px var(--ember-glow);
 }
 
@@ -1905,7 +2174,11 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
   <span class="ide-open" id="ideOpen" data-state="none">
     <button class="btn-vscode btn-ide-go" id="ideGo" type="button"
             title="Open the generated file in your editor" disabled>
-      <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="#3a5a85" stroke="#60a5fa" stroke-width="1" stroke-linejoin="round"/></svg>
+      <!-- Tokens, not hexes: var() does work in SVG presentation attributes, and the
+           hardcoded pair here was the dark theme's (#3a5a85 = --ide-btn-border-hover,
+           #60a5fa = the dark --blue), so on paper the glyph stayed dark blue while the
+           button around it went light. -->
+      <svg viewBox="0 0 24 24" fill="none"><path d="M17 3 9 11 5 8 3 9l4 4-4 4 2 1 4-3 8 8 4-2V5l-4-2z" fill="var(--ide-btn-border-hover)" stroke="var(--blue)" stroke-width="1" stroke-linejoin="round"/></svg>
       <span class="ide-label" id="ideLabel">Open in IDE</span><span class="kbd">⌘E</span>
     </button>
     <button class="btn-vscode btn-ide-pick" id="idePick" type="button"
@@ -1953,12 +2226,16 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
       <div id="domBboxOverlay" aria-hidden="true"></div>
       <!-- placeholder (waiting for first frame) -->
       <div class="shot-placeholder" id="shotPlaceholder">
-        <div class="glyph">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        <div class="vf" aria-hidden="true">
+          <span class="vf-c tl"></span><span class="vf-c tr"></span>
+          <span class="vf-c bl"></span><span class="vf-c br"></span>
+          <span class="vf-scan"></span>
+          <span class="lens"></span>
         </div>
+        <span class="vf-tag" aria-hidden="true">STANDING BY</span>
         <div class="copy">
-          <h2>Waiting for the first frame</h2>
-          <p>The live screencast appears here once a test run starts.</p>
+          <h2>The lens is trained on your app</h2>
+          <p>The first frame lands here the moment a run begins.</p>
           <p class="sub">Run ScreenForge with <code>--playground</code>, or POST a frame to <code>/api/screenshot</code>.</p>
         </div>
       </div>
@@ -2002,12 +2279,12 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
       </div>
       <div class="code-scroll" id="codeScroll" tabindex="0" aria-label="Generated pytest code, updates live">
         <!-- empty state until first step -->
-        <div class="code-empty" id="codeEmpty">
-<span class="c"># ScreenForge will write a real, runnable pytest file here,</span>
+        <!-- white-space: pre-wrap keeps these four lines apart, so the newlines here
+             are content: no indentation, and no break after the opening tag. -->
+        <div class="code-empty" id="codeEmpty"><span class="c"># ScreenForge will write a real, runnable pytest file here,</span>
 <span class="c"># one step at a time, as the test executes.</span>
 <span class="c">#</span>
-<span class="c"># waiting for step 1 …</span>
-        </div>
+<span class="c"># waiting for step 1 …</span></div>
         <pre class="code-pre" id="codePre" style="display:none"><code class="language-python" id="codeCode"></code></pre>
       </div>
     </section>
@@ -2073,9 +2350,12 @@ pre.code-pre code { font-family: var(--font-mono) !important; background: transp
 </div>
 
 <!-- The drawer -->
+<!-- Starts inert: closed means translateX(100%), i.e. off-screen, and an off-screen
+     panel must not be tabbable. openDrawer()/closeDrawer() own this attribute. -->
 <aside class="tree-drawer" id="treeDrawer"
        role="complementary"
-       aria-label="Brain's Eye View — DOM perception tree">
+       aria-label="Brain's Eye View — DOM perception tree"
+       inert>
 
   <!-- Drawer header -->
   <div class="tree-drawer-head">
@@ -2308,7 +2588,14 @@ function insertCodeLine(rawText, { step, fresh, fail }) {
   span.dataset.step = step;
   if (fail) span.dataset.fail = '1';
   // Prism highlight of this single physical line (preserves leading indentation).
-  const html = Prism.highlight(rawText.length ? rawText : '​', Prism.languages.python, 'python');
+  // Prism is CDN-only: when it's blocked (offline / air-gapped CI) fall back to
+  // plain escaped text. Unguarded, the ReferenceError escaped onStepEvent and
+  // took the screenshot, history and filmstrip down with it — the whole live
+  // view froze on "Connecting", not just the highlighting.
+  const raw = rawText.length ? rawText : '​';
+  const html = (window.Prism && Prism.languages && Prism.languages.python)
+    ? Prism.highlight(raw, Prism.languages.python, 'python')
+    : escapeHtml(raw);
   span.innerHTML = html || '​';
   els.codeCode.appendChild(span);
   return id;
@@ -2783,9 +3070,12 @@ function onStepEvent(ev) {
     has_dom_tree: ev.has_dom_tree === true,
   };
   state.steps.push(step);
-  appendCodeLines(step);
-  addHistoryRow(step);
+  // Screenshot + history first, code last: the imagery is the primary content, so
+  // a throw in the code panel must not be able to blank the rest of the view.
+  // (Safe ordering — only setCodeHot reads step.lineIds, and that runs on hover.)
   if (step.screenshot) { showScreenshot(step.screenshot, step); fillFilmFrame(step); }
+  addHistoryRow(step);
+  appendCodeLines(step);
   els.srLive.textContent = `Step ${step.step_index}: ${step.action_description}`;
   if (window._domTreeOnStep) window._domTreeOnStep(step);
 }
@@ -3938,6 +4228,10 @@ if (USE_LIVE_BACKEND) {
 
   searchInput.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+      // Nothing to clear → Escape means "close the panel". Without this the drawer
+      // would be un-closable by keyboard right after opening, since openDrawer()
+      // focuses this input and the document-level Escape handler skips INPUT targets.
+      if (!searchInput.value) { closeDrawer(); return; }
       filterQuery = '';
       searchInput.value = '';
       searchClear.classList.remove('visible');
@@ -4006,7 +4300,12 @@ if (USE_LIVE_BACKEND) {
   /* ------------------------------------------------------------------
      Drawer open / close / pin
   ------------------------------------------------------------------ */
-  function openDrawer() {
+  /* opts.focus — move focus into the panel. True for user-initiated opens (click, B,
+     coachmark); false when restoring persisted state on load, where yanking focus
+     into a search box the user never asked for is just theft. */
+  function openDrawer(opts) {
+    if (isOpen) return;                       // idempotent: applyPin() and restoreState()
+                                              // can both reach here on the same load
     isOpen = true;
     drawer.classList.add('is-open');
     wrap.classList.add('tree-open');
@@ -4015,7 +4314,11 @@ if (USE_LIVE_BACKEND) {
     dismissCoachmark();                       // opening IS the coachmark's goal
     try { localStorage.setItem(PANEL_OPEN_KEY, '1'); } catch(e) {}
 
+    drawer.removeAttribute('inert');          // reachable again (see closeDrawer)
     updateNobboxNotice(state.platform);
+    // Move focus into the panel. Non-modal (role=complementary, no aria-modal), so
+    // there is no focus trap — Tab out into the page behind is correct here.
+    if (!opts || opts.focus !== false) searchInput.focus();
 
     // Fetch + show the current step's tree on demand. The drawer may be opened
     // for the first time after several steps, so we can't rely on a tree being
@@ -4026,6 +4329,8 @@ if (USE_LIVE_BACKEND) {
   }
 
   function closeDrawer() {
+    if (!isOpen && !isPinned) return;         // idempotent; still runs when pinned-but-
+                                              // closed so a legacy persisted state unpins
     isOpen = false;
     drawer.classList.remove('is-open');
     wrap.classList.remove('tree-open');
@@ -4033,6 +4338,16 @@ if (USE_LIVE_BACKEND) {
     bboxLockedNode = null;
     hideBbox(0);
     try { localStorage.setItem(PANEL_OPEN_KEY, '0'); } catch(e) {}
+    // Closing a pinned drawer has to unpin it too — otherwise the pinned CSS keeps
+    // it on-screen while isOpen is false (the frozen-panel bug above, in reverse).
+    if (isPinned) applyPin(false);
+    // Off-screen (translateX(100%)) but still in the tab order without this: Tab
+    // would land on the pin/close/search controls of a panel nobody can see.
+    // Safe to gate on closed only because closing always unpins (line above), so
+    // closed now genuinely means off-screen.
+    drawer.setAttribute('inert', '');
+    // Never leave focus inside an inert subtree.
+    if (drawer.contains(document.activeElement)) toggleTab.focus();
   }
 
   function toggleDrawer() {
@@ -4063,16 +4378,23 @@ if (USE_LIVE_BACKEND) {
   if (coachmark) {
     const cmOpen = document.getElementById('treeCoachmarkOpen');
     const cmDismiss = document.getElementById('treeCoachmarkDismiss');
-    if (cmOpen) cmOpen.addEventListener('click', openDrawer);          // openDrawer() also dismisses
+    // Wrapped, not passed directly: a bare listener hands openDrawer the MouseEvent
+    // as its opts argument.
+    if (cmOpen) cmOpen.addEventListener('click', function () { openDrawer(); });  // openDrawer() also dismisses
     if (cmDismiss) cmDismiss.addEventListener('click', dismissCoachmark);
   }
 
-  function applyPin(pinned) {
+  function applyPin(pinned, opts) {
     isPinned = pinned;
     wrap.classList.toggle('tree-pinned', pinned);
     pinBtn.classList.toggle('pinned', pinned);
     pinBtn.setAttribute('aria-pressed', String(pinned));
     try { localStorage.setItem(PANEL_PIN_KEY, pinned ? '1' : '0'); } catch(e) {}
+    // Pinned CSS overrides the closed transform (transform: none !important), so a
+    // pinned drawer is on-screen whatever isOpen says. Pin and open are therefore
+    // ONE state, not two: keep isOpen meaning "visible", or showTreeForStep's
+    // `if (!isOpen) return` leaves a visible panel frozen on its empty state.
+    if (pinned && !isOpen) openDrawer(opts);
   }
 
   toggleTab.addEventListener('click', toggleDrawer);
@@ -4087,6 +4409,10 @@ if (USE_LIVE_BACKEND) {
     }
     // Escape dismisses the coachmark (if it's the only thing showing)
     if (e.key === 'Escape' && _coachShown && !isOpen) dismissCoachmark();
+    // Escape closes the open drawer. Note this handler already returned above for
+    // INPUT targets, so Escape inside the search box still clears the text first
+    // (its own keydown listener) instead of closing the panel out from under you.
+    else if (e.key === 'Escape' && isOpen) closeDrawer();
   });
 
   // "/" in tree panel → focus search
@@ -4104,8 +4430,9 @@ if (USE_LIVE_BACKEND) {
   ------------------------------------------------------------------ */
   (function restoreState() {
     try {
-      if (localStorage.getItem(PANEL_PIN_KEY) === '1') applyPin(true);
-      if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openDrawer();
+      // focus:false — restoring on load must not steal focus (see openDrawer)
+      if (localStorage.getItem(PANEL_PIN_KEY) === '1') applyPin(true, { focus: false });
+      if (localStorage.getItem(PANEL_OPEN_KEY) === '1') openDrawer({ focus: false });
     } catch(e) {}
   })();
 

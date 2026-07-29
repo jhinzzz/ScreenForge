@@ -102,7 +102,7 @@ production bar:
   runs without a browser or a live model.
 - **CI matrix** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) on Python
   **3.11 and 3.12**, gating three ways on every push:
-  `ruff check .` (whole repo) → `mypy cli/ common/ config/ utils/` → `pytest tests/ -q`.
+  `ruff check .` (whole repo) → `mypy .` (whole repo) → `pytest tests/ -q`.
 - **Strict typing** layered in by package via `pyproject.toml` mypy overrides — the
   agent-facing modules are held to a stricter standard than the edges.
 - **~12,200 lines** of typed Python across `cli/ common/ config/ utils/`.

@@ -59,8 +59,22 @@ ignore = ["E501", "E701"]
 [tool.ruff.lint.isort]
 known-first-party = ["common", "cli", "config", "utils"]
 
+[tool.setuptools.package-data]
+# The two packages that ship an HTML asset rather than only code. Without these
+# the packages install but their entry point 404s at runtime: app.py reads
+# index.html off its own __file__, and render_html() reads report_template.html.
+playground = ["index.html"]
+review = ["report_template.html"]
+
 [tool.setuptools.packages.find]
-include = ["cli*", "common*", "config*", "utils*"]
+# playground* and review* were missing here, so `--playground` was unreachable
+# from any wheel: dispatch.py catches the ImportError and prints "Fix: pip install
+# screenforge[playground]" — which is what the user had already done. The extra
+# only adds fastapi/uvicorn/websockets; the package itself was never shipped, so
+# the advice could not resolve the error and the process still exited 0.
+# review* is shipped for `import review.render`; note REVIEW_RECORD=1 still needs
+# the repo's root conftest.py, which is not packageable (no pytest11 entry point).
+include = ["cli*", "common*", "config*", "utils*", "playground*", "review*"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -69,7 +83,13 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
 no_implicit_optional = false
-exclude = ["test_cases/", "scripts/", "\\.worktrees/"]
+# Gate is `mypy .` (CI + pre-commit) so a new package can't silently escape it —
+# that gap is how conftest.py and review/ drifted to 5 errors unnoticed. Exclusions
+# are therefore listed here, once, rather than by enumerating dirs in two configs.
+# docs/examples/ is generator output committed verbatim as proof artifacts (same
+# reason it's ruff extend-excluded): type-fixing it would make the committed copy
+# diverge from what ScreenForge actually emits.
+exclude = ["test_cases/", "scripts/", "docs/examples/", "\\.worktrees/"]
 
 # numpy 2.4+ ships PEP 695 `type X = ...` in its bundled stubs, which mypy rejects
 # under our 3.11 target (requires-python >=3.11, CI matrix tests 3.11). We don't

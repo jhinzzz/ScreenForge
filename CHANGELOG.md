@@ -6,6 +6,74 @@ All notable changes to ScreenForge will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **`screenforge --playground` could never start from a pip install.** It reported
+  "Playground requires extra dependencies. Fix: `pip install screenforge[playground]`"
+  even to people who had just done exactly that, then exited successfully. The
+  playground was missing from the published package entirely, so no amount of
+  installing extras could fix it — it only ever ran from a git clone. It now ships
+  with the package and starts as documented.
+- **The playground scrolled sideways on narrow windows.** Any window narrower than
+  the top bar itself scrolled the whole page horizontally — and since the bar grows
+  once a run id and generated filename appear, a 1366px laptop was fine while idle and
+  started scrolling mid-run. The bar wraps now, and the filename is still shown in
+  full whenever there is room for it.
+- **The idle live view clipped the hint that tells you how to start a run.** On short
+  windows its content overflowed the panel and the `--playground` command fell outside
+  it. The panel now gives up atmosphere as it shrinks — the viewfinder first, then the
+  standing-by chip — so the heading and the command always survive.
+- **The Brain's Eye View drawer could sit on screen showing stale content.** Pin it,
+  close it, reload: it came back fully visible but frozen on "Waiting for the first
+  step" while steps streamed in, and on narrower windows it covered the code panel.
+  Pinning and opening are one state now, so a closed drawer is really closed.
+- **The drawer was unusable by keyboard.** Tab reached the controls of a closed,
+  off-screen panel; opening it never moved focus in; Escape didn't close it. Now Tab
+  skips a closed drawer, opening moves focus in and closing hands it back, and Escape
+  closes it — after clearing the search box first if it has text, so one keypress
+  never does two things. Tab still leaves the drawer for the page behind: it's a
+  sidebar, not a modal.
+- **Accent colours ignored the light theme.** Status pills, action rows, diff badges
+  and the like drew their text in the light theme's colour but kept the dark theme's
+  border and background — the live pill was deep green text inside a mint border. The
+  "Open in editor" glyph stayed dark blue for the same reason. They all follow the
+  theme now.
+- **Several things were too faint to read on the light theme.** Accent labels sitting
+  on their own tinted chips, the live/idle badge over the screenshot and the
+  viewfinder's crop marks all fell below the WCAG AA contrast floor — the badge was
+  effectively invisible. All of them clear it now, measured against the background each
+  one actually sits on rather than the panel behind it.
+- **The idle live view didn't read as the same component in the two themes.** On paper
+  the panel looked like a box that had failed to load next to the code panel, the lens
+  was a flat grey disc rather than glass, and the focusing arc read as a scratch on the
+  ring instead of a trailing glow. The two themes now match in depth and in the way
+  light falls, while staying deliberately inverted where paper calls for it.
+- **The live view no longer goes blank when the syntax-highlighting CDN is
+  unreachable.** Offline, air-gapped or behind a blocking proxy, that one failed load
+  took the screenshot, action history and filmstrip down with it and left the page
+  frozen on "Connecting". Highlighting degrades to plain text now and everything else
+  keeps working.
+- **The idle code panel ran its four placeholder comments together into one
+  paragraph.**
+- **The idle panel's entrance animation ignored `prefers-reduced-motion`.**
+- **The replay report now draws the target reticle on `click` and `assert` steps.** It
+  could only locate elements by `id`, so the steps a reviewer opens the report to
+  inspect were exactly the ones with no box drawn on them.
+- **The replay report no longer misplaces the reticle on HiDPI screens.** For reports
+  recorded by older versions it had to guess the screen scale, and drew at roughly half
+  size on a 2× display. It now draws a box only when it knows where the box goes — no
+  box is more honest than a misplaced one.
+
+### Changed
+- **The playground's idle live view is a viewfinder rather than a spinner.** Four crop
+  marks, a metering sweep and a focusing lens — the same reticle/film language the rest
+  of the interface already speaks, in place of a rotating ring whose glow smeared into
+  the corners.
+- **The replay report's accent is now the same ember as the playground.** The two
+  surfaces used two near-identical warm oranges, which read as drift rather than
+  intent. The report keeps its own display face and replay concept — REC dot,
+  equalizer, film grain — and only shares the brand accent. It also no longer collides
+  with the colour used for `fill` actions.
+
 ## [0.11.0] - 2026-07-28
 
 ### Changed

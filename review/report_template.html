@@ -12,7 +12,14 @@
     --bg:#0a0b0d; --bg-2:#0e1014;
     --ink:#ECE7DD; --ink-2:#9CA0A8; --ink-3:#5C616B;
     --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.13);
-    --signal:#FFB84D; --signal-soft:rgba(255,184,77,.13); --signal-line:rgba(255,184,77,.45);
+    /* Brand accent — ember, shared with the playground's --ember (#ff7849).
+       CANONICAL BRAND TOKENS (keep in sync with playground/index.html :root):
+         accent = #ff7849 (light-theme variant #ea580c) · accent-soft = #ffb38a
+       Deliberately NOT unified with the playground: the display face (Bricolage
+       Grotesque + mono body = instrument readout) and the replay concept (REC dot,
+       equalizer, film grain) are this surface's own voice. Only the accent is shared. */
+    --ember:#ff7849; --ember-rgb:255, 120, 73;
+    --ember-wash:rgba(var(--ember-rgb),.13); --ember-edge:rgba(var(--ember-rgb),.45);
     --pass:#7DDFB0; --fail:#FF6B6B; --skip:#C9A24B; --cool:#6E7B8F;
     --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
     --disp:"Bricolage Grotesque","Bricolage Grotesque Fallback",system-ui,sans-serif;
@@ -23,7 +30,7 @@
     margin:0; color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.5;
     background:var(--bg);
     background-image:
-      radial-gradient(1200px 700px at 30% -10%, rgba(255,184,77,.07), transparent 60%),
+      radial-gradient(1200px 700px at 30% -10%, rgba(var(--ember-rgb),.07), transparent 60%),
       radial-gradient(1000px 800px at 110% 120%, rgba(60,80,110,.10), transparent 55%),
       linear-gradient(180deg,var(--bg),var(--bg-2));
     display:grid; grid-template-rows:auto 1fr auto auto; height:100vh; overflow:hidden;
@@ -54,7 +61,7 @@
   .brand h1{font-family:var(--disp); font-weight:800; font-size:21px; letter-spacing:-.02em; margin:0;}
   .brand .sub{font-size:10px; letter-spacing:.28em; color:var(--ink-3); text-transform:uppercase;}
   .eq{display:flex; align-items:flex-end; gap:2px; height:16px; margin-left:2px;}
-  .eq i{width:2px; background:var(--signal); opacity:.8; animation:eq 1.1s ease-in-out infinite;}
+  .eq i{width:2px; background:var(--ember); opacity:.8; animation:eq 1.1s ease-in-out infinite;}
   .eq i:nth-child(1){animation-delay:0s} .eq i:nth-child(2){animation-delay:.18s}
   .eq i:nth-child(3){animation-delay:.36s} .eq i:nth-child(4){animation-delay:.1s}
   @keyframes eq{0%,100%{height:3px}50%{height:15px}}
@@ -86,10 +93,10 @@
             font-size:46px; line-height:1; color:rgba(255,255,255,.10); letter-spacing:-.04em; pointer-events:none;}
   /* outline-offset：框画在元素矩形外 4px 处，框住元素（含其原生 focus ring）而非压在上面。
      用 outline 而非 border，不改变盒尺寸，百分比坐标仍精确贴合元素 rect。 */
-  .bbox{position:absolute; outline:2px solid var(--signal); outline-offset:4px; border-radius:3px;
-        box-shadow:0 0 22px var(--signal-soft); background:transparent;
+  .bbox{position:absolute; outline:2px solid var(--ember); outline-offset:4px; border-radius:3px;
+        box-shadow:0 0 22px var(--ember-wash); background:transparent;
         pointer-events:none; display:none; animation:reticle .35s cubic-bezier(.2,.8,.2,1);}
-  .bbox::before,.bbox::after{content:""; position:absolute; width:9px; height:9px; border:2px solid var(--signal);}
+  .bbox::before,.bbox::after{content:""; position:absolute; width:9px; height:9px; border:2px solid var(--ember);}
   .bbox::before{top:-7px; left:-7px; border-right:0; border-bottom:0;}
   .bbox::after{bottom:-7px; right:-7px; border-left:0; border-top:0;}
   @keyframes reticle{from{opacity:0; transform:scale(1.06);}to{opacity:1; transform:scale(1);}}
@@ -116,15 +123,15 @@
   .code{margin:0; padding:12px 13px; border-radius:9px; background:rgba(0,0,0,.34);
         border:1px solid var(--line); overflow:auto; font-size:12px;}
   .code code{font-family:var(--mono); color:var(--ink); white-space:pre-wrap; word-break:break-word;}
-  .c-str{color:var(--pass);} .c-fn{color:var(--signal);} .c-num{color:#E69BB0;}
+  .c-str{color:var(--pass);} .c-fn{color:var(--ember);} .c-num{color:#E69BB0;}
   .tree-block{flex:1; min-height:0; display:flex; flex-direction:column;}
   .tree{flex:1; overflow:auto; font-family:var(--mono); font-size:12px; line-height:1.85;
         border:1px solid var(--line); border-radius:9px; padding:8px 6px; background:rgba(0,0,0,.22);}
   .tnode{display:flex; align-items:center; gap:6px; padding:1px 8px; border-radius:5px; cursor:pointer; white-space:nowrap;}
-  .tnode:hover{background:var(--signal-soft);}
-  .tnode.hot{background:var(--signal-soft); outline:1px solid var(--signal-line);}
+  .tnode:hover{background:var(--ember-wash);}
+  .tnode.hot{background:var(--ember-wash); outline:1px solid var(--ember-edge);}
   .tguide{color:var(--ink-3); opacity:.5; white-space:pre;}
-  .tref{color:var(--signal); font-weight:500;}
+  .tref{color:var(--ember); font-weight:500;}
   .tcls{color:#8FC7E8;}
   .ttext{color:var(--ink);}
   .tflag{color:var(--fail); font-size:9px; letter-spacing:.06em; border:1px solid currentColor; padding:0 4px; border-radius:4px;}
@@ -138,8 +145,8 @@
   .tp-btn{font-family:var(--mono); width:34px; height:34px; border-radius:8px; cursor:pointer;
           background:rgba(255,255,255,.04); color:var(--ink); border:1px solid var(--line-2);
           font-size:15px; display:grid; place-items:center; transition:.15s;}
-  .tp-btn:hover{border-color:var(--signal-line); color:var(--signal);}
-  .tp-btn.play{background:var(--signal); color:#1a1206; border-color:var(--signal); font-size:13px; width:40px;}
+  .tp-btn:hover{border-color:var(--ember-edge); color:var(--ember);}
+  .tp-btn.play{background:var(--ember); color:#1a1206; border-color:var(--ember); font-size:13px; width:40px;}
   .tp-btn.play:hover{filter:brightness(1.08);}
   .tp-now{font-size:11.5px; color:var(--ink-2); display:flex; align-items:center; gap:8px; min-width:0;}
   .tp-now .nm{color:var(--ink); font-weight:500; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -150,7 +157,7 @@
   .tp-clock{font-size:12px; color:var(--ink-2); min-width:112px; text-align:right;}
   .tp-clock b{color:var(--ink);}
   .tp-progress{flex:1; height:3px; border-radius:3px; background:var(--line-2); overflow:hidden; min-width:60px;}
-  .tp-bar{height:100%; width:0; background:linear-gradient(90deg,var(--signal),#FFD79A); transition:width .28s ease;}
+  .tp-bar{height:100%; width:0; background:linear-gradient(90deg,var(--ember),#ffb38a); transition:width .28s ease;}
   .tp-count{font-family:var(--disp); font-weight:800; font-size:14px; letter-spacing:.02em; color:var(--ink-2);}
   .tp-count b{color:var(--ink);}
 
@@ -170,8 +177,8 @@
   .case-pill.failed{border-left-color:var(--fail);} .case-pill.failed .vdot{background:var(--fail);}
   .case-pill.skipped{border-left-color:var(--skip);} .case-pill.skipped .vdot{background:var(--skip);}
   .case-pill.unknown{border-left-color:var(--cool);} .case-pill.unknown .vdot{background:var(--cool);}
-  .case-pill.active{background:var(--signal-soft); border-color:var(--signal-line); border-left-color:var(--signal);}
-  .case-pill.active .cn{color:var(--signal);}
+  .case-pill.active{background:var(--ember-wash); border-color:var(--ember-edge); border-left-color:var(--ember);}
+  .case-pill.active .cn{color:var(--ember);}
 
   .filmstrip{display:flex; gap:0; align-items:flex-end; overflow-x:auto; overflow-y:hidden;
              padding:16px 22px 18px; scrollbar-width:thin;}
@@ -192,12 +199,12 @@
   .frame-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
   .frame-time{display:block; text-align:center; font-size:9.5px; color:var(--ink-3); margin-top:7px;}
   .frame:hover .frame-thumb{filter:grayscale(.2) brightness(.85); transform:translateY(-2px);}
-  .frame.live .frame-thumb{filter:none; border-color:var(--signal); transform:translateY(-4px) scale(1.02);
-                           box-shadow:0 14px 30px -12px rgba(255,184,77,.5), 0 0 0 1px var(--signal);}
-  .frame.live .frame-idx{color:var(--signal);}
-  .frame.live .frame-time{color:var(--signal);}
+  .frame.live .frame-thumb{filter:none; border-color:var(--ember); transform:translateY(-4px) scale(1.02);
+                           box-shadow:0 14px 30px -12px rgba(var(--ember-rgb),.5), 0 0 0 1px var(--ember);}
+  .frame.live .frame-idx{color:var(--ember);}
+  .frame.live .frame-time{color:var(--ember);}
   .frame.live::before{content:""; position:absolute; left:50%; transform:translateX(-50%); bottom:-13px;
-                      width:9px; height:9px; border-radius:50%; background:var(--signal); box-shadow:0 0 12px var(--signal);}
+                      width:9px; height:9px; border-radius:50%; background:var(--ember); box-shadow:0 0 12px var(--ember);}
   .frame.failframe .frame-thumb{border-color:rgba(255,107,107,.55); box-shadow:0 0 0 1px rgba(255,107,107,.4);}
   .frame.failframe.live .frame-thumb{border-color:var(--fail); box-shadow:0 14px 30px -12px rgba(255,107,107,.55), 0 0 0 1px var(--fail);}
   .frame.failframe .frame-idx{color:var(--fail);}
@@ -303,13 +310,39 @@ function buildTree(nodes, depth, out){
   }
 }
 
+// 从触发代码行反查 DOM 节点，用于在舞台上画定位框（reticle）。
+// executor.py 实际产出的定位形态（见 common/executor.py:147-153, 267-306）：
+//   d.locator("#id")            d.locator("[aria-label='X']")
+//   d.get_by_text('X')          d.get_by_role('button', name='X')
+//   d.get_by_label('X')         d.get_by_placeholder('X')
+// 旧实现只认 #id 与 text=（后者生成器从不产出，是死分支），于是 click / assert
+// 这些最该看的步骤反而没有定位框 —— 舞台缺了取景框。
 function resolveTarget(step){
   const line = step.code_line || '';
-  const m = line.match(/locator\(\s*["']([^"']+)["']/);
-  if(!m) return null;
-  const sel = m[1];
+  const pick = re => { const m = line.match(re); return m ? m[1] : null; };
+  const byText  = t => FLAT.find(n => (n.text||'').includes(t)) || null;
+  const byLabel = t => FLAT.find(n => (n.desc||'') === t)
+                    || FLAT.find(n => (n.desc||'').includes(t)) || null;
+
+  // 1) get_by_role('button', name='X') —— name 优先匹配可见文本，再退到 aria-label
+  const roleName = pick(/get_by_role\(\s*["'][^"']*["']\s*,\s*name\s*=\s*["']([^"']*)["']/);
+  if(roleName != null) return byText(roleName) || byLabel(roleName);
+
+  // 2) get_by_label / get_by_placeholder / get_by_text
+  const label = pick(/get_by_label\(\s*["']([^"']*)["']/);
+  if(label != null) return byLabel(label);
+  const ph = pick(/get_by_placeholder\(\s*["']([^"']*)["']/);
+  if(ph != null) return FLAT.find(n => (n.placeholder||'') === ph) || null;
+  const text = pick(/get_by_text\(\s*["']([^"']*)["']/);
+  if(text != null) return byText(text);
+
+  // 3) locator("…") —— 按同种引号配对截取，避免 "[aria-label='X']" 被
+  //    [^"']+ 在第一个单引号处截成 "[aria-label="。
+  const sel = pick(/locator\(\s*"([^"]*)"/) ?? pick(/locator\(\s*'([^']*)'/);
+  if(sel == null) return null;
   if(sel[0]==='#'){ const id=sel.slice(1); return FLAT.find(n=>n.id===id)||null; }
-  if(sel.startsWith('text=')){ const t=sel.slice(5); return FLAT.find(n=>(n.text||'').includes(t))||null; }
+  const aria = sel.match(/^\[aria-label=\s*["']?([^"'\]]*)["']?\]$/);
+  if(aria) return byLabel(aria[1]);
   return null;
 }
 
@@ -338,14 +371,14 @@ function view(){
 
 let curDims = null;   // 当前步骤的 CSS 视口 {vw,vh}（坐标换算标尺，DPR 无关）
 // node 坐标是 CSS 像素；用截图所属步骤的 CSS 视口换成百分比。
-// 旧数据无 vw/vh 时回退到截图物理尺寸 / dpr 估算。
+// 无 vw/vh（加该字段之前的旧 review.json）→ 直接不画。曾用 naturalWidth/dpr 估算，
+// 但 dpr 缺省为 1 会在 2× 屏上把框画成半尺寸，且换图瞬间 naturalWidth 还是上一帧的
+// 尺寸 —— 画错位置的框比不画更误导。dom_capture.py:248 始终输出 vw/vh。
 function drawBox(node, {fail=false}={}){
   const box = $('bbox'), img = $('shot');
   if(!box || !img || !node || !(node.w>0) || !(node.h>0)){ if(box) box.style.display='none'; return; }
-  let W, H;
-  if(curDims && curDims.vw>0 && curDims.vh>0){ W=curDims.vw; H=curDims.vh; }
-  else if(img.naturalWidth){ const dpr=(curDims&&curDims.dpr)||1; W=img.naturalWidth/dpr; H=img.naturalHeight/dpr; }
-  else { box.style.display='none'; return; }
+  if(!(curDims && curDims.vw>0 && curDims.vh>0)){ box.style.display='none'; return; }
+  const W = curDims.vw, H = curDims.vh;
   if(node.x+node.w > W+2 || node.y+node.h > H+2){ box.style.display='none'; return; }  // 在视口外（fold 以下）
   box.classList.toggle('fail', fail);
   box.style.left=(node.x/W*100)+'%'; box.style.top=(node.y/H*100)+'%';
