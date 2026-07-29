@@ -28,8 +28,29 @@ All notable changes to ScreenForge will be documented in this file.
   a 2× display (and reading the previous frame's dimensions mid-swap). The report
   now draws the box only when the recorded CSS viewport is present — no box is
   more honest than a misplaced one.
+- **The playground's idle code panel rendered its four placeholder comments as one
+  run of text.** They are inline `<span>`s separated only by source newlines, which
+  a `div` collapses to spaces — so the `#`s ended up buried mid-sentence. The block
+  now uses `white-space: pre-wrap`, keeping the lines apart while still wrapping.
+- **The idle live-view panel overflowed on short windows, clipping the
+  `--playground` hint.** The panel body is a centred flex box with no scroll, and
+  `align-items: center` applies no shrink pressure, so the placeholder stayed at
+  its natural height and the bottom hint fell outside the panel. It is now bound to
+  the panel height and sheds atmosphere in priority order as the panel shrinks — the
+  viewfinder steps aside below ~250px of body height rather than shrinking into a
+  stray dash, then the STANDING BY chip and the lead paragraph below ~200px — so the
+  heading and the command to run always survive. The panel is deliberately not a
+  scroll container: an idle panel that scrolls is worse than one that shows less.
+- **The idle panel's entrance animation ignored `prefers-reduced-motion`.** The
+  staggered `:nth-child` rules outranked the reduce override, so the text still
+  animated in for readers who asked it not to.
 
 ### Changed
+- **The playground's idle live view is now a viewfinder rather than a spinner.**
+  The old rotating ring masked a circular gradient over a rounded *square*, so the
+  glow smeared into the corners instead of tracing an edge. It is replaced by four
+  crop marks, a metering sweep and a focusing lens — the same reticle/film language
+  the rest of the interface already speaks.
 - **The replay report's accent is now ember `#ff7849`, matching the playground.**
   The two surfaces used two near-identical warm oranges (`#FFB84D` vs `#ff7849`),
   which read as drift rather than intent. The report keeps its own display face
